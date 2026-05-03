@@ -243,7 +243,7 @@ export interface PieChartData {
   value: number;
   percentage: number;
   color: string;
-  [key: string]: any; // Index signature for Recharts compatibility
+  [key: string]: string | number; // Index signature for Recharts compatibility
 }
 
 export interface User {

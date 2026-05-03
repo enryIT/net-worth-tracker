@@ -620,7 +620,7 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
       if (asset.bondDetails) {
         const bd = asset.bondDetails;
         // Convert Timestamp or Date to ISO date string for <input type="date">
-        const toDateStr = (d: Date | any): string => {
+        const toDateStr = (d: Date | { toDate: () => Date }): string => {
           const date = d instanceof Date ? d : d.toDate();
           return date.toISOString().split('T')[0];
         };
@@ -712,9 +712,9 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
       // Reset
       setNewSubCategoryName('');
       setShowNewSubCategory(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding subcategory:', error);
-      toast.error(error.message || 'Errore nella creazione della sottocategoria');
+      toast.error(error instanceof Error ? error.message : 'Errore nella creazione della sottocategoria');
     } finally {
       setIsAddingSubCategory(false);
     }
@@ -728,7 +728,7 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
     setComposition(composition.filter((_, i) => i !== index));
   };
 
-  const updateCompositionEntry = (index: number, field: 'assetClass' | 'percentage' | 'subCategory', value: any) => {
+  const updateCompositionEntry = <K extends keyof AssetComposition>(index: number, field: K, value: AssetComposition[K]) => {
     const updated = [...composition];
     updated[index] = { ...updated[index], [field]: value };
     setComposition(updated);

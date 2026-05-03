@@ -324,7 +324,7 @@ export function AssetManagementTab({ assets, loading, onRefresh }: AssetManageme
         <CardContent>
           {assets.length === 0 ? (
             <div className="flex h-64 items-center justify-center text-gray-500 dark:text-gray-400">
-              Nessun asset presente. Clicca su "Aggiungi Asset" per iniziare.
+              Nessun asset presente. Clicca su &quot;Aggiungi Asset&quot; per iniziare.
             </div>
           ) : (
             <>

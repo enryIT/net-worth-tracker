@@ -41,12 +41,12 @@ export const ASSET_CLASS_ORDER: Record<string, number> = {
 /**
  * Remove undefined fields from an object to prevent Firebase errors
  */
-function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T> {
+function removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
   const cleaned: Partial<T> = {};
   Object.keys(obj).forEach((key) => {
     const value = obj[key];
     if (value !== undefined) {
-      cleaned[key as keyof T] = value;
+      cleaned[key as keyof T] = value as T[keyof T];
     }
   });
   return cleaned;
@@ -274,6 +274,10 @@ export async function updateAsset(
 
     if (updates.averageCost === undefined) cleanedUpdates.averageCost = deleteField();
     if (updates.taxRate === undefined) cleanedUpdates.taxRate = deleteField();
+    if (updates.bondDetails === undefined) cleanedUpdates.bondDetails = deleteField();
+    if (updates.pensionFundDetails === undefined) cleanedUpdates.pensionFundDetails = deleteField();
+    if (updates.composition === undefined) cleanedUpdates.composition = deleteField();
+
     await updateDoc(assetRef, cleanedUpdates);
 
     const userId = existingAsset.data()?.userId;
