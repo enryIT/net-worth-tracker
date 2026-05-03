@@ -4,8 +4,8 @@ import { getBondPriceByIsin } from '@/lib/services/borsaItalianaBondScraperServi
 /**
  * GET /api/prices/bond-quote?isin=IT0005672024
  *
- * Test endpoint for Borsa Italiana bond price scraper.
- * Useful for manual validation and debugging.
+ * Fetches a bond price from Borsa Italiana by ISIN.
+ * Used by the asset form and useful for manual validation.
  *
  * Query Parameters:
  *   @param isin - Bond ISIN code
@@ -23,11 +23,18 @@ import { getBondPriceByIsin } from '@/lib/services/borsaItalianaBondScraperServi
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const isin = searchParams.get('isin');
+    const isin = searchParams.get('isin')?.trim().toUpperCase();
 
     if (!isin) {
       return NextResponse.json(
         { error: 'ISIN parameter is required' },
+        { status: 400 }
+      );
+    }
+
+    if (!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(isin)) {
+      return NextResponse.json(
+        { error: 'ISIN must be a valid 12-character code' },
         { status: 400 }
       );
     }
