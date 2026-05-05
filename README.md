@@ -23,6 +23,8 @@ The app integrates with Yahoo Finance for real-time price updates and includes a
 - Dedicated pension fund asset type with manual valuation, default illiquid treatment, stamp-duty exemption, historical table inclusion, and composite allocation support
 - Bond coupon scheduling: automatic coupon generation with step-up rate tiers and final premium (Premio Finale) support — full BTP Valore compatible
 - Average cost tracking with 4-decimal precision, including a built-in multi-broker PMC calculator for positions spread across multiple brokers
+- Investment operation ledger for linked cashflow buys/sells, with quantity updates, weighted-average-cost recalculation, fees/taxes, and realized gain tracking
+- Internal cash transfers between cash assets, excluded from income/expense savings metrics
 - Current vs target asset allocation visualization
 - Hierarchical asset allocation analysis with desktop drill-down and mobile bottom-sheet navigation
 - Current-year historical tables use a hidden previous-month baseline so January can show growth vs the previous December without rendering an extra visible column
@@ -57,6 +59,7 @@ The app integrates with Yahoo Finance for real-time price updates and includes a
 - Dividend statistics, contextual payment detail, and yield calculations
 - **Total Return per Asset**: table combining unrealized capital gain % and all-time net dividends received % (calculated at historical cost basis per payment, not diluted by later purchases) to show the true investment return per asset; card layout on mobile
 - **Dividend Per Share Growth**: year-by-year gross DPS history per equity asset with YoY% and CAGR columns; portfolio median growth rate shown as a summary; tap any asset on mobile to open a vertical year-by-year dialog
+- **Realized gains/losses**: from investment sale operations, including taxes and per-asset breakdown
 
 ### Historical Analysis
 - Automatic monthly portfolio snapshots (via Vercel cron)

@@ -78,6 +78,55 @@ export async function GET(request: NextRequest) {
     }));
     const assetsMap = new Map(userAssets.map(a => [a.id, a]));
 
+    const operationsSnapshot = await adminDb
+      .collection('investmentOperations')
+      .where('userId', '==', authenticatedUserId)
+      .get();
+
+    const realizedByAsset = new Map<string, {
+      assetId: string;
+      assetName: string;
+      assetTicker: string;
+      realizedGain: number;
+      realizedTaxes: number;
+      netRealizedGain: number;
+      sellsCount: number;
+    }>();
+
+    operationsSnapshot.docs.forEach(operationDoc => {
+      const operation = operationDoc.data();
+      if (operation.type !== 'sell' && operation.type !== 'withdrawal') return;
+
+      const assetIdFromOperation = operation.assetId as string;
+      const realizedGain = Number(operation.realizedGain ?? 0);
+      const realizedTaxes = Number(operation.realizedGainTax ?? operation.taxes ?? 0);
+      const current = realizedByAsset.get(assetIdFromOperation) ?? {
+        assetId: assetIdFromOperation,
+        assetName: String(operation.assetName ?? ''),
+        assetTicker: String(operation.assetTicker ?? ''),
+        realizedGain: 0,
+        realizedTaxes: 0,
+        netRealizedGain: 0,
+        sellsCount: 0,
+      };
+
+      current.realizedGain += realizedGain;
+      current.realizedTaxes += realizedTaxes;
+      current.netRealizedGain += realizedGain - realizedTaxes;
+      current.sellsCount += 1;
+      realizedByAsset.set(assetIdFromOperation, current);
+    });
+
+    const realizedByAssetList = Array.from(realizedByAsset.values())
+      .sort((a, b) => b.netRealizedGain - a.netRealizedGain);
+    const realizedInvestmentSummary = {
+      totalRealizedGain: realizedByAssetList.reduce((sum, item) => sum + item.realizedGain, 0),
+      totalRealizedTaxes: realizedByAssetList.reduce((sum, item) => sum + item.realizedTaxes, 0),
+      totalNetRealizedGain: realizedByAssetList.reduce((sum, item) => sum + item.netRealizedGain, 0),
+      sellsCount: realizedByAssetList.reduce((sum, item) => sum + item.sellsCount, 0),
+      byAsset: realizedByAssetList,
+    };
+
     // Only show upcoming dividends for assets still owned
     const activeUpcomingDividends = upcomingDividends.filter(div => {
       const asset = assetsMap.get(div.assetId);
@@ -443,6 +492,8 @@ export async function GET(request: NextRequest) {
       }),
       // Include total return breakdown only when data exists
       ...(totalReturnAssets.length > 0 && { totalReturnAssets }),
+      // Realized sales are tracked from investment operations, including fully sold assets
+      ...(realizedInvestmentSummary.sellsCount > 0 && { realizedInvestmentSummary }),
       // Include DPS growth data only when equity dividends exist
       ...(dividendGrowthData && { dividendGrowthData }),
     };

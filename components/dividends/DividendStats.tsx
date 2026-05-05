@@ -139,6 +139,21 @@ interface DividendStatsData {
     dividendReturnPercentage: number;
     totalReturnPercentage: number;
   }>;
+  realizedInvestmentSummary?: {
+    totalRealizedGain: number;
+    totalRealizedTaxes: number;
+    totalNetRealizedGain: number;
+    sellsCount: number;
+    byAsset: Array<{
+      assetId: string;
+      assetName: string;
+      assetTicker: string;
+      realizedGain: number;
+      realizedTaxes: number;
+      netRealizedGain: number;
+      sellsCount: number;
+    }>;
+  };
   // DPS growth per asset: equity only, excludes coupons and finalPremium
   dividendGrowthData?: {
     byAsset: Array<{
@@ -796,6 +811,75 @@ export function DividendStats({ startDate, endDate, assetId }: DividendStatsProp
           </Card>
         );
       })()}
+
+      {!assetId && stats.realizedInvestmentSummary && stats.realizedInvestmentSummary.sellsCount > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-emerald-500" />
+                Vendite Realizzate
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Plus/minusvalenze da operazioni di vendita registrate
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 desktop:grid-cols-3 mb-4">
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Risultato lordo</p>
+                <p className={`text-lg font-semibold ${stats.realizedInvestmentSummary.totalRealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(stats.realizedInvestmentSummary.totalRealizedGain)}
+                </p>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Tasse registrate</p>
+                <p className="text-lg font-semibold text-red-600">
+                  {formatCurrency(stats.realizedInvestmentSummary.totalRealizedTaxes)}
+                </p>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">Netto realizzato</p>
+                <p className={`text-lg font-semibold ${stats.realizedInvestmentSummary.totalNetRealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(stats.realizedInvestmentSummary.totalNetRealizedGain)}
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-xs uppercase tracking-wide">
+                    <th className="text-left py-3 pr-4">Asset</th>
+                    <th className="text-right py-3 px-3">Lordo</th>
+                    <th className="text-right py-3 px-3">Tasse</th>
+                    <th className="text-right py-3 pl-3">Netto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.realizedInvestmentSummary.byAsset.map(asset => (
+                    <tr key={asset.assetId} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="py-3 pr-4">
+                        <p className="font-medium">{asset.assetTicker}</p>
+                        <p className="text-xs text-muted-foreground">{asset.assetName} · {asset.sellsCount} vendite</p>
+                      </td>
+                      <td className={`text-right py-3 px-3 ${asset.realizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(asset.realizedGain)}
+                      </td>
+                      <td className="text-right py-3 px-3 text-red-600">
+                        {formatCurrency(asset.realizedTaxes)}
+                      </td>
+                      <td className={`text-right py-3 pl-3 font-semibold ${asset.netRealizedGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatCurrency(asset.netRealizedGain)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Total Return Table — combines unrealized capital gain and all-time dividend income.
           Hidden when filtered to a single asset (the table is only meaningful for comparisons). */}

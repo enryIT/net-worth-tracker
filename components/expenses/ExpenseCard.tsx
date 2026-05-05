@@ -148,6 +148,17 @@ export function ExpenseCard({ expense, onEdit, onDelete, isDemo = false }: Expen
                 <span className="font-medium text-gray-700 dark:text-gray-300">{expense.notes}</span>
               </div>
             )}
+            {expense.linkedInvestmentAssetName && (
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Asset collegato:</span>{' '}
+                <span className="font-medium text-gray-700 dark:text-gray-300">
+                  {expense.linkedInvestmentAssetName}
+                  {expense.linkedInvestmentQuantityDelta
+                    ? ` (${expense.linkedInvestmentQuantityDelta > 0 ? '+' : ''}${expense.linkedInvestmentQuantityDelta} quote)`
+                    : ''}
+                </span>
+              </div>
+            )}
             {expense.isInstallment && expense.installmentNumber && expense.installmentTotal && (
               <div>
                 <Badge variant="outline" className="text-xs">

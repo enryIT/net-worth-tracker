@@ -42,6 +42,8 @@ export async function createExpenseFromDividend(
       notes: `Dividendo ${dividend.assetTicker} - ${dividend.assetName}${
         useEurAmount ? ` (${dividend.netAmount.toFixed(2)} ${dividend.currency} convertiti)` : ''
       }${dividend.notes ? ` | ${dividend.notes}` : ''}`,
+      linkedInvestmentAssetId: dividend.assetId,
+      linkedInvestmentAssetName: dividend.assetName,
       createdAt: now,
       updatedAt: now,
     };
@@ -88,6 +90,8 @@ export async function updateExpenseFromDividend(
       notes: `Dividendo ${dividend.assetTicker} - ${dividend.assetName}${
         useEurAmount ? ` (${dividend.netAmount.toFixed(2)} ${dividend.currency} convertiti)` : ''
       }${dividend.notes ? ` | ${dividend.notes}` : ''}`,
+      linkedInvestmentAssetId: dividend.assetId,
+      linkedInvestmentAssetName: dividend.assetName,
       categoryName,
       subCategoryName: subCategoryName || null,
       updatedAt: Timestamp.now(),

@@ -24,7 +24,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wallet, Receipt, TrendingUp, BarChart3, Coins, Target, Layers } from 'lucide-react';
+import { Wallet, Receipt, TrendingUp, BarChart3, Coins, Target, Layers, ArrowRightLeft } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ExpenseTrackingTab } from '@/components/cashflow/ExpenseTrackingTab';
@@ -33,6 +33,7 @@ import { TotalHistoryTab } from '@/components/cashflow/TotalHistoryTab';
 import { DividendTrackingTab } from '@/components/dividends/DividendTrackingTab';
 import { BudgetTab } from '@/components/cashflow/BudgetTab';
 import { CostCentersTab } from '@/components/cashflow/CostCentersTab';
+import { InternalTransfersTab } from '@/components/cashflow/InternalTransfersTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dividend } from '@/types/dividend';
 import { Asset } from '@/types/assets';
@@ -183,6 +184,7 @@ export default function CashflowPage() {
               <SelectItem value="current-year">Anno Corrente</SelectItem>
               <SelectItem value="total-history">Storico Totale</SelectItem>
               <SelectItem value="budget">Budget</SelectItem>
+              <SelectItem value="transfers">Trasferimenti</SelectItem>
               {costCentersEnabled && (
                 <SelectItem value="cost-centers">Centri di Costo</SelectItem>
               )}
@@ -197,7 +199,7 @@ export default function CashflowPage() {
           // Placeholder that matches the TabsList height while settings load
           <div className="hidden desktop:block h-10 w-full max-w-5xl rounded-md bg-muted animate-pulse" />
         ) : (
-          <TabsList className={`hidden desktop:grid w-full max-w-5xl ${costCentersEnabled ? 'grid-cols-6' : 'grid-cols-5'}`}>
+          <TabsList className={`hidden desktop:grid w-full max-w-5xl ${costCentersEnabled ? 'grid-cols-7' : 'grid-cols-6'}`}>
             <TabsTrigger value="tracking" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Tracciamento
@@ -217,6 +219,10 @@ export default function CashflowPage() {
             <TabsTrigger value="budget" className="flex items-center gap-2">
               <Target className="h-4 w-4" />
               Budget
+            </TabsTrigger>
+            <TabsTrigger value="transfers" className="flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4" />
+              Trasferimenti
             </TabsTrigger>
             {costCentersEnabled && (
               <TabsTrigger value="cost-centers" className="flex items-center gap-2">
@@ -306,6 +312,17 @@ export default function CashflowPage() {
                 historyStartYear={cashflowHistoryStartYear}
                 userId={user?.uid ?? ''}
               />
+            </motion.div>
+          </TabsContent>
+        )}
+        {mountedTabs.has('transfers') && (
+          <TabsContent value="transfers" className="mt-6" forceMount>
+            <motion.div
+              initial={false}
+              animate={activeTab === 'transfers' ? 'visible' : 'hidden'}
+              variants={tabPanelSwitch}
+            >
+              <InternalTransfersTab />
             </motion.div>
           </TabsContent>
         )}

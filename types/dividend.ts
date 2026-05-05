@@ -110,6 +110,21 @@ export interface DividendStats {
   totalCostBasis?: number;
   yieldOnCostAssets?: YieldOnCostAsset[];
   totalReturnAssets?: TotalReturnAsset[];
+  realizedInvestmentSummary?: {
+    totalRealizedGain: number;
+    totalRealizedTaxes: number;
+    totalNetRealizedGain: number;
+    sellsCount: number;
+    byAsset: Array<{
+      assetId: string;
+      assetName: string;
+      assetTicker: string;
+      realizedGain: number;
+      realizedTaxes: number;
+      netRealizedGain: number;
+      sellsCount: number;
+    }>;
+  };
 }
 
 export interface YieldOnCostAsset {

@@ -8,6 +8,9 @@ export const queryKeys = {
   assets: {
     all: (userId: string) => ['assets', userId] as const,
     byId: (assetId: string) => ['assets', assetId] as const,
+    operations: (userId: string) => ['assets', 'operations', userId] as const,
+    realized: (userId: string) => ['assets', 'realized', userId] as const,
+    transfers: (userId: string) => ['assets', 'transfers', userId] as const,
   },
 
   // Snapshots

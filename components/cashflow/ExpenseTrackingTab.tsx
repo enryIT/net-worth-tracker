@@ -21,7 +21,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
-import { Expense, ExpenseCategory, ExpenseType, EXPENSE_TYPE_LABELS } from '@/types/expenses';
+import { Expense, ExpenseCategory, EXPENSE_TYPE_LABELS } from '@/types/expenses';
 import {
   calculateTotalIncome,
   calculateTotalExpenses,
@@ -30,7 +30,8 @@ import {
   getExpensesByRecurringParentId,
   getExpensesByInstallmentParentId,
 } from '@/lib/services/expenseService';
-import { updateCashAssetBalance } from '@/lib/services/assetService';
+import { updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
+import { deleteInvestmentOperation } from '@/lib/services/investmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -341,8 +342,19 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   const deleteSingleExpense = async (expense: Expense) => {
     try {
       // Reverse the balance effect on the linked cash asset before deleting
-      if (expense.linkedCashAssetId) {
+      if (expense.linkedCashAssetId && !expense.investmentOperationId) {
         await updateCashAssetBalance(expense.linkedCashAssetId, -expense.amount);
+        if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+      }
+      if (expense.investmentOperationId) {
+        await deleteInvestmentOperation(expense.investmentOperationId);
+        if (user) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
+        }
+      } else if (expense.linkedInvestmentAssetId && expense.linkedInvestmentQuantityDelta) {
+        await updateInvestmentAssetQuantity(expense.linkedInvestmentAssetId, -expense.linkedInvestmentQuantityDelta);
         if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
       }
       const { deleteExpense } = await import('@/lib/services/expenseService');
@@ -360,12 +372,19 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
       // Reverse balance effects before bulk-deleting (only the first entry stores linkedCashAssetId)
       const seriesExpenses = await getExpensesByRecurringParentId(recurringParentId);
       for (const exp of seriesExpenses) {
-        if (exp.linkedCashAssetId) {
+        if (exp.linkedCashAssetId && !exp.investmentOperationId) {
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
+        if (exp.investmentOperationId) {
+          await deleteInvestmentOperation(exp.investmentOperationId);
+        } else if (exp.linkedInvestmentAssetId && exp.linkedInvestmentQuantityDelta) {
+          await updateInvestmentAssetQuantity(exp.linkedInvestmentAssetId, -exp.linkedInvestmentQuantityDelta);
+        }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
+      if (user && seriesExpenses.some(e => e.linkedCashAssetId || e.linkedInvestmentAssetId || e.investmentOperationId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
       }
       const { deleteRecurringExpenses } = await import('@/lib/services/expenseService');
       await deleteRecurringExpenses(recurringParentId);
@@ -382,12 +401,19 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
       // Reverse balance effects before bulk-deleting (only the first installment stores linkedCashAssetId)
       const seriesExpenses = await getExpensesByInstallmentParentId(installmentParentId);
       for (const exp of seriesExpenses) {
-        if (exp.linkedCashAssetId) {
+        if (exp.linkedCashAssetId && !exp.investmentOperationId) {
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
+        if (exp.investmentOperationId) {
+          await deleteInvestmentOperation(exp.investmentOperationId);
+        } else if (exp.linkedInvestmentAssetId && exp.linkedInvestmentQuantityDelta) {
+          await updateInvestmentAssetQuantity(exp.linkedInvestmentAssetId, -exp.linkedInvestmentQuantityDelta);
+        }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
+      if (user && seriesExpenses.some(e => e.linkedCashAssetId || e.linkedInvestmentAssetId || e.investmentOperationId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
       }
       const { deleteInstallmentExpenses } = await import('@/lib/services/expenseService');
       await deleteInstallmentExpenses(installmentParentId);
@@ -961,7 +987,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
               <div className="rounded-md border border-dashed p-8 text-center">
                 <p className="text-muted-foreground">Nessuna voce trovata</p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Clicca su "Nuova Spesa" per aggiungere la prima voce
+                  Clicca su &quot;Nuova Spesa&quot; per aggiungere la prima voce
                 </p>
               </div>
             ) : (

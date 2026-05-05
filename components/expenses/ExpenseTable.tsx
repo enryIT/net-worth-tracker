@@ -36,7 +36,8 @@ import {
   getExpensesByRecurringParentId,
   getExpensesByInstallmentParentId,
 } from '@/lib/services/expenseService';
-import { updateCashAssetBalance } from '@/lib/services/assetService';
+import { updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
+import { deleteInvestmentOperation } from '@/lib/services/investmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { Timestamp } from 'firebase/firestore';
 import {
@@ -162,8 +163,19 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
     try {
       setDeletingId(expense.id);
       // Reverse the balance effect on the linked cash asset before deleting
-      if (expense.linkedCashAssetId) {
+      if (expense.linkedCashAssetId && !expense.investmentOperationId) {
         await updateCashAssetBalance(expense.linkedCashAssetId, -expense.amount);
+        if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+      }
+      if (expense.investmentOperationId) {
+        await deleteInvestmentOperation(expense.investmentOperationId);
+        if (user) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
+        }
+      } else if (expense.linkedInvestmentAssetId && expense.linkedInvestmentQuantityDelta) {
+        await updateInvestmentAssetQuantity(expense.linkedInvestmentAssetId, -expense.linkedInvestmentQuantityDelta);
         if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
       }
       await deleteExpense(expense.id);
@@ -183,12 +195,19 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
       // Reverse balance effects before bulk-deleting (only the first entry stores linkedCashAssetId)
       const seriesExpenses = await getExpensesByRecurringParentId(recurringParentId);
       for (const exp of seriesExpenses) {
-        if (exp.linkedCashAssetId) {
+        if (exp.linkedCashAssetId && !exp.investmentOperationId) {
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
+        if (exp.investmentOperationId) {
+          await deleteInvestmentOperation(exp.investmentOperationId);
+        } else if (exp.linkedInvestmentAssetId && exp.linkedInvestmentQuantityDelta) {
+          await updateInvestmentAssetQuantity(exp.linkedInvestmentAssetId, -exp.linkedInvestmentQuantityDelta);
+        }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
+      if (user && seriesExpenses.some(e => e.linkedCashAssetId || e.linkedInvestmentAssetId || e.investmentOperationId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
       }
       await deleteRecurringExpenses(recurringParentId);
       toast.success('Tutte le voci ricorrenti sono state eliminate');
@@ -207,12 +226,19 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
       // Reverse balance effects before bulk-deleting (only the first installment stores linkedCashAssetId)
       const seriesExpenses = await getExpensesByInstallmentParentId(installmentParentId);
       for (const exp of seriesExpenses) {
-        if (exp.linkedCashAssetId) {
+        if (exp.linkedCashAssetId && !exp.investmentOperationId) {
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
+        if (exp.investmentOperationId) {
+          await deleteInvestmentOperation(exp.investmentOperationId);
+        } else if (exp.linkedInvestmentAssetId && exp.linkedInvestmentQuantityDelta) {
+          await updateInvestmentAssetQuantity(exp.linkedInvestmentAssetId, -exp.linkedInvestmentQuantityDelta);
+        }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
+      if (user && seriesExpenses.some(e => e.linkedCashAssetId || e.linkedInvestmentAssetId || e.investmentOperationId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
       }
       await deleteInstallmentExpenses(installmentParentId);
       toast.success('Tutte le rate sono state eliminate');
@@ -349,7 +375,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
       <div className="rounded-md border border-dashed p-8 text-center">
         <p className="text-muted-foreground">Nessuna voce trovata</p>
         <p className="text-sm text-muted-foreground mt-2">
-          Clicca su "Nuova Spesa" per aggiungere la prima voce
+          Clicca su &quot;Nuova Spesa&quot; per aggiungere la prima voce
         </p>
       </div>
     );
@@ -429,6 +455,14 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
               <TableCell className="text-sm text-muted-foreground max-w-[200px]">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="truncate">{expense.notes || '-'}</span>
+                  {expense.linkedInvestmentAssetName && (
+                    <Badge variant="outline" className="flex-shrink-0 text-xs">
+                      {expense.linkedInvestmentAssetName}
+                      {expense.linkedInvestmentQuantityDelta
+                        ? ` (${expense.linkedInvestmentQuantityDelta > 0 ? '+' : ''}${expense.linkedInvestmentQuantityDelta})`
+                        : ''}
+                    </Badge>
+                  )}
                   {expense.isInstallment && (
                     <Badge variant="outline" className="flex-shrink-0 text-xs">
                       Rata {expense.installmentNumber}/{expense.installmentTotal}

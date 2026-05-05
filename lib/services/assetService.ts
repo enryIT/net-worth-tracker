@@ -373,6 +373,50 @@ export async function updateCashAssetBalance(assetId: string, signedDelta: numbe
 }
 
 /**
+ * Update a non-cash asset's quantity by applying a signed delta.
+ *
+ * Used by cashflow entries that represent an external contribution/withdrawal
+ * tied to a specific investment asset. Price and cost basis are intentionally
+ * not changed here: the cashflow entry only records the quantity movement.
+ */
+export async function updateInvestmentAssetQuantity(assetId: string, signedQuantityDelta: number): Promise<void> {
+  try {
+    const asset = await getAssetById(assetId);
+    if (!asset) {
+      console.warn('Skipping investment asset quantity update because linked asset was not found', {
+        assetId,
+        operation: 'updateInvestmentAssetQuantity',
+        signedQuantityDelta,
+      });
+      return;
+    }
+
+    if (asset.assetClass === 'cash') {
+      console.warn('Skipping investment quantity update for cash asset', {
+        assetId,
+        operation: 'updateInvestmentAssetQuantity',
+      });
+      return;
+    }
+
+    const assetRef = doc(db, ASSETS_COLLECTION, assetId);
+    await updateDoc(assetRef, {
+      quantity: asset.quantity + signedQuantityDelta,
+      updatedAt: Timestamp.now(),
+    });
+    await invalidateDashboardOverviewSummary(asset.userId, 'investment_asset_quantity_updated');
+  } catch (error) {
+    console.error('Failed to update investment asset quantity', {
+      assetId,
+      operation: 'updateInvestmentAssetQuantity',
+      signedQuantityDelta,
+      error: getErrorMessage(error),
+    });
+    throw new Error(`Failed to update investment asset quantity for ${assetId}`, { cause: error });
+  }
+}
+
+/**
  * Delete an asset and its future dividends
  * Only deletes dividends with ex-date > today to preserve historical data
  * Uses API endpoint to leverage Admin SDK and bypass Firestore Security Rules

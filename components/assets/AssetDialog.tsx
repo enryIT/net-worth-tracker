@@ -1141,12 +1141,12 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
                   no cashflow entry is needed. */}
               {asset && selectedAssetClass !== 'cash' && watch('quantity') > (asset.quantity ?? 0) && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Hai investito nuovo capitale? Se i fondi provengono dall&apos;esterno del portafoglio tracciato, registra un&apos;entrata nel cashflow per mantenere le metriche di performance accurate.
+                  Hai investito nuovo capitale? Se i fondi provengono dall&apos;esterno del portafoglio tracciato, registra un&apos;entrata nel cashflow, collega l&apos;asset acquistato e indica le quote.
                 </p>
               )}
               {asset && selectedAssetClass !== 'cash' && watch('quantity') < (asset.quantity ?? 0) && (
                 <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Hai venduto questo asset? Se il ricavato è uscito dal portafoglio tracciato, registra un&apos;uscita nel cashflow per mantenere le metriche di performance accurate.
+                  Hai venduto questo asset? Se il ricavato è uscito dal portafoglio tracciato, registra un&apos;uscita nel cashflow, collega l&apos;asset venduto e indica le quote.
                 </p>
               )}
             </div>

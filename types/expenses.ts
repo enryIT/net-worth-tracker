@@ -7,6 +7,7 @@ import { Timestamp } from 'firebase/firestore';
 // - debt: Debt payments (loan installments, mortgages)
 // - income: Income entries (salary, bonuses, gifts)
 export type ExpenseType = 'fixed' | 'variable' | 'debt' | 'income';
+export type LinkedInvestmentOperationType = 'buy' | 'sell';
 
 export const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
   fixed: 'Spese Fisse',
@@ -76,6 +77,16 @@ export interface Expense {
   // Optional link to a cash-class asset whose balance is updated when this expense is saved.
   // Only stored on single expenses or the first entry of a recurring/installment series.
   linkedCashAssetId?: string;
+  // Optional link to a non-cash asset affected by this cashflow entry.
+  // linkedInvestmentQuantityDelta is signed: positive increases quantity, negative decreases it.
+  linkedInvestmentAssetId?: string;
+  linkedInvestmentAssetName?: string;
+  linkedInvestmentQuantityDelta?: number;
+  investmentOperationId?: string;
+  investmentOperationType?: LinkedInvestmentOperationType;
+  investmentOperationPricePerUnit?: number;
+  investmentOperationFees?: number;
+  investmentOperationTaxes?: number;
   // Optional cost center assignment for grouping expenses by object/project (e.g. "Automobile Dacia").
   // costCenterName is denormalized for query performance — same pattern as categoryName.
   // WARNING: If a cost center is renamed, bulk-update all linked expenses via costCenterService.renameCostCenter.
@@ -104,6 +115,14 @@ export interface ExpenseFormData {
   installmentAmounts?: number[]; // Individual amounts for each installment (manual mode)
   installmentStartDate?: Date; // Date of first installment
   linkedCashAssetId?: string; // ID of cash asset whose balance is updated on save
+  linkedInvestmentAssetId?: string; // Optional non-cash asset related to this cashflow entry
+  linkedInvestmentAssetName?: string; // Denormalized asset name for display
+  linkedInvestmentQuantityDelta?: number; // Signed quantity delta applied to the linked investment asset
+  investmentOperationId?: string;
+  investmentOperationType?: LinkedInvestmentOperationType;
+  investmentOperationPricePerUnit?: number;
+  investmentOperationFees?: number;
+  investmentOperationTaxes?: number;
   costCenterId?: string;    // Optional cost center assignment
   costCenterName?: string;  // Denormalized name, must be kept in sync via costCenterService
 }

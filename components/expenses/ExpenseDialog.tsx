@@ -40,13 +40,18 @@ import {
   ExpenseFormData,
   ExpenseType,
   EXPENSE_TYPE_LABELS,
-  ExpenseCategory
+  ExpenseCategory,
+  LinkedInvestmentOperationType
 } from '@/types/expenses';
 import { CostCenter } from '@/types/costCenters';
 import { getCostCenters } from '@/lib/services/costCenterService';
 import { Asset } from '@/types/assets';
 import { createExpense, updateExpense } from '@/lib/services/expenseService';
-import { getAllAssets, updateCashAssetBalance } from '@/lib/services/assetService';
+import { getAllAssets, updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
+import {
+  createInvestmentOperation,
+  deleteInvestmentOperation,
+} from '@/lib/services/investmentOperationService';
 import { getSettings } from '@/lib/services/assetAllocationService';
 import { getAllCategories, addSubCategory } from '@/lib/services/expenseCategoryService';
 import { queryKeys } from '@/lib/query/queryKeys';
@@ -68,7 +73,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SearchableCombobox, ComboboxOption } from '@/components/ui/searchable-combobox';
+import { SearchableCombobox } from '@/components/ui/searchable-combobox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
@@ -115,6 +120,11 @@ const expenseSchema = z.object({
   installmentAmounts: z.array(z.number()).optional(),
   installmentStartDate: z.date().optional(),
   linkedCashAssetId: z.string().optional(),
+  linkedInvestmentAssetId: z.string().optional(),
+  investmentOperationType: z.enum(['buy', 'sell']).optional(),
+  investmentOperationFees: z.number().min(0).optional().or(z.nan()),
+  investmentOperationTaxes: z.number().min(0).optional().or(z.nan()),
+  linkedInvestmentQuantityDelta: z.number().positive('La quantità deve essere positiva').optional().or(z.nan()),
 }).refine((data) => {
   // Custom validation: when isInstallment is true, validate mode-specific required fields
   if (data.isInstallment) {
@@ -159,6 +169,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [cashAssets, setCashAssets] = useState<Asset[]>([]);
+  const [investmentAssets, setInvestmentAssets] = useState<Asset[]>([]);
   const [defaultDebitCashAssetId, setDefaultDebitCashAssetId] = useState<string>('__none__');
   const [defaultCreditCashAssetId, setDefaultCreditCashAssetId] = useState<string>('__none__');
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
@@ -191,6 +202,11 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
       installmentCount: 2,
       installmentAmounts: [],
       linkedCashAssetId: '__none__',
+      linkedInvestmentAssetId: '__none__',
+      investmentOperationType: 'buy',
+      investmentOperationFees: undefined,
+      investmentOperationTaxes: undefined,
+      linkedInvestmentQuantityDelta: undefined,
     },
   });
 
@@ -241,6 +257,11 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         getCostCenters(user.uid),
       ]);
       setCashAssets(allAssets.filter(a => a.assetClass === 'cash'));
+      setInvestmentAssets(
+        allAssets
+          .filter(a => a.assetClass !== 'cash')
+          .sort((a, b) => a.name.localeCompare(b.name, 'it'))
+      );
       const debitId = settings?.defaultDebitCashAssetId || '__none__';
       const creditId = settings?.defaultCreditCashAssetId || '__none__';
       setDefaultDebitCashAssetId(debitId);
@@ -280,6 +301,13 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         recurringDay: expense.recurringDay,
         recurringMonths: 1,
         linkedCashAssetId: expense.linkedCashAssetId || '__none__',
+        linkedInvestmentAssetId: expense.linkedInvestmentAssetId || '__none__',
+        investmentOperationType: expense.investmentOperationType || (expense.linkedInvestmentQuantityDelta && expense.linkedInvestmentQuantityDelta < 0 ? 'sell' : 'buy'),
+        investmentOperationFees: expense.investmentOperationFees,
+        investmentOperationTaxes: expense.investmentOperationTaxes,
+        linkedInvestmentQuantityDelta: expense.linkedInvestmentQuantityDelta
+          ? Math.abs(expense.linkedInvestmentQuantityDelta)
+          : undefined,
       });
       // Pre-select the cost center if the expense already has one
       setSelectedCostCenterId(expense.costCenterId || '__none__');
@@ -297,6 +325,11 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         recurringDay: new Date().getDate(),
         recurringMonths: 12,
         linkedCashAssetId: '__none__',
+        linkedInvestmentAssetId: '__none__',
+        investmentOperationType: 'buy',
+        investmentOperationFees: undefined,
+        investmentOperationTaxes: undefined,
+        linkedInvestmentQuantityDelta: undefined,
       });
       setSelectedCostCenterId('__none__');
     }
@@ -404,6 +437,29 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
     // Resolve sentinel '__none__' to undefined — no linked account selected
     const linkedCashAssetId = data.linkedCashAssetId !== '__none__' ? data.linkedCashAssetId : undefined;
+    const linkedInvestmentAssetId = data.linkedInvestmentAssetId !== '__none__' ? data.linkedInvestmentAssetId : undefined;
+    const linkedInvestmentAssetName = linkedInvestmentAssetId
+      ? investmentAssets.find(asset => asset.id === linkedInvestmentAssetId)?.name ?? expense?.linkedInvestmentAssetName
+      : undefined;
+    const investmentOperationType = data.investmentOperationType ?? 'buy';
+    const linkedInvestmentQuantityDelta =
+      linkedInvestmentAssetId && data.linkedInvestmentQuantityDelta && !isNaN(data.linkedInvestmentQuantityDelta)
+        ? investmentOperationType === 'buy'
+          ? Math.abs(data.linkedInvestmentQuantityDelta)
+          : -Math.abs(data.linkedInvestmentQuantityDelta)
+        : undefined;
+    const investmentOperationFees =
+      data.investmentOperationFees && !isNaN(data.investmentOperationFees)
+        ? data.investmentOperationFees
+        : undefined;
+    const investmentOperationTaxes =
+      data.investmentOperationTaxes && !isNaN(data.investmentOperationTaxes)
+        ? data.investmentOperationTaxes
+        : undefined;
+    const investmentOperationPricePerUnit =
+      linkedInvestmentQuantityDelta && Math.abs(linkedInvestmentQuantityDelta) > 0
+        ? data.amount / Math.abs(linkedInvestmentQuantityDelta)
+        : undefined;
 
     // Resolve cost center: sentinel '__none__' means no assignment
     const resolvedCostCenterId = selectedCostCenterId !== '__none__' ? selectedCostCenterId : undefined;
@@ -439,6 +495,13 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
         // Linked cash account for automatic balance updates
         linkedCashAssetId,
+        linkedInvestmentAssetId,
+        linkedInvestmentAssetName,
+        linkedInvestmentQuantityDelta,
+        investmentOperationType,
+        investmentOperationPricePerUnit,
+        investmentOperationFees,
+        investmentOperationTaxes,
 
         // Optional cost center assignment (undefined clears the field on update)
         costCenterId: resolvedCostCenterId,
@@ -451,49 +514,156 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         // null persists to Firestore (removing the field), whereas undefined would be stripped.
         // null persists to Firestore (clears the field), whereas undefined is stripped by removeUndefinedFields.
         // Apply this to both linkedCashAssetId and costCenter fields so deselecting them actually clears the DB value.
-        const updatesWithLink = {
+        const updatesWithLink: Omit<Partial<ExpenseFormData>,
+          | 'linkedCashAssetId'
+          | 'linkedInvestmentAssetId'
+          | 'linkedInvestmentAssetName'
+          | 'linkedInvestmentQuantityDelta'
+          | 'investmentOperationId'
+          | 'investmentOperationType'
+          | 'investmentOperationPricePerUnit'
+          | 'investmentOperationFees'
+          | 'investmentOperationTaxes'
+          | 'costCenterId'
+          | 'costCenterName'
+        > & {
+          linkedCashAssetId: string | null;
+          linkedInvestmentAssetId: string | null;
+          linkedInvestmentAssetName: string | null;
+          linkedInvestmentQuantityDelta: number | null;
+          investmentOperationId: string | null;
+          investmentOperationType: LinkedInvestmentOperationType | null;
+          investmentOperationPricePerUnit: number | null;
+          investmentOperationFees: number | null;
+          investmentOperationTaxes: number | null;
+          costCenterId: string | null;
+          costCenterName: string | null;
+        } = {
           ...expenseData,
           linkedCashAssetId: linkedCashAssetId ?? null,
+          linkedInvestmentAssetId: linkedInvestmentAssetId ?? null,
+          linkedInvestmentAssetName: linkedInvestmentAssetName ?? null,
+          linkedInvestmentQuantityDelta: linkedInvestmentQuantityDelta ?? null,
+          investmentOperationId: null,
+          investmentOperationType: linkedInvestmentAssetId ? investmentOperationType : null,
+          investmentOperationPricePerUnit: investmentOperationPricePerUnit ?? null,
+          investmentOperationFees: investmentOperationFees ?? null,
+          investmentOperationTaxes: investmentOperationTaxes ?? null,
           costCenterId: resolvedCostCenterId ?? null,
           costCenterName: resolvedCostCenterName ?? null,
         };
+
+        let newInvestmentOperationId: string | undefined;
+        if (
+          linkedInvestmentAssetId &&
+          linkedInvestmentQuantityDelta &&
+          investmentOperationPricePerUnit &&
+          Math.abs(linkedInvestmentQuantityDelta) > 0
+        ) {
+          if (expense.investmentOperationId) {
+            await deleteInvestmentOperation(expense.investmentOperationId);
+          }
+          newInvestmentOperationId = await createInvestmentOperation(user.uid, {
+            assetId: linkedInvestmentAssetId,
+            type: investmentOperationType,
+            date: data.date,
+            quantity: Math.abs(linkedInvestmentQuantityDelta),
+            pricePerUnit: investmentOperationPricePerUnit,
+            fees: investmentOperationFees,
+            taxes: investmentOperationTaxes,
+            currency: data.currency,
+            cashAssetId: linkedCashAssetId,
+            linkedExpenseId: expense.id,
+            notes: data.notes,
+          });
+          updatesWithLink.investmentOperationId = newInvestmentOperationId;
+        } else if (expense.investmentOperationId) {
+          await deleteInvestmentOperation(expense.investmentOperationId);
+        }
+
         await updateExpense(
           expense.id,
-          updatesWithLink as ExpenseFormData,
+          updatesWithLink as unknown as ExpenseFormData,
           selectedCategory.name,
           subCategoryName
         );
         toast.success('Spesa aggiornata con successo');
 
-        // Update linked cash asset balances to reflect the change.
-        // Compute signed amounts using the same sign convention as the DB.
-        const oldLinkedAssetId = expense.linkedCashAssetId;
-        const newLinkedAssetId = linkedCashAssetId;
-        const oldSignedAmount = expense.amount; // already signed from DB
-        const newSignedAmount = data.type !== 'income' ? -Math.abs(data.amount) : Math.abs(data.amount);
-
         let assetUpdated = false;
-        if (oldLinkedAssetId && newLinkedAssetId && oldLinkedAssetId === newLinkedAssetId) {
-          // Same asset: apply delta only to avoid double-reads
-          const delta = newSignedAmount - oldSignedAmount;
-          if (Math.abs(delta) > 0.001) {
-            await updateCashAssetBalance(oldLinkedAssetId, delta);
-            assetUpdated = true;
-          }
-        } else {
-          // Different assets (or one side is missing): reverse old, apply new
-          if (oldLinkedAssetId) {
-            await updateCashAssetBalance(oldLinkedAssetId, -oldSignedAmount);
-            assetUpdated = true;
-          }
-          if (newLinkedAssetId) {
-            await updateCashAssetBalance(newLinkedAssetId, newSignedAmount);
-            assetUpdated = true;
+        if (!newInvestmentOperationId) {
+          const oldLinkedAssetId = expense.linkedCashAssetId;
+          const newLinkedAssetId = linkedCashAssetId;
+          const oldSignedAmount = expense.amount; // already signed from DB
+          const newSignedAmount = data.type !== 'income' ? -Math.abs(data.amount) : Math.abs(data.amount);
+
+          if (expense.investmentOperationId) {
+            if (newLinkedAssetId) {
+              await updateCashAssetBalance(newLinkedAssetId, newSignedAmount);
+              assetUpdated = true;
+            }
+          } else {
+            // Update linked cash asset balances to reflect the change.
+            // Compute signed amounts using the same sign convention as the DB.
+            if (oldLinkedAssetId && newLinkedAssetId && oldLinkedAssetId === newLinkedAssetId) {
+              // Same asset: apply delta only to avoid double-reads
+              const delta = newSignedAmount - oldSignedAmount;
+              if (Math.abs(delta) > 0.001) {
+                await updateCashAssetBalance(oldLinkedAssetId, delta);
+                assetUpdated = true;
+              }
+            } else {
+              // Different assets (or one side is missing): reverse old, apply new
+              if (oldLinkedAssetId) {
+                await updateCashAssetBalance(oldLinkedAssetId, -oldSignedAmount);
+                assetUpdated = true;
+              }
+              if (newLinkedAssetId) {
+                await updateCashAssetBalance(newLinkedAssetId, newSignedAmount);
+                assetUpdated = true;
+              }
+            }
           }
         }
 
         if (assetUpdated) {
           queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        }
+
+        if (newInvestmentOperationId || expense.investmentOperationId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
+        } else {
+          const oldLinkedInvestmentAssetId = expense.linkedInvestmentAssetId;
+          const newLinkedInvestmentAssetId = linkedInvestmentAssetId;
+          const oldQuantityDelta = expense.linkedInvestmentQuantityDelta ?? 0;
+          const newQuantityDelta = linkedInvestmentQuantityDelta ?? 0;
+
+          let investmentAssetUpdated = false;
+          if (
+            oldLinkedInvestmentAssetId &&
+            newLinkedInvestmentAssetId &&
+            oldLinkedInvestmentAssetId === newLinkedInvestmentAssetId
+          ) {
+            const delta = newQuantityDelta - oldQuantityDelta;
+            if (Math.abs(delta) > 0.000001) {
+              await updateInvestmentAssetQuantity(oldLinkedInvestmentAssetId, delta);
+              investmentAssetUpdated = true;
+            }
+          } else {
+            if (oldLinkedInvestmentAssetId && Math.abs(oldQuantityDelta) > 0.000001) {
+              await updateInvestmentAssetQuantity(oldLinkedInvestmentAssetId, -oldQuantityDelta);
+              investmentAssetUpdated = true;
+            }
+            if (newLinkedInvestmentAssetId && Math.abs(newQuantityDelta) > 0.000001) {
+              await updateInvestmentAssetQuantity(newLinkedInvestmentAssetId, newQuantityDelta);
+              investmentAssetUpdated = true;
+            }
+          }
+
+          if (investmentAssetUpdated) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+          }
         }
 
       } else {
@@ -520,7 +690,10 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
         // Update the linked cash asset balance for the first (immediate) payment.
         // For recurring/installment series, only the first entry has linkedCashAssetId stored.
-        if (linkedCashAssetId) {
+        if (
+          linkedCashAssetId &&
+          !(linkedInvestmentAssetId && linkedInvestmentQuantityDelta && investmentOperationPricePerUnit)
+        ) {
           let firstSignedAmount: number;
 
           if (expenseData.isInstallment && expenseData.installmentCount && expenseData.installmentCount > 1) {
@@ -543,6 +716,37 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
           await updateCashAssetBalance(linkedCashAssetId, firstSignedAmount);
           queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        }
+
+        if (
+          linkedInvestmentAssetId &&
+          linkedInvestmentQuantityDelta &&
+          investmentOperationPricePerUnit
+        ) {
+          const firstExpenseId = Array.isArray(result) ? result[0] : result;
+          const investmentOperationId = await createInvestmentOperation(user.uid, {
+            assetId: linkedInvestmentAssetId,
+            type: investmentOperationType,
+            date: data.date,
+            quantity: Math.abs(linkedInvestmentQuantityDelta),
+            pricePerUnit: investmentOperationPricePerUnit,
+            fees: investmentOperationFees,
+            taxes: investmentOperationTaxes,
+            currency: data.currency,
+            cashAssetId: linkedCashAssetId,
+            linkedExpenseId: firstExpenseId,
+            notes: data.notes,
+          });
+          await updateExpense(firstExpenseId, {
+            investmentOperationId,
+            investmentOperationType,
+            investmentOperationPricePerUnit,
+            investmentOperationFees,
+            investmentOperationTaxes,
+          } as ExpenseFormData);
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
         }
       }
 
@@ -913,6 +1117,100 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
               Aggiungi un link per tenere traccia di ordini, ricevute, ecc.
             </p>
           </div>
+
+          {/* ========== Linked Investment Asset Section ========== */}
+
+          {investmentAssets.length > 0 && (
+            <div className="w-full space-y-2">
+              <Label htmlFor="linkedInvestmentAssetId">
+                Asset investimento collegato
+                <span className="text-muted-foreground font-normal ml-1">(opzionale)</span>
+              </Label>
+              <Select
+                value={watch('linkedInvestmentAssetId') || '__none__'}
+                onValueChange={(value) => {
+                  setValue('linkedInvestmentAssetId', value);
+                  if (value === '__none__') {
+                    setValue('linkedInvestmentQuantityDelta', undefined);
+                  }
+                }}
+              >
+                <SelectTrigger id="linkedInvestmentAssetId">
+                  <SelectValue placeholder="Nessun asset" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nessun asset</SelectItem>
+                  {investmentAssets.map((asset) => (
+                    <SelectItem key={asset.id} value={asset.id}>
+                      {asset.name} ({asset.ticker})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Collega questa voce all&apos;asset acquistato o venduto; con le quote compilate aggiorna anche la quantità.
+              </p>
+              {watch('linkedInvestmentAssetId') && watch('linkedInvestmentAssetId') !== '__none__' && (
+                <div className="space-y-2">
+                  <div className="grid gap-2 sm:grid-cols-3 sm:items-start">
+                    <div className="space-y-2">
+                      <Label htmlFor="investmentOperationType">Operazione</Label>
+                      <Select
+                        value={watch('investmentOperationType') || 'buy'}
+                        onValueChange={(value) => setValue('investmentOperationType', value as LinkedInvestmentOperationType)}
+                      >
+                        <SelectTrigger id="investmentOperationType">
+                          <SelectValue placeholder="Tipo operazione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="buy">Acquisto</SelectItem>
+                          <SelectItem value="sell">Vendita</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="investmentOperationFees">Commissioni</Label>
+                      <Input
+                        id="investmentOperationFees"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        {...register('investmentOperationFees', { valueAsNumber: true })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="investmentOperationTaxes">Tasse</Label>
+                      <Input
+                        id="investmentOperationTaxes"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        {...register('investmentOperationTaxes', { valueAsNumber: true })}
+                      />
+                    </div>
+                  </div>
+                  <Label htmlFor="linkedInvestmentQuantityDelta">
+                    {watch('investmentOperationType') === 'sell' ? 'Quote vendute' : 'Quote acquistate'}
+                    <span className="text-muted-foreground font-normal ml-1">(opzionale)</span>
+                  </Label>
+                  <Input
+                    id="linkedInvestmentQuantityDelta"
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    {...register('linkedInvestmentQuantityDelta', { valueAsNumber: true })}
+                    className={errors.linkedInvestmentQuantityDelta ? 'border-red-500' : ''}
+                  />
+                  {errors.linkedInvestmentQuantityDelta && (
+                    <p className="text-sm text-red-500">{errors.linkedInvestmentQuantityDelta.message}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Il prezzo unitario viene stimato come importo diviso quote. Le vendite registrano plus/minusvalenza realizzata usando il PMC dell&apos;asset.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ========== Linked Cash Account Section ========== */}
 
