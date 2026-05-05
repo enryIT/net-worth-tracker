@@ -1120,7 +1120,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
           {/* ========== Linked Investment Asset Section ========== */}
 
-          {investmentAssets.length > 0 && (
+          {expense?.linkedInvestmentAssetId && investmentAssets.length > 0 && (
             <div className="w-full space-y-2">
               <Label htmlFor="linkedInvestmentAssetId">
                 Asset investimento collegato

@@ -24,7 +24,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { Wallet, Receipt, TrendingUp, BarChart3, Coins, Target, Layers, ArrowRightLeft } from 'lucide-react';
+import { Wallet, Receipt, TrendingUp, BarChart3, Coins, Target, Layers, ArrowRightLeft, ChartCandlestick } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ExpenseTrackingTab } from '@/components/cashflow/ExpenseTrackingTab';
@@ -34,6 +34,7 @@ import { DividendTrackingTab } from '@/components/dividends/DividendTrackingTab'
 import { BudgetTab } from '@/components/cashflow/BudgetTab';
 import { CostCentersTab } from '@/components/cashflow/CostCentersTab';
 import { InternalTransfersTab } from '@/components/cashflow/InternalTransfersTab';
+import { InvestmentOperationsTab } from '@/components/cashflow/InvestmentOperationsTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dividend } from '@/types/dividend';
 import { Asset } from '@/types/assets';
@@ -181,6 +182,7 @@ export default function CashflowPage() {
             <SelectContent>
               <SelectItem value="tracking">Tracciamento</SelectItem>
               <SelectItem value="dividends">Dividendi &amp; Cedole</SelectItem>
+              <SelectItem value="investments">Investimenti</SelectItem>
               <SelectItem value="current-year">Anno Corrente</SelectItem>
               <SelectItem value="total-history">Storico Totale</SelectItem>
               <SelectItem value="budget">Budget</SelectItem>
@@ -199,7 +201,7 @@ export default function CashflowPage() {
           // Placeholder that matches the TabsList height while settings load
           <div className="hidden desktop:block h-10 w-full max-w-5xl rounded-md bg-muted animate-pulse" />
         ) : (
-          <TabsList className={`hidden desktop:grid w-full max-w-5xl ${costCentersEnabled ? 'grid-cols-7' : 'grid-cols-6'}`}>
+          <TabsList className={`hidden desktop:grid w-full max-w-6xl ${costCentersEnabled ? 'grid-cols-8' : 'grid-cols-7'}`}>
             <TabsTrigger value="tracking" className="flex items-center gap-2">
               <Receipt className="h-4 w-4" />
               Tracciamento
@@ -207,6 +209,10 @@ export default function CashflowPage() {
             <TabsTrigger value="dividends" className="flex items-center gap-2">
               <Coins className="h-4 w-4" />
               Dividendi &amp; Cedole
+            </TabsTrigger>
+            <TabsTrigger value="investments" className="flex items-center gap-2">
+              <ChartCandlestick className="h-4 w-4" />
+              Investimenti
             </TabsTrigger>
             <TabsTrigger value="current-year" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
@@ -261,6 +267,18 @@ export default function CashflowPage() {
                 loading={loading}
                 onRefresh={handleRefresh}
               />
+            </motion.div>
+          </TabsContent>
+        )}
+
+        {mountedTabs.has('investments') && (
+          <TabsContent value="investments" className="mt-6" forceMount>
+            <motion.div
+              initial={false}
+              animate={activeTab === 'investments' ? 'visible' : 'hidden'}
+              variants={tabPanelSwitch}
+            >
+              <InvestmentOperationsTab />
             </motion.div>
           </TabsContent>
         )}
