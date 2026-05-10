@@ -1,0 +1,130 @@
+# Project Status - Net Worth Tracker
+
+This file preserves the long-form architecture and product status notes that
+previously lived in `CLAUDE.md`. Keep `CLAUDE.md` short and point Claude Code
+here for detailed project context.
+
+---
+
+# Net Worth Tracker - Full Project Status
+
+## Project Overview
+Net Worth Tracker is a Next.js app for Italian investors to track net worth, assets, cashflow, dividends, performance metrics, and long-term planning with Firebase.
+Operational coding rules are shared by Codex and Claude Code in
+[../AGENTS.md](../AGENTS.md). Detailed operational memory lives in
+[agent-memory.md](agent-memory.md).
+
+## Current Status
+- Stack: Next.js 16, React 19, TypeScript 5, Tailwind v4, Firebase, Vitest, Framer Motion, Recharts, Yahoo Finance, Borsa Italiana scraping, Anthropic
+- Latest implementation (2026-05-09, session household-scoped-views): **Household ownership and scoped reporting**. Optional household mode supports multiple participants, ownership profiles, split attribution, internal transfer ownership, attribution-aware budget/reporting, compensation reports, and saved snapshot split metadata. Main views now expose a household scope filter ("Tutto", ownership profile, participant) across Panoramica, Patrimonio, Allocazione, Rendimenti, Cashflow, Dividendi, Storico/PDF export, email/PDF data services, and AI context. Stability fix: `useHouseholdScopeFilter()` memoizes the returned `scope`; pages must not derive scoped state through effects when `useMemo` is sufficient. `PieChart` must call hooks before empty-data returns so scoped profiles with no assets do not trigger React error #300. Key files: `types/household.ts`, `lib/utils/householdUtils.ts`, `lib/hooks/useHouseholdScopeFilter.ts`, `components/household/HouseholdScopeSelect.tsx`, `app/dashboard/page.tsx`, `app/dashboard/assets/page.tsx`, `app/dashboard/allocation/page.tsx`, `app/dashboard/performance/page.tsx`, `app/dashboard/history/page.tsx`, `components/cashflow/`, `components/pdf/PDFExportDialog.tsx`, `lib/services/pdfDataService.ts`, `components/ui/pie-chart.tsx`.
+- Previous (2026-05-05, session add-portfolio-metrics): **Portfolio metrics + new benchmarks in Rendimenti**. Expanded "Confronto con Portafogli Modello" table from 2 to 11 columns: TWR ann., Crescita tot., Volatilità, Sharpe, Sortino, Calmar, Max Drawdown, Miglior/Peggior mese, Mesi+/-. All metrics computed from the same filtered monthly return series (apples-to-apples); portfolio Volatilità/Sharpe/Max DD use pre-computed cashflow-adjusted props for KPI consistency. Added 2 new model portfolios: `permanent-portfolio` (25% VTI/TLT/GLD/SHY, Harry Browne) and `acwi-100` (100% ACWI, equity puro). Fixed hook count updated from 4 to 6 in `BenchmarkComparisonSection`. Key files: `lib/constants/benchmarks.ts`, `components/performance/BenchmarkComparisonChart.tsx`, `components/performance/BenchmarkComparisonSection.tsx`, `app/dashboard/performance/page.tsx`.
+- Previous (2026-05-04, session portfolio-comparison-benchmarks): **Benchmark comparison in Rendimenti**. New "Confronto con Portafogli Modello" section below Evoluzione Patrimonio: indexed growth-of-100 chart and TWR table comparing user portfolio against 4 model portfolios (60/40, All Weather, Buffett 90/10, Golden Butterfly). ETF proxy returns fetched from Yahoo Finance server-side, cached in global `benchmark-cache/{benchmarkId}` (7d TTL, Admin SDK write only). Optional "Converti benchmark in EUR" toggle. 4 fixed hooks for stable React hook call count.
+- Previous (2026-05-04): **investment operation ledger + realized sales + internal transfers**. Added `types/investments.ts`, `lib/services/investmentOperationService.ts`, pure calculation helpers in `lib/utils/investmentOperationUtils.ts`, and tests in `__tests__/investmentOperationService.test.ts`. Cashflow has a dedicated `Investimenti` tab for buy/sell operations with quantity, unit price, fees, taxes, weighted-average-cost updates, realized gain/tax data, optional cash-account impact, and edit/delete actions; trades are not modeled as expenses/income and do not require cashflow categories. The `Tracciamento` tab includes a unified chronological movement list combining ordinary cashflow entries, investment operations, and internal transfers while keeping income/expense KPIs limited to ordinary cashflow. Dividend stats expose `realizedInvestmentSummary`, and Cashflow has a `Trasferimenti` tab for cash-to-cash transfers with edit/delete actions that update balances without affecting income/expense savings metrics. Firestore rules cover `investmentOperations` and `internalTransfers`; no composite index is required because current client/admin queries filter only by `userId` and sort in memory.
+- Previous (2026-04-30, session drifting-sutherland): **YOC TTM filter fix + dependency security updates**. `app/api/dividends/stats/route.ts`: TTM filter changed from `exDate >= twelveMonthsAgo` to `paymentDate >= twelveMonthsAgo && paymentDate <= today`. `npm audit fix` + `next@16.2.4`: resolved `protobufjs` critical and `next` high vulnerabilities. Tests: 483 pass.
+
+## Architecture Snapshot
+- App Router with protected pages under `app/dashboard/*`
+- Service layer in `lib/services/*`
+- Shared utilities in `lib/utils/*`
+- React Query for caching and invalidation
+- Italy timezone helpers in `lib/utils/dateHelpers.ts`
+
+## Key Features (Active)
+- **Demo mode (2026-04-16)**: `app/page.tsx` is now a landing page with "Prova la Demo" auto-login and feature overview. Same CTA on `/login`. `useDemoMode()` hook (`lib/hooks/useDemoMode.ts`) — compares `user.uid` against `NEXT_PUBLIC_DEMO_USER_ID`; returns `false` if either is absent. All mutation buttons across every page use `disabled={isDemo}` + `title` tooltip. Demo banner in dashboard layout (`FlaskConical` amber strip). `NEXT_PUBLIC_ASSISTANT_AI_ENABLED=false` should be set for the demo Firebase project. Credentials (`NEXT_PUBLIC_DEMO_EMAIL/PASSWORD`) are baked into the bundle — acceptable for a non-sensitive public demo; leave vars empty to hide the CTA on self-hosted deploys.
+- Portfolio tracking across equities, bonds, crypto, real estate, commodities, and cash
+- **Household ownership mode (2026-05-09)**: optional mode for managing multiple participants and shared ownership profiles. Effective defaults keep single-user behavior when disabled. Assets, ordinary cashflow, budgets by attribution, investment operations, internal transfers, dividends, snapshots, PDF/email data, AI month context, and compensation reports can be scoped by household profile or participant. Scope selectors live in `components/household/HouseholdScopeSelect.tsx`; the shared hook is `lib/hooks/useHouseholdScopeFilter.ts`. Important contract: the hook's returned `scope` object must remain referentially stable for a selected key, because many views use it inside memoized scoped collections. Do not store scoped derived data with `useEffect + setState` when it can be computed with `useMemo`.
+- Automatic price updates via Yahoo Finance and Borsa Italiana bond support
+- **Multi-theme color system (2026-04-10)**: 6 selectable themes — `default`, `solar-dusk`, `elegant-luxury`, `midnight-bloom`, `cyberpunk`, `retro-arcade`. Persisted in Firestore `userPreferences/{userId}` + localStorage. `ColorThemeContext` manages `data-theme` on `<html>`, independent of next-themes dark/light. View Transition circle-reveal on dark/light toggle (CSS vars `--vt-cx/cy/r` + `document.startViewTransition`). Chart colors theme-aware via `useChartColors` (reads `--chart-1..5` after paint via `requestAnimationFrame`; oklch luminance filter: L>0.82 light fallback, L<0.30 dark fallback). Bottom navigation uses `--sidebar-*` CSS vars for theme sync. Theme selector in Settings → Aspetto (grid `grid-cols-2 sm:grid-cols-3 desktop:grid-cols-6`). Dark theme chroma must be ≥0.020 to be perceptible on dark backgrounds. Key files: `lib/services/userPreferencesService.ts`, `contexts/ColorThemeContext.tsx`, `lib/hooks/useChartColors.ts`, `app/globals.css` (theme blocks), `components/layout/BottomNavigation.tsx`.
+- Assistente AI (2026-04-10): 5 modes — `month_analysis`, `year_analysis`, `ytd_analysis`, `history_analysis`, `chat`. Chat mode has `chatContextType` selector (`none | month | year | ytd | history`), default `'none'`. `bySubCategoryAllocation` in context bundle. `selector.month` encoding: `>0`=monthly, `0`=year, `-1`=YTD, `-2`=history. `useAssistantPeriodContext` unifies all 4 context hooks. `includeMacroContext` gates web search in analysis modes; chat mode uses keyword-based policy in `webSearchPolicy.ts` (keyword list + explicit phrases). Extended thinking (budget 2000) + 3500 max_tokens. `resolvedThreadId` pattern avoids stale RQ cache. Feature flag `NEXT_PUBLIC_ASSISTANT_AI_ENABLED`. Persistent conversations, auto-memory, markdown with tables. Memory extraction runs in all modes, gated by `memoryEnabled` only. Memory panel now supports active/completed/archived goal lifecycle plus pending suggestions with explicit confirm/ignore actions. Structured goal parsing supports natural-language numeric goals for cash, liquid net worth, net worth, asset classes, sub-categories, and allocation percentages. `Liquidità` goals evaluate against cash only; `patrimonio liquido` uses `liquidNetWorth`. `includeDummySnapshots` preference: toggle visible only when `hasDummySnapshots`. **Stop**: `AbortController` in `abortControllerRef`. **Delete confirmations**: 2-click inline with 3s auto-disarm. **Mobile**: composer chip strip for mode + chat context (`desktop:hidden`); `pb-[env(safe-area-inset-bottom,0px)]` for iPhone home bar; Brain icon Sheet for memory panel; `AssistantContextPill` in conversation header; `flex-col` two-row header buttons on mobile. `CollapsibleTrigger` always `asChild` in `AssistantMemoryPanel`. **Conversation history**: cap chat 10 pairs, structured 3 pairs. **A11y**: `aria-live` on stream container; `role="tablist/tab"` on memory filters; action buttons always visible on touch; `scrollIntoView instant` during streaming. **Animations**: Framer Motion on all 5 assistant components — staggered chip mount, message fade/slide, memory item cascade + height-collapse exit, context card `AnimatePresence mode="wait"` keyed on period, streaming badge fade. `useReducedMotion()` everywhere. **Guide**: collapsible "Come funziona" in page header (below subtitle, above buttons) — content outside flex-row so it spans full width on desktop. Textarea scrollbar hidden via `[&::-webkit-scrollbar]:hidden [scrollbar-width:none]`.
+- Login and Register now feel more native to the product, with calmer entry motion, cleaner field focus choreography, keyboard-reachable password toggles, and inline submit status feedback
+- Hall of Fame now reads as an editorial ranking surface with clearer monthly/yearly hierarchy, spotlight cards for the current month/year, and contextual note dialogs tied to the selected record
+- Cashflow "Entrate per categoria" pie chart on mobile now caps legend items at 3 (same as expense chart), preventing overflow when 4+ categories exceed the 5% threshold
+- Overview "Distribuzione per Asset" pie chart on mobile now caps legend items at 5 (`>= 7%` filter then `.slice(0, 5)`), preventing the fixed 350px container from clipping the pie when a portfolio has many assets
+- Cashflow now preserves context better across `Tracciamento`, `Dividendi & Cedole`, `Anno Corrente`, `Storico Totale`, and `Budget`, with calmer filter feedback and a steadier Budget deep-dive flow
+- Cashflow Sankey back-navigation now restores the immediate parent drill-down level first, so moving back from a subcategory returns to the category view before the full flow
+- Dividendi & Cedole now keeps calendar day focus, active date filtering, table/detail context, and summary cards more tightly in sync, with a read-only contextual detail step before edit mode
+- Storico "Evoluzione Patrimonio Netto" line chart now renders as a clean continuous line — per-point dots removed; amber note-indicator markers are preserved for snapshots with notes (`CustomChartDot`, `activeDot` hover still active)
+- Storico now reads more like a guided analysis surface: main sections enter as chapters, dense blocks are separated more clearly, chart mode switches feel local instead of page-wide, and doubling milestones build progressively
+- **Benchmark comparison in Rendimenti (2026-05-05)**: "Confronto con Portafogli Modello" card with indexed growth-of-100 chart and full risk/return table (11 columns: TWR ann., Crescita tot., Volatilità, Sharpe, Sortino, Calmar, Max DD, Miglior/Peggior mese, Mesi+/-) for 6 model portfolios: 60/40, All Weather, Buffett 90/10, Golden Butterfly, Portafoglio Permanente, 100% ACWI. Toggle pills select active benchmarks; ⓘ button shows ETF composition. "Converti benchmark in EUR" switch applies monthly Frankfurter FX rates. Portfolio Volatilità/Sharpe/Max DD use cashflow-adjusted pre-computed values; all benchmark metrics derived client-side. Key files: `types/benchmarks.ts`, `lib/constants/benchmarks.ts`, `app/api/benchmarks/returns/route.ts`, `app/api/benchmarks/fx-rates/route.ts`, `lib/hooks/useBenchmarkReturns.ts`, `lib/hooks/useFxRates.ts`, `components/performance/BenchmarkComparisonChart.tsx`, `components/performance/BenchmarkComparisonSection.tsx`; Firestore caches: `benchmark-cache/{benchmarkId}`, `fx-rate-cache/usd-eur`
+- Rendimenti now presents smoother period switching, KPI settling from prior values, staged monthly heatmap reveal, a more legible underwater drawdown surface, and contextual custom-range / AI dialogs
+- Allocazione now presents a more readable drill-down path on desktop and a steadier mobile sheet experience, with each drill-down level reopening from the top and progress bars using centered target markers
+- Patrimonio now preserves visited macro-tab and sub-tab state across `Gestione Asset`, `Anno Corrente`, and `Storico`, with calmer transitions for dense historical tables, scoped refresh feedback on the active view, and a hidden previous-month baseline for `Anno Corrente` so first-month comparisons and summary percentages remain accurate without adding an extra visible column
+- Patrimonio Anno Corrente and Storico tables show only assets with `includeInHistoryTables: true` (toggle in AssetDialog). Anno Corrente: `quantity > 0` only. Storico: includes `quantity === 0` for sold-asset history with "Venduto" badge. `restrictToPassedAssets={true}` on both tables. Disabling cost basis in AssetDialog correctly deletes `averageCost`/`taxRate` from Firestore via `deleteField()`
+- Overview/Panoramica now loads KPI, variations, expense summary, charts, and rendering flags from one authenticated overview query, improving warm loads and keeping related data in sync after asset, cashflow, snapshot, and stamp-duty-setting changes
+- Overview/Dashboard KPI cards all animate on mount via `OverviewAnimatedCurrency` leaf nodes (count-up isolated per card, not page-level). Charts mount after hero settles via `requestIdleCallback`. Formatter cache in `lib/utils/formatters.ts` avoids `Intl.NumberFormat` allocation on every render.
+- **Cost Centers (2026-04-14)**: optional 6th tab in Cashflow (`costCentersEnabled` toggle in Settings → Preferenze). Group expenses by object/project (e.g. "Automobile Dacia"). Per-center KPI cards, monthly spend chart, linked transaction table. Assignment via `ExpenseDialog` selector. Delete/rename cascade to linked expenses via `writeBatch`. Firestore collection: `costCenters`. New composite indexes: `costCenters/{userId+createdAt}`, `expenses/{userId+costCenterId+date}`.
+- Cashflow tracking with categories, filters, Sankey drill-down, budget management, and linked cash-account updates
+- History page with net worth evolution, asset class breakdown, liquidity, YoY variation, savings vs investment growth, `Lavoro & Investimenti`, doubling analysis, and allocation comparison
+- `Lavoro & Investimenti` in History now includes:
+  - lifetime KPI cards for labor income, saved from work (with total expenses sub-line), gross investment growth, and net investment growth
+  - positive-month and negative-month counters based on monthly `netWorthGrowth`
+  - monthly chart from `prepareMonthlyLaborMetricsData()`
+- Settings page now offers visible unsaved-state preview and clearer in-context feedback for sensitive configuration changes (without autosave behavior changes)
+- Dividends and coupons tracking with EUR conversion, focused monthly calendar, contextual per-payment detail view, total return per asset, and DPS growth summaries
+- FIRE planning now includes local preview feedback, rolling 12-month runway history, separate total/liquid runway deltas vs the same month a year earlier, a Base-scenario sensitivity matrix for annual spending vs annual savings, steadier scenario projections, clearer liquid vs illiquid readouts, and a dedicated `Coast FIRE` tab. Coast FIRE reuses `userAge`, persists `coastFireRetirementAge`, uses real annual expenses from the last completed year (or user-defined custom expenses via `coastFireCustomExpenses`), models Bear/Base/Bull outcomes with `real return = growth - inflation`, and optionally reduces retirement portfolio needs with one or more state pensions entered as gross future nominal monthly amounts, exact pension dates, and editable IRPEF brackets. The state-pension area now combines a compact summary-first explanation, a collapsible configuration panel with visible key inputs, and separate informational vs incomplete-state messaging for pension timing. The pension UI is fully responsive: 2-col input grid on mobile (pairing Nome+Lordo / Mensilità+Decorrenza) with `items-start` (hint text below inputs prevents `items-end` baseline trick), compact breakdown table, inline tax bracket rows with `items-end` (no hint text), and 40px touch targets on all destructive buttons. Pension card header always `flex-row` so trash icon stays top-right. Config section for Scaglioni IRPEF stacks on mobile (text above, full-width button below). `buildPensionDraftIssues` is a pure function receiving `now: Date` as explicit param.
+- Monte Carlo simulations now preserve result continuity across reruns, with progressive percentile/distribution reveal and more explicit Bear/Base/Bull comparison focus
+- Goal-based investing now links summary cards, allocation chart, and detail cards through a shared focus model for faster visual comprehension
+- PDF export and AI-powered performance analysis
+
+## Testing
+- Framework: Vitest
+- Useful commands:
+```powershell
+npm.cmd test -- --run __tests__/householdUtils.test.ts
+npm.cmd test
+npx tsc --noEmit
+npm.cmd run build
+```
+- Current repo includes targeted tests for pure utilities/services plus private API auth regression coverage in `__tests__/apiAuthRoutes.test.ts`, overview/materialized-summary coverage in `__tests__/dashboardOverviewService.test.ts`, performance utilities in `__tests__/performanceService.test.ts`, assistant auth / policy coverage in `__tests__/assistantRoutes.test.ts`, `__tests__/assistantWebSearchPolicy.test.ts`, `__tests__/assistantPromptRouting.test.ts`, `__tests__/assistantMonthContextService.test.ts`, `__tests__/assistantThreadRoutes.test.ts`, `__tests__/assistantMemoryExtraction.test.ts`, SRP characterization tests in `__tests__/assetDialogHelpers.test.ts` and `__tests__/snapshotHelpers.test.ts`, and layer-separation tests in `__tests__/dividendUseCase.test.ts` and `__tests__/dividendProcessor.test.ts`
+
+## Data & Integrations
+- Firestore client + admin
+- Yahoo Finance for prices and benchmark ETF history
+- Borsa Italiana scraping for Italian bonds and dividend data
+- Frankfurter API for FX conversion (asset prices) and historical monthly EUR/USD rates (benchmark EUR conversion)
+- Anthropic for AI analysis
+
+## Known Issues (Active)
+- FX conversion depends on Frankfurter API availability; cache fallback (24h TTL) is used on failure — pre-migration non-EUR assets (USD, CHF, etc.) without `currentPriceEur` will show native price as EUR until first price update. GBp assets are safe: the pence→GBP fallback (`currentPrice / 100`) prevents the 100× inflation even without `currentPriceEur`.
+- Demo account requires manual Firebase setup (create user, populate Firestore with realistic fake data, set three env vars)
+
+## Key Files
+- Overview data pipeline: `app/api/dashboard/overview/route.ts`, `lib/services/dashboardOverviewService.ts`, `lib/hooks/useDashboardOverview.ts`, `types/dashboardOverview.ts`
+- Overview KPI animation: `components/dashboard/OverviewAnimatedCurrency.tsx`, `components/dashboard/OverviewChartsSection.tsx`
+- Formatter cache: `lib/utils/formatters.ts` (`cachedFormatCurrencyEUR`)
+- Assistant: `app/dashboard/assistant/page.tsx`, `components/assistant/AssistantPageClient.tsx`, `components/assistant/AssistantPageSkeleton.tsx`, `components/assistant/AssistantComposer.tsx`, `components/assistant/AssistantPromptChips.tsx`, `components/assistant/AssistantContextCard.tsx`, `components/assistant/AssistantMonthPicker.tsx`, `components/assistant/AssistantStreamingResponse.tsx`, `components/assistant/AssistantMemoryPanel.tsx`, `components/assistant/AssistantMemoryItemRow.tsx`, `lib/constants/assistantPrompts.ts`, `app/api/ai/assistant/*` (incl. `context/route.ts`, `stream/route.ts`), `lib/server/assistant/*` (incl. `memoryExtraction.ts`, `webSearchPolicy.ts`), `lib/services/assistantMonthContextService.ts`, `lib/hooks/useAssistantMonthContext.ts` (exports `useAssistantPeriodContext`), `types/assistant.ts`
+- History: `app/dashboard/history/page.tsx`
+- History components: `components/dashboard/LaborMetricsChart.tsx`, `components/history/*`
+- Chart service: `lib/services/chartService.ts`
+- Performance: `app/dashboard/performance/page.tsx`, `lib/services/performanceService.ts`, `performance-cache/{userId}` (Firestore cache collection)
+- Benchmark comparison: `types/benchmarks.ts`, `lib/constants/benchmarks.ts`, `app/api/benchmarks/returns/route.ts`, `app/api/benchmarks/fx-rates/route.ts`, `lib/hooks/useBenchmarkReturns.ts`, `lib/hooks/useFxRates.ts`, `components/performance/BenchmarkComparisonChart.tsx`, `components/performance/BenchmarkComparisonSection.tsx`; Firestore caches: `benchmark-cache/{benchmarkId}`, `fx-rate-cache/usd-eur`
+- Household ownership/scoped views: `types/household.ts`, `lib/utils/householdUtils.ts`, `lib/hooks/useHouseholdScopeFilter.ts`, `components/household/HouseholdScopeSelect.tsx`, `components/cashflow/`, `app/dashboard/page.tsx`, `app/dashboard/assets/page.tsx`, `app/dashboard/allocation/page.tsx`, `app/dashboard/performance/page.tsx`, `app/dashboard/history/page.tsx`, `components/pdf/PDFExportDialog.tsx`, `lib/services/pdfDataService.ts`
+- Cashflow, budget, cost centers: `components/cashflow/*`, `lib/utils/budgetUtils.ts`, `types/budget.ts`, `types/costCenters.ts`, `lib/services/costCenterService.ts`
+- FIRE: `components/fire-simulations/*`, `lib/services/fireService.ts`
+- Dividends: `components/dividends/*`
+- Settings: `app/dashboard/settings/page.tsx`, `lib/services/assetAllocationService.ts`
+- Allocation: `app/dashboard/allocation/page.tsx`, `components/allocation/*`
+- Assets: `app/dashboard/assets/page.tsx`, `components/assets/AssetPriceHistoryTable.tsx`, `components/assets/AssetClassHistoryTable.tsx`
+- Mobile navigation: `components/layout/BottomNavigation.tsx`, `components/layout/SecondaryMenuDrawer.tsx`
+- Mobile perf: `lib/hooks/useMediaQuery.ts`
+- Server-side use cases / processors: `lib/server/assetAdminRepository.ts`, `lib/server/dividendUseCase.ts`, `lib/server/dividendProcessor.ts`, `lib/server/monthlyEmailService.ts`
+
+**Last updated**: 2026-05-09 (session household-scoped-views - household ownership filters + scoped reporting stability fixes)
+
+## Design Context
+
+### Users
+Italian self-directed investors who want to understand their financial position quickly and confidently.
+
+### Brand Personality
+Elegant, sophisticated, personal.
+
+### Aesthetic Direction
+Linear / Vercel inspired clarity with polished motion, dense but readable data presentation, and strong dark mode quality.
+
+### Design Principles
+1. Data first, decoration second
+2. Motion with purpose
+3. Density is a feature
+4. Precision builds trust
+5. Personality lives in the details
