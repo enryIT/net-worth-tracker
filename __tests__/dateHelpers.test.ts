@@ -5,6 +5,7 @@ import {
   getItalyMonth,
   getItalyYear,
   getItalyMonthYear,
+  formatDateInputValue,
   formatItalianDate,
   isDateOnOrAfter,
 } from '@/lib/utils/dateHelpers'
@@ -98,6 +99,19 @@ describe('getItalyMonthYear', () => {
     const result = getItalyMonthYear(date)
     expect(result.month).toBe(getItalyMonth(date))
     expect(result.year).toBe(getItalyYear(date))
+  })
+})
+
+describe('formatDateInputValue', () => {
+  it('formats dates as YYYY-MM-DD in Italy timezone', () => {
+    const utcDate = new Date('2025-03-15T12:00:00Z')
+    expect(formatDateInputValue(utcDate)).toBe('2025-03-15')
+  })
+
+  it('does not shift the date backwards near Italy midnight', () => {
+    const lateUtcDate = new Date('2025-03-14T23:30:00Z')
+    expect(formatDateInputValue(lateUtcDate)).toBe('2025-03-15')
+    expect(lateUtcDate.toISOString().slice(0, 10)).toBe('2025-03-14')
   })
 })
 

@@ -59,6 +59,20 @@ export function getItalyMonthYear(date: Date | Timestamp | string | undefined | 
 }
 
 /**
+ * Format a date for `<input type="date">` using Italy timezone.
+ *
+ * Do not use `toISOString().slice(0, 10)` for UI date inputs: it formats in UTC
+ * and can shift the visible day around local midnight.
+ */
+export function formatDateInputValue(date: Date | Timestamp | string | undefined | null = new Date()): string {
+  const italyDate = getItalyDate(date);
+  const year = italyDate.getFullYear();
+  const month = String(italyDate.getMonth() + 1).padStart(2, '0');
+  const day = String(italyDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Format Date or Timestamp to Italian locale (DD/MM/YYYY)
  */
 export function formatItalianDate(date: Date | Timestamp | string): string {

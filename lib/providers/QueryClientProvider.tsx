@@ -21,9 +21,17 @@
  */
 'use client';
 
+import dynamic from 'next/dynamic';
 import { QueryClient, QueryClientProvider as TanStackQueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useState } from 'react';
+
+const ReactQueryDevtools =
+  process.env.NODE_ENV === 'development'
+    ? dynamic(
+        () => import('@tanstack/react-query-devtools').then((mod) => mod.ReactQueryDevtools),
+        { ssr: false }
+      )
+    : null;
 
 export function QueryClientProvider({ children }: { children: React.ReactNode }) {
   // Use useState (not useMemo) to guarantee single queryClient instance
@@ -45,7 +53,7 @@ export function QueryClientProvider({ children }: { children: React.ReactNode })
   return (
     <TanStackQueryClientProvider client={queryClient}>
       {children}
-      <ReactQueryDevtools initialIsOpen={false} />
+      {ReactQueryDevtools ? <ReactQueryDevtools initialIsOpen={false} /> : null}
     </TanStackQueryClientProvider>
   );
 }

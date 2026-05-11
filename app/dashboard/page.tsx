@@ -137,6 +137,7 @@ export default function DashboardPage() {
     setSelectedScopeKey,
     scope,
     isScoped,
+    householdLoading,
   } = useHouseholdScopeFilter(user?.uid);
 
   // Calculated once at mount — no need to re-evaluate on every render.
@@ -152,12 +153,20 @@ export default function DashboardPage() {
   }, [user?.displayName]);
 
   const { data: rawOverview, isLoading: loadingOverview } = useDashboardOverview(user?.uid);
-  const { data: assets = [] } = useAssets(user?.uid);
-  const { data: expenses = [] } = useExpenses(user?.uid);
-  const { data: snapshots = [] } = useSnapshots(user?.uid);
+  const shouldLoadScopedData = householdEnabled && isScoped && !householdLoading;
+  const { data: assets = [], isLoading: loadingScopedAssets } = useAssets(user?.uid, shouldLoadScopedData);
+  const { data: expenses = [], isLoading: loadingScopedExpenses } = useExpenses(user?.uid, shouldLoadScopedData);
+  const { data: snapshots = [], isLoading: loadingScopedSnapshots } = useSnapshots(user?.uid, shouldLoadScopedData);
   const createSnapshotMutation = useCreateSnapshot(user?.uid || '');
+  const scopedDataReady =
+    shouldLoadScopedData &&
+    !loadingScopedAssets &&
+    !loadingScopedExpenses &&
+    !loadingScopedSnapshots;
 
-  const loading = loadingOverview;
+  const loading =
+    loadingOverview ||
+    (shouldLoadScopedData && (loadingScopedAssets || loadingScopedExpenses || loadingScopedSnapshots));
 
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -223,7 +232,7 @@ export default function DashboardPage() {
   );
 
   const scopedOverview = useMemo<DashboardOverviewPayload | null>(() => {
-    if (!rawOverview || !isScoped) return null;
+    if (!rawOverview || !isScoped || !scopedDataReady) return null;
 
     const totalValue = calculateTotalValue(scopedAssets);
     const liquidNetWorth = calculateLiquidNetWorth(scopedAssets);
@@ -293,7 +302,7 @@ export default function DashboardPage() {
         hasStampDuty: rawOverview.flags.hasStampDuty && rawOverview.metrics.annualStampDuty > 0,
       },
     };
-  }, [chartColors, currentMonthReference, isScoped, rawOverview, scopedAssets, scopedExpenses, scopedSnapshots]);
+  }, [chartColors, currentMonthReference, isScoped, rawOverview, scopedAssets, scopedDataReady, scopedExpenses, scopedSnapshots]);
 
   const overview = scopedOverview ?? rawOverview;
 

@@ -25,11 +25,11 @@ import { AssetFormData } from '@/types/assets';
  * @param userId - User ID (undefined before auth completes)
  * @returns React Query result with assets data, loading state, and error
  */
-export function useAssets(userId: string | undefined) {
+export function useAssets(userId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.assets.all(userId || ''),
     queryFn: () => getAllAssets(userId!),
-    enabled: !!userId, // Only run if userId exists (prevents query before auth)
+    enabled: !!userId && enabled, // Only run if userId exists (prevents query before auth)
   });
 }
 

@@ -27,6 +27,8 @@ const {
   snapshotDocSetMock,
   overviewSummaryDocGetMock,
   overviewSummaryDocSetMock,
+  getSettingsAdminMock,
+  buildAndSendForPeriodMock,
 } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   getAllDividendsMock: vi.fn(),
@@ -45,6 +47,8 @@ const {
   snapshotDocSetMock: vi.fn(),
   overviewSummaryDocGetMock: vi.fn(),
   overviewSummaryDocSetMock: vi.fn(),
+  getSettingsAdminMock: vi.fn(),
+  buildAndSendForPeriodMock: vi.fn(),
 }));
 
 vi.mock('@/lib/firebase/admin', () => ({
@@ -145,6 +149,13 @@ vi.mock('@/lib/helpers/priceUpdater', () => ({
   updateUserAssetPrices: updateUserAssetPricesMock,
 }));
 
+vi.mock('@/lib/server/monthlyEmailService', () => ({
+  getSettingsAdmin: getSettingsAdminMock,
+  buildAndSendForPeriod: buildAndSendForPeriodMock,
+  getMostRecentCompletedQuarterEnd: vi.fn(() => ({ year: 2026, month: 3 })),
+  getMostRecentCompletedYearEnd: vi.fn(() => ({ year: 2025, month: 12 })),
+}));
+
 vi.mock('@/lib/services/assetService', () => ({
   calculateAssetValue: vi.fn((asset: any) => asset.quantity * asset.currentPrice),
   calculateTotalValue: vi.fn(() => 1000),
@@ -168,6 +179,7 @@ import { POST as updatePricesRoute } from '@/app/api/prices/update/route';
 import { POST as snapshotRoute } from '@/app/api/portfolio/snapshot/route';
 import { GET as dashboardOverviewRoute } from '@/app/api/dashboard/overview/route';
 import { POST as invalidateDashboardOverviewRoute } from '@/app/api/dashboard/overview/invalidate/route';
+import { POST as sendMonthlyEmailRoute } from '@/app/api/user/monthly-email/send/route';
 
 function createJsonRequest(
   url: string,
@@ -226,6 +238,13 @@ describe('Private API route auth', () => {
     snapshotDocSetMock.mockResolvedValue(undefined);
     overviewSummaryDocGetMock.mockResolvedValue({ exists: false });
     overviewSummaryDocSetMock.mockResolvedValue(undefined);
+    getSettingsAdminMock.mockResolvedValue({
+      monthlyEmailEnabled: true,
+      quarterlyEmailEnabled: true,
+      yearlyEmailEnabled: true,
+      monthlyEmailRecipients: ['user@example.com'],
+    });
+    buildAndSendForPeriodMock.mockResolvedValue(true);
     monthlySnapshotsGetMock.mockResolvedValue({
       docs: [],
     });
@@ -447,6 +466,45 @@ describe('Private API route auth', () => {
         lastInvalidationReason: 'expense_created',
       }),
       { merge: true }
+    );
+  });
+
+  it('returns 401 for monthly email send route without Authorization header', async () => {
+    const response = await sendMonthlyEmailRoute(
+      createJsonRequest('http://localhost/api/user/monthly-email/send', {
+        method: 'POST',
+      })
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Missing Authorization bearer token',
+    });
+    expect(getSettingsAdminMock).not.toHaveBeenCalled();
+    expect(buildAndSendForPeriodMock).not.toHaveBeenCalled();
+  });
+
+  it('allows monthly email sending for the authenticated user', async () => {
+    const response = await sendMonthlyEmailRoute(
+      createJsonRequest('http://localhost/api/user/monthly-email/send', {
+        method: 'POST',
+        body: { periodType: 'monthly' },
+        headers: {
+          Authorization: 'Bearer valid-token',
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ success: true });
+    expect(verifyIdTokenMock).toHaveBeenCalledWith('valid-token');
+    expect(getSettingsAdminMock).toHaveBeenCalledWith('user-1');
+    expect(buildAndSendForPeriodMock).toHaveBeenCalledWith(
+      'user-1',
+      ['user@example.com'],
+      'monthly',
+      2026,
+      4
     );
   });
 

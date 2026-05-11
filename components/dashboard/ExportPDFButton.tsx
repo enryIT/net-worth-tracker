@@ -7,10 +7,15 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { FileText } from 'lucide-react';
-import { PDFExportDialog } from '@/components/pdf/PDFExportDialog';
 import type { MonthlySnapshot, Asset, AssetAllocationTarget } from '@/types/assets';
+
+const PDFExportDialog = dynamic(
+  () => import('@/components/pdf/PDFExportDialog').then((mod) => mod.PDFExportDialog),
+  { ssr: false }
+);
 
 interface ExportPDFButtonProps {
   snapshots: MonthlySnapshot[];
@@ -32,13 +37,15 @@ export function ExportPDFButton({
         Export PDF
       </Button>
 
-      <PDFExportDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        snapshots={snapshots}
-        assets={assets}
-        allocationTargets={allocationTargets}
-      />
+      {dialogOpen && (
+        <PDFExportDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          snapshots={snapshots}
+          assets={assets}
+          allocationTargets={allocationTargets}
+        />
+      )}
     </>
   );
 }

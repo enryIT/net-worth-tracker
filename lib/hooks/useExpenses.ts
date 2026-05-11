@@ -24,11 +24,11 @@ import { getAllCategories } from '@/lib/services/expenseCategoryService';
  * @param userId - User ID (undefined before auth completes)
  * @returns React Query result with expenses data, loading state, and error
  */
-export function useExpenses(userId: string | undefined) {
+export function useExpenses(userId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.expenses.all(userId || ''),
     queryFn: () => getAllExpenses(userId!),
-    enabled: !!userId, // Only run if userId exists (prevents query before auth)
+    enabled: !!userId && enabled, // Only run if userId exists (prevents query before auth)
   });
 }
 
@@ -41,10 +41,10 @@ export function useExpenses(userId: string | undefined) {
  * @param userId - User ID (undefined before auth completes)
  * @returns React Query result with expense categories data, loading state, and error
  */
-export function useExpenseCategories(userId: string | undefined) {
+export function useExpenseCategories(userId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.expenses.categories(userId || ''),
     queryFn: () => getAllCategories(userId!),
-    enabled: !!userId, // Only run if userId exists (prevents query before auth)
+    enabled: !!userId && enabled, // Only run if userId exists (prevents query before auth)
   });
 }

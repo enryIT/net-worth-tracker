@@ -20,7 +20,7 @@ import {
 } from '@/lib/services/investmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
-import { toDate } from '@/lib/utils/dateHelpers';
+import { formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';
 import { HouseholdScopeSelect } from '@/components/household/HouseholdScopeSelect';
 import { filterInvestmentOperationsByOwnershipScope } from '@/lib/utils/householdUtils';
 import { InvestmentOperationType } from '@/types/investments';
@@ -66,7 +66,7 @@ export function InvestmentOperationsTab() {
   const [pricePerUnit, setPricePerUnit] = useState('');
   const [fees, setFees] = useState('');
   const [taxes, setTaxes] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => formatDateInputValue());
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | undefined>();
@@ -168,7 +168,7 @@ export function InvestmentOperationsTab() {
     setPricePerUnit(String(operation.pricePerUnit));
     setFees(operation.fees ? String(operation.fees) : '');
     setTaxes(operation.taxes ? String(operation.taxes) : '');
-    setDate(toDate(operation.date).toISOString().slice(0, 10));
+    setDate(formatDateInputValue(toDate(operation.date)));
     setNotes(operation.notes || '');
   };
 

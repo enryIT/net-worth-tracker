@@ -8,7 +8,7 @@ import {
 } from '@/types/assets';
 import { Expense } from '@/types/expenses';
 import { MONTH_NAMES } from '@/lib/constants/months';
-import { getItalyMonth, getItalyMonthYear, getItalyYear } from '@/lib/utils/dateHelpers';
+import { formatDateInputValue, getItalyMonth, getItalyMonthYear, getItalyYear } from '@/lib/utils/dateHelpers';
 import { calculateTotalExpenses, calculateTotalIncome, getExpensesByDateRange } from './expenseService';
 import { getUserSnapshots } from './snapshotService';
 
@@ -353,7 +353,7 @@ function resolveCoastFirePensionStart(
 
   return {
     startDate: derivedStartDate,
-    startDateIso: derivedStartDate.toISOString().slice(0, 10),
+    startDateIso: formatDateInputValue(derivedStartDate),
     startAge: legacyStartAge,
   };
 }

@@ -29,7 +29,7 @@ export function scopeKeyToFilterScope(value: string): HouseholdFilterScope {
 }
 
 export function useHouseholdScopeFilter(userId: string | undefined) {
-  const { data: householdConfig } = useHouseholdConfig(userId);
+  const { data: householdConfig, isLoading: householdLoading } = useHouseholdConfig(userId);
   const householdEnabled = isHouseholdEnabled(householdConfig);
   const [selectedScopeKey, setSelectedScopeKeyState] = useState(HOUSEHOLD_SCOPE_ALL);
 
@@ -65,7 +65,7 @@ export function useHouseholdScopeFilter(userId: string | undefined) {
   }, []);
 
   useEffect(() => {
-    if (!householdEnabled && selectedScopeKey !== HOUSEHOLD_SCOPE_ALL) {
+    if (!householdLoading && !householdEnabled && selectedScopeKey !== HOUSEHOLD_SCOPE_ALL) {
       setSelectedScopeKeyState(HOUSEHOLD_SCOPE_ALL);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(STORAGE_KEY, HOUSEHOLD_SCOPE_ALL);
@@ -79,7 +79,7 @@ export function useHouseholdScopeFilter(userId: string | undefined) {
         window.localStorage.setItem(STORAGE_KEY, HOUSEHOLD_SCOPE_ALL);
       }
     }
-  }, [householdEnabled, options, selectedScopeKey]);
+  }, [householdEnabled, householdLoading, options, selectedScopeKey]);
 
   const setSelectedScopeKey = useCallback((value: string) => {
     setSelectedScopeKeyState(value);
@@ -98,6 +98,7 @@ export function useHouseholdScopeFilter(userId: string | undefined) {
   return {
     householdConfig,
     householdEnabled,
+    householdLoading,
     options,
     selectedScopeKey,
     setSelectedScopeKey,

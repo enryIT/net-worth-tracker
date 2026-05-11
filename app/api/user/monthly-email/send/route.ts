@@ -12,7 +12,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase/admin';
 import {
   getSettingsAdmin,
   buildAndSendForPeriod,
@@ -20,17 +19,12 @@ import {
   getMostRecentCompletedYearEnd,
   type EmailPeriodType,
 } from '@/lib/server/monthlyEmailService';
+import { getApiAuthErrorResponse, requireFirebaseAuth } from '@/lib/server/apiAuth';
 import { getItalyMonthYear } from '@/lib/utils/dateHelpers';
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const idToken = authHeader.slice(7);
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    const decodedToken = await requireFirebaseAuth(request);
     const userId = decodedToken.uid;
 
     // Parse optional body — default to monthly
@@ -62,13 +56,19 @@ export async function POST(request: NextRequest) {
         : 'monthlyEmailEnabled';
 
     if (!settings?.[enabledKey]) {
+      const periodLabel =
+        periodType === 'quarterly'
+          ? 'trimestrale'
+          : periodType === 'yearly'
+          ? 'annuale'
+          : 'mensile';
       return NextResponse.json(
-        { error: `${periodType} email is not enabled for this account` },
+        { error: `L'email ${periodLabel} non è abilitata per questo account` },
         { status: 400 }
       );
     }
     if (!settings.monthlyEmailRecipients?.length) {
-      return NextResponse.json({ error: 'No recipients configured' }, { status: 400 });
+      return NextResponse.json({ error: 'Nessun destinatario configurato' }, { status: 400 });
     }
 
     const sent = await buildAndSendForPeriod(
@@ -80,16 +80,21 @@ export async function POST(request: NextRequest) {
     );
     if (!sent) {
       return NextResponse.json(
-        { error: 'No snapshot found for the requested period — save a snapshot first' },
+        { error: 'Nessuno snapshot trovato per il periodo richiesto: salva prima uno snapshot' },
         { status: 404 }
       );
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authErrorResponse = getApiAuthErrorResponse(error);
+    if (authErrorResponse) {
+      return authErrorResponse;
+    }
+
     console.error('Error sending periodic email:', error);
     return NextResponse.json(
-      { error: 'Failed to send email', details: (error as Error).message },
+      { error: "Impossibile inviare l'email", details: (error as Error).message },
       { status: 500 }
     );
   }

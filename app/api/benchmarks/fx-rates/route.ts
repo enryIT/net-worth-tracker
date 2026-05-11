@@ -3,6 +3,7 @@ import { getApiAuthErrorResponse, requireFirebaseAuth } from '@/lib/server/apiAu
 import { adminDb } from '@/lib/firebase/admin';
 import { Timestamp } from 'firebase-admin/firestore';
 import { FxMonthlyRate, FxRatesResponse } from '@/types/benchmarks';
+import { formatDateInputValue } from '@/lib/utils/dateHelpers';
 
 const FX_CACHE_COLLECTION = 'fx-rate-cache';
 const FX_CACHE_DOC = 'usd-eur';
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
  * End-of-month rates align with the month-end prices used by Yahoo Finance ETF data.
  */
 async function fetchMonthlyFxRates(): Promise<FxMonthlyRate[]> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatDateInputValue();
   const url = `${FRANKFURTER_API_BASE}/2000-01-01..${today}?from=USD&to=EUR`;
 
   const res = await fetch(url);

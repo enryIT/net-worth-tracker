@@ -358,6 +358,24 @@ describe('state pension tax helpers', () => {
     expect(result.netAnnualRealAtStart).toBeLessThan(result.grossAnnualRealAtStart)
   })
 
+  it('should resolve legacy pension startAge with the Italy-local calendar date', () => {
+    const result = calculateCoastFireNetRealAnnualPension(
+      {
+        id: 'p1',
+        label: 'INPS',
+        grossMonthlyAmount: 3000,
+        monthsPerYear: 13,
+        startAge: 65,
+      },
+      65,
+      2.5,
+      getDefaultCoastFireTaxBrackets(),
+      new Date('2026-04-11T22:30:00Z')
+    )
+
+    expect(result.startDate).toBe('2026-04-12')
+  })
+
   it('should respect custom tax brackets', () => {
     const pension = calculateCoastFireNetRealAnnualPension(
       {

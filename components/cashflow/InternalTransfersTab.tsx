@@ -20,7 +20,7 @@ import {
 } from '@/lib/services/investmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
-import { toDate } from '@/lib/utils/dateHelpers';
+import { formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';
 import { HouseholdScopeSelect } from '@/components/household/HouseholdScopeSelect';
 import { filterInternalTransfersByOwnershipScope } from '@/lib/utils/householdUtils';
 import {
@@ -52,7 +52,7 @@ export function InternalTransfersTab() {
   const [amount, setAmount] = useState('');
   const [fees, setFees] = useState('');
   const [purpose, setPurpose] = useState<InternalTransferPurpose>('neutral_transfer');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => formatDateInputValue());
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>();
@@ -136,7 +136,7 @@ export function InternalTransfersTab() {
     setAmount(String(transfer.amount));
     setFees(transfer.fees ? String(transfer.fees) : '');
     setPurpose(transfer.purpose ?? 'neutral_transfer');
-    setDate(toDate(transfer.date).toISOString().slice(0, 10));
+    setDate(formatDateInputValue(toDate(transfer.date)));
     setNotes(transfer.notes || '');
   };
 

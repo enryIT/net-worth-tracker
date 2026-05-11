@@ -25,11 +25,11 @@ import { getUserSnapshots } from '@/lib/services/snapshotService';
  * @param userId - User ID (undefined before auth completes)
  * @returns React Query result with snapshots data, loading state, and error
  */
-export function useSnapshots(userId: string | undefined) {
+export function useSnapshots(userId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: queryKeys.snapshots.all(userId || ''),
     queryFn: () => getUserSnapshots(userId!),
-    enabled: !!userId, // Only run if userId exists (prevents query before auth)
+    enabled: !!userId && enabled, // Only run if userId exists (prevents query before auth)
   });
 }
 

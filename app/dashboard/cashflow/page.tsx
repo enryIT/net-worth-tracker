@@ -22,20 +22,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { Wallet, Receipt, TrendingUp, BarChart3, Coins, Target, Layers, ArrowRightLeft, ChartCandlestick, Scale } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ExpenseTrackingTab } from '@/components/cashflow/ExpenseTrackingTab';
-import { CurrentYearTab } from '@/components/cashflow/CurrentYearTab';
-import { TotalHistoryTab } from '@/components/cashflow/TotalHistoryTab';
-import { DividendTrackingTab } from '@/components/dividends/DividendTrackingTab';
-import { BudgetTab } from '@/components/cashflow/BudgetTab';
-import { CostCentersTab } from '@/components/cashflow/CostCentersTab';
-import { InternalTransfersTab } from '@/components/cashflow/InternalTransfersTab';
-import { InvestmentOperationsTab } from '@/components/cashflow/InvestmentOperationsTab';
-import { CompensationsTab } from '@/components/cashflow/CompensationsTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dividend } from '@/types/dividend';
 import { Asset } from '@/types/assets';
@@ -47,6 +39,47 @@ import { getSettings } from '@/lib/services/assetAllocationService';
 import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { tabPanelSwitch } from '@/lib/utils/motionVariants';
 import { toast } from 'sonner';
+
+function CashflowTabLoading() {
+  return <div className="h-48 rounded-md border bg-muted/30 animate-pulse" />;
+}
+
+const ExpenseTrackingTab = dynamic(
+  () => import('@/components/cashflow/ExpenseTrackingTab').then((mod) => mod.ExpenseTrackingTab),
+  { loading: CashflowTabLoading }
+);
+const CurrentYearTab = dynamic(
+  () => import('@/components/cashflow/CurrentYearTab').then((mod) => mod.CurrentYearTab),
+  { loading: CashflowTabLoading }
+);
+const TotalHistoryTab = dynamic(
+  () => import('@/components/cashflow/TotalHistoryTab').then((mod) => mod.TotalHistoryTab),
+  { loading: CashflowTabLoading }
+);
+const DividendTrackingTab = dynamic(
+  () => import('@/components/dividends/DividendTrackingTab').then((mod) => mod.DividendTrackingTab),
+  { loading: CashflowTabLoading }
+);
+const BudgetTab = dynamic(
+  () => import('@/components/cashflow/BudgetTab').then((mod) => mod.BudgetTab),
+  { loading: CashflowTabLoading }
+);
+const CostCentersTab = dynamic(
+  () => import('@/components/cashflow/CostCentersTab').then((mod) => mod.CostCentersTab),
+  { loading: CashflowTabLoading }
+);
+const InternalTransfersTab = dynamic(
+  () => import('@/components/cashflow/InternalTransfersTab').then((mod) => mod.InternalTransfersTab),
+  { loading: CashflowTabLoading }
+);
+const InvestmentOperationsTab = dynamic(
+  () => import('@/components/cashflow/InvestmentOperationsTab').then((mod) => mod.InvestmentOperationsTab),
+  { loading: CashflowTabLoading }
+);
+const CompensationsTab = dynamic(
+  () => import('@/components/cashflow/CompensationsTab').then((mod) => mod.CompensationsTab),
+  { loading: CashflowTabLoading }
+);
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

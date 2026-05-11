@@ -884,7 +884,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
     if (Math.abs(remainder) < 0.01) {
       return (
         <p className="text-sm">
-          {count} installments of {formatCurrency(baseAmount)}
+          {count} rate da {formatCurrency(baseAmount)}
         </p>
       );
     }
@@ -893,7 +893,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
     const identicalCount = count - 1;
     return (
       <p className="text-sm">
-        {identicalCount} installments of {formatCurrency(baseAmount)} + 1 installment of {formatCurrency(lastAmount)}
+        {identicalCount} rate da {formatCurrency(baseAmount)} + 1 rata da {formatCurrency(lastAmount)}
       </p>
     );
   };

@@ -61,7 +61,7 @@ import { CoastFireProjectionChart } from './CoastFireProjectionChart';
 import { Settings } from '@/types/settings';
 import { CoastFirePensionInput, CoastFireTaxBracket } from '@/types/assets';
 import { formatDate } from '@/lib/utils/formatters';
-import { toDate } from '@/lib/utils/dateHelpers';
+import { formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';
 import { cn } from '@/lib/utils';
 
 const COAST_CONTROL_CLASSNAME =
@@ -255,7 +255,7 @@ function toPensionDrafts(
     startDate:
       pension.startDate ??
       (currentAge !== undefined && pension.startAge !== undefined
-        ? addYearsToDate(today, Math.max(pension.startAge - currentAge, 0)).toISOString().slice(0, 10)
+        ? formatDateInputValue(addYearsToDate(today, Math.max(pension.startAge - currentAge, 0)))
         : ''),
   }));
 }
@@ -1235,7 +1235,7 @@ export function CoastFireTab() {
                           id={`coast-pension-date-${pension.id}`}
                           type="date"
                           value={pension.startDate}
-                          min={new Date().toISOString().slice(0, 10)}
+                          min={formatDateInputValue()}
                           onChange={(event) => updatePensionRow(pension.id, 'startDate', event.target.value)}
                           className={COAST_CONTROL_CLASSNAME}
                         />

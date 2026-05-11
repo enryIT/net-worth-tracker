@@ -80,6 +80,7 @@ import {
   profileToAssignment,
   validateOwnershipSplits,
 } from '@/lib/utils/householdUtils';
+import { formatDateInputValue } from '@/lib/utils/dateHelpers';
 import { createId } from '@/lib/utils/idHelpers';
 import {
   DEFAULT_PARTICIPANT_SELF_ID,
@@ -171,7 +172,7 @@ export default function SettingsPage() {
   const [newParticipantName, setNewParticipantName] = useState('');
   const [profileEditorId, setProfileEditorId] = useState('__new__');
   const [profileDraftName, setProfileDraftName] = useState('');
-  const [profileDraftValidFrom, setProfileDraftValidFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  const [profileDraftValidFrom, setProfileDraftValidFrom] = useState(() => formatDateInputValue());
   const [profileDraftPercentages, setProfileDraftPercentages] = useState<Record<string, string>>({});
   const [assetClassStates, setAssetClassStates] = useState<
     Record<AssetClass, AssetClassState>
@@ -984,7 +985,7 @@ export default function SettingsPage() {
 
   const setProfileDraftFromProfile = (profileId: string) => {
     setProfileEditorId(profileId);
-    setProfileDraftValidFrom(new Date().toISOString().slice(0, 10));
+    setProfileDraftValidFrom(formatDateInputValue());
 
     if (profileId === '__new__' || !householdConfig) {
       setProfileDraftName('');
@@ -1052,7 +1053,7 @@ export default function SettingsPage() {
       return;
     }
 
-    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayKey = formatDateInputValue();
     const shouldUpdateCurrentSplits = profileDraftValidFrom <= todayKey;
 
     if (profileEditorId === '__new__') {
@@ -1155,7 +1156,7 @@ export default function SettingsPage() {
       splits: [{ participantId, participantName: name, percentage: 100 }],
       versions: [{
         id: createId('profile-version'),
-        validFrom: new Date().toISOString().slice(0, 10),
+        validFrom: formatDateInputValue(),
         splits: [{ participantId, participantName: name, percentage: 100 }],
         createdAt: new Date(),
       }],
@@ -1173,7 +1174,7 @@ export default function SettingsPage() {
       splits: sharedSplits,
       versions: [{
         id: createId('profile-version'),
-        validFrom: new Date().toISOString().slice(0, 10),
+        validFrom: formatDateInputValue(),
         splits: sharedSplits,
         createdAt: new Date(),
       }],

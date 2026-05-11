@@ -185,7 +185,7 @@ export default function HomePage() {
             Costruito da un investitore italiano per investitori italiani.
           </p>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 desktop:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
