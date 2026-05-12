@@ -7,6 +7,7 @@ import {
   getApiAuthErrorResponse,
   requireFirebaseAuth,
 } from '@/lib/server/apiAuth';
+import { parsePerformancePeriodQuery } from '../periodQuery';
 
 /**
  * GET /api/performance/current-yield
@@ -36,32 +37,19 @@ export async function GET(request: NextRequest) {
     const decodedToken = await requireFirebaseAuth(request);
     const searchParams = request.nextUrl.searchParams;
     const userId = searchParams.get('userId');
-    const startDateStr = searchParams.get('startDate');
-    const dividendEndDateStr = searchParams.get('dividendEndDate');
-    const numberOfMonthsStr = searchParams.get('numberOfMonths');
 
     // Validate required parameters
     assertSameUser(decodedToken, userId);
     const authenticatedUserId = userId as string;
 
-    if (!startDateStr || !dividendEndDateStr || !numberOfMonthsStr) {
+    const periodQuery = parsePerformancePeriodQuery(searchParams);
+    if (!periodQuery.ok) {
       return NextResponse.json(
-        { error: 'Missing required parameters: startDate, dividendEndDate, numberOfMonths' },
+        { error: periodQuery.error },
         { status: 400 }
       );
     }
-
-    // Parse dates and numberOfMonths
-    const startDate = new Date(startDateStr);
-    const dividendEndDate = new Date(dividendEndDateStr);
-    const numberOfMonths = parseInt(numberOfMonthsStr, 10);
-
-    if (isNaN(startDate.getTime()) || isNaN(dividendEndDate.getTime()) || isNaN(numberOfMonths)) {
-      return NextResponse.json(
-        { error: 'Invalid date or numberOfMonths format' },
-        { status: 400 }
-      );
-    }
+    const { startDate, dividendEndDate, numberOfMonths } = periodQuery.value;
 
     // Fetch dividends and assets server-side using Firebase Admin SDK
     const [allDividends, allAssets] = await Promise.all([

@@ -29,6 +29,8 @@ const {
   overviewSummaryDocSetMock,
   getSettingsAdminMock,
   buildAndSendForPeriodMock,
+  calculateYocMetricsMock,
+  calculateCurrentYieldMetricsMock,
 } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   getAllDividendsMock: vi.fn(),
@@ -49,6 +51,8 @@ const {
   overviewSummaryDocSetMock: vi.fn(),
   getSettingsAdminMock: vi.fn(),
   buildAndSendForPeriodMock: vi.fn(),
+  calculateYocMetricsMock: vi.fn(),
+  calculateCurrentYieldMetricsMock: vi.fn(),
 }));
 
 vi.mock('@/lib/firebase/admin', () => ({
@@ -164,6 +168,11 @@ vi.mock('@/lib/services/assetService', () => ({
   calculateFIRENetWorth: vi.fn(() => 900),
 }));
 
+vi.mock('@/lib/services/performanceService', () => ({
+  calculateYocMetrics: calculateYocMetricsMock,
+  calculateCurrentYieldMetrics: calculateCurrentYieldMetricsMock,
+}));
+
 vi.mock('@/lib/utils/dateHelpers', async () => {
   const actual = await vi.importActual<typeof import('@/lib/utils/dateHelpers')>('@/lib/utils/dateHelpers');
 
@@ -180,6 +189,8 @@ import { POST as snapshotRoute } from '@/app/api/portfolio/snapshot/route';
 import { GET as dashboardOverviewRoute } from '@/app/api/dashboard/overview/route';
 import { POST as invalidateDashboardOverviewRoute } from '@/app/api/dashboard/overview/invalidate/route';
 import { POST as sendMonthlyEmailRoute } from '@/app/api/user/monthly-email/send/route';
+import { GET as yocRoute } from '@/app/api/performance/yoc/route';
+import { GET as currentYieldRoute } from '@/app/api/performance/current-yield/route';
 
 function createJsonRequest(
   url: string,
@@ -245,6 +256,22 @@ describe('Private API route auth', () => {
       monthlyEmailRecipients: ['user@example.com'],
     });
     buildAndSendForPeriodMock.mockResolvedValue(true);
+    calculateYocMetricsMock.mockReturnValue({
+      yocGross: 1.2,
+      yocNet: 0.9,
+      yocDividendsGross: 12,
+      yocDividendsNet: 9,
+      yocCostBasis: 1000,
+      yocAssetCount: 1,
+    });
+    calculateCurrentYieldMetricsMock.mockReturnValue({
+      currentYield: 1.1,
+      currentYieldNet: 0.8,
+      currentYieldDividends: 11,
+      currentYieldDividendsNet: 8,
+      currentYieldPortfolioValue: 1000,
+      currentYieldAssetCount: 1,
+    });
     monthlySnapshotsGetMock.mockResolvedValue({
       docs: [],
     });
@@ -466,6 +493,81 @@ describe('Private API route auth', () => {
         lastInvalidationReason: 'expense_created',
       }),
       { merge: true }
+    );
+  });
+
+  it('rejects YOC requests with non-positive numberOfMonths before loading data', async () => {
+    const response = await yocRoute(
+      createJsonRequest(
+        'http://localhost/api/performance/yoc?userId=user-1&startDate=2026-01-01&dividendEndDate=2026-04-30&numberOfMonths=0',
+        {
+          headers: {
+            Authorization: 'Bearer valid-token',
+          },
+        }
+      )
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'numberOfMonths must be a positive integer',
+    });
+    expect(getAllDividendsMock).not.toHaveBeenCalled();
+    expect(assetsWhereGetMock).not.toHaveBeenCalled();
+    expect(calculateYocMetricsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects Current Yield requests when startDate is after dividendEndDate', async () => {
+    const response = await currentYieldRoute(
+      createJsonRequest(
+        'http://localhost/api/performance/current-yield?userId=user-1&startDate=2026-05-01&dividendEndDate=2026-04-30&numberOfMonths=4',
+        {
+          headers: {
+            Authorization: 'Bearer valid-token',
+          },
+        }
+      )
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'startDate must be before or equal to dividendEndDate',
+    });
+    expect(getAllDividendsMock).not.toHaveBeenCalled();
+    expect(assetsWhereGetMock).not.toHaveBeenCalled();
+    expect(calculateCurrentYieldMetricsMock).not.toHaveBeenCalled();
+  });
+
+  it('allows valid Current Yield requests for the authenticated user', async () => {
+    const response = await currentYieldRoute(
+      createJsonRequest(
+        'http://localhost/api/performance/current-yield?userId=user-1&startDate=2026-01-01&dividendEndDate=2026-04-30&numberOfMonths=4',
+        {
+          headers: {
+            Authorization: 'Bearer valid-token',
+          },
+        }
+      )
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      currentYield: 1.1,
+      currentYieldNet: 0.8,
+    });
+    expect(getAllDividendsMock).toHaveBeenCalledWith('user-1');
+    expect(assetsWhereGetMock).toHaveBeenCalledTimes(1);
+    expect(calculateCurrentYieldMetricsMock).toHaveBeenCalledWith(
+      [],
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'asset-1',
+          userId: 'user-1',
+        }),
+      ]),
+      new Date('2026-01-01'),
+      new Date('2026-04-30'),
+      4
     );
   });
 
