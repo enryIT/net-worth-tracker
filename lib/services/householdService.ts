@@ -18,10 +18,28 @@ import { getDefaultHouseholdConfig } from '@/lib/utils/householdUtils';
 const HOUSEHOLD_CONFIGS_COLLECTION = 'householdConfigs';
 const HOUSEHOLD_AUDIT_COLLECTION = 'householdAudit';
 
-function removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object') return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function removeUndefinedFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => removeUndefinedFields(item)) as T;
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
   return Object.fromEntries(
-    Object.entries(obj).filter(([, value]) => value !== undefined)
-  ) as Partial<T>;
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, removeUndefinedFields(item)])
+  ) as T;
 }
 
 export async function getHouseholdConfig(userId: string): Promise<HouseholdConfig> {
@@ -49,12 +67,12 @@ export async function saveHouseholdConfig(userId: string, config: HouseholdConfi
   const now = Timestamp.now();
   const configRef = doc(db, HOUSEHOLD_CONFIGS_COLLECTION, userId);
 
-  await setDoc(configRef, {
+  await setDoc(configRef, removeUndefinedFields({
     ...config,
     userId,
     updatedAt: now,
     createdAt: config.createdAt ?? now,
-  });
+  }));
   appendHouseholdAuditEntrySafe(userId, {
     entityType: 'householdConfig',
     entityId: userId,
