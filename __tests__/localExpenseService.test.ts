@@ -22,6 +22,7 @@ import {
   deleteLocalExpense,
   getLocalMonthlyExpenseSummary,
   listLocalExpenses,
+  listLocalExpensesForCostCenter,
   updateLocalExpense,
 } from "@/lib/server/cashflow/localExpenseService";
 
@@ -91,6 +92,44 @@ describe("local expense service", () => {
       take: 25,
       cursor: { id: "expense-10" },
       skip: 1,
+    });
+  });
+
+  it("lists expenses scoped to a cost center ordered by date ascending", async () => {
+    prismaMock.expense.findMany.mockResolvedValue([
+      {
+        id: "expense-1",
+        userId: "user-1",
+        type: "variable",
+        categoryId: "category-1",
+        categoryName: "Auto",
+        subCategoryId: null,
+        subCategoryName: null,
+        amount: -25,
+        currency: "EUR",
+        date: new Date("2026-05-20T00:00:00.000Z"),
+        notes: null,
+        link: null,
+        costCenterId: "cost-center-1",
+        costCenterName: "Automobile",
+        metadata: {},
+        legacyFirebaseId: null,
+        createdAt: new Date("2026-05-17T10:00:00.000Z"),
+        updatedAt: new Date("2026-05-17T10:00:00.000Z"),
+      },
+    ]);
+
+    const expenses = await listLocalExpensesForCostCenter("user-1", "cost-center-1");
+
+    expect(prismaMock.expense.findMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", costCenterId: "cost-center-1" },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+    expect(expenses[0]).toMatchObject({
+      id: "expense-1",
+      userId: "user-1",
+      costCenterId: "cost-center-1",
+      costCenterName: "Automobile",
     });
   });
 

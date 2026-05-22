@@ -9,6 +9,7 @@ const {
   createLocalExpenseMock,
   deleteLocalExpenseMock,
   listLocalExpensesMock,
+  listLocalExpensesForCostCenterMock,
   requireUserSessionMock,
   updateLocalExpenseMock,
   getLocalMonthlyExpenseSummaryMock,
@@ -18,6 +19,7 @@ const {
   deleteLocalExpenseMock: vi.fn(),
   getLocalMonthlyExpenseSummaryMock: vi.fn(),
   listLocalExpensesMock: vi.fn(),
+  listLocalExpensesForCostCenterMock: vi.fn(),
   requireUserSessionMock: vi.fn(),
   updateLocalExpenseMock: vi.fn(),
 }));
@@ -41,6 +43,7 @@ vi.mock("@/lib/server/cashflow/localExpenseService", () => ({
   deleteLocalExpense: deleteLocalExpenseMock,
   getLocalMonthlyExpenseSummary: getLocalMonthlyExpenseSummaryMock,
   listLocalExpenses: listLocalExpensesMock,
+  listLocalExpensesForCostCenter: listLocalExpensesForCostCenterMock,
   updateLocalExpense: updateLocalExpenseMock,
 }));
 
@@ -100,6 +103,22 @@ describe("local expenses routes", () => {
       to: new Date("2026-01-31T23:59:59.999Z"),
       type: "variable",
     });
+  });
+
+  it("lists cost center expenses through the dedicated local service path", async () => {
+    listLocalExpensesForCostCenterMock.mockResolvedValue([{ id: "expense-1" }]);
+
+    const response = await GET(
+      new NextRequest("http://localhost/api/expenses?costCenterId=cost-center-1&sort=asc")
+    );
+
+    expect(response.status).toBe(200);
+    expect(listLocalExpensesForCostCenterMock).toHaveBeenCalledWith(
+      "user-1",
+      "cost-center-1"
+    );
+    expect(listLocalExpensesMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual([{ id: "expense-1" }]);
   });
 
   it("rejects invalid expense list query filters", async () => {

@@ -88,6 +88,18 @@ export async function listLocalExpenses(
   return rows.map(mapExpenseRow);
 }
 
+export async function listLocalExpensesForCostCenter(
+  userId: string,
+  costCenterId: string
+): Promise<Expense[]> {
+  const rows = await prisma.expense.findMany({
+    where: { userId, costCenterId },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+
+  return rows.map(mapExpenseRow);
+}
+
 export async function createLocalExpense(
   userId: string,
   expenseData: LocalExpenseInput

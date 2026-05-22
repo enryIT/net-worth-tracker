@@ -8,6 +8,7 @@ import {
 import {
   createLocalExpense,
   listLocalExpenses,
+  listLocalExpensesForCostCenter,
 } from "@/lib/server/cashflow/localExpenseService";
 
 const dateSchema = z.string().datetime().transform((value) => new Date(value));
@@ -24,6 +25,8 @@ const expenseListQuerySchema = z.object({
   from: z.string().datetime().transform((value) => new Date(value)).optional(),
   to: z.string().datetime().transform((value) => new Date(value)).optional(),
   type: z.enum(["fixed", "variable", "debt", "income"]).optional(),
+  costCenterId: z.string().min(1).optional(),
+  sort: z.enum(["asc", "desc"]).optional(),
 });
 
 export const expenseSchema = z.object({
@@ -73,7 +76,14 @@ export async function GET(request?: NextRequest) {
       );
     }
 
-    return NextResponse.json(await listLocalExpenses(user.id, parsedQuery.data));
+    if (parsedQuery.data.costCenterId) {
+      return NextResponse.json(
+        await listLocalExpensesForCostCenter(user.id, parsedQuery.data.costCenterId)
+      );
+    }
+
+    const { costCenterId: _costCenterId, sort: _sort, ...listOptions } = parsedQuery.data;
+    return NextResponse.json(await listLocalExpenses(user.id, listOptions));
   } catch (error) {
     return handleExpenseRouteError(error, "[LOCAL_EXPENSES_GET_ERROR]");
   }
@@ -130,5 +140,7 @@ function parseExpenseListQuery(request?: NextRequest) {
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
     type: searchParams.get("type") ?? undefined,
+    costCenterId: searchParams.get("costCenterId") ?? undefined,
+    sort: searchParams.get("sort") ?? undefined,
   });
 }

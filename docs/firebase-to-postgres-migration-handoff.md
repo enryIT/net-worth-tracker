@@ -61,8 +61,8 @@ acceptance is satisfied.
   - cost centers
   - internal transfers
   - investment operations
-- Added/updated client wrappers for budget, internal transfers, investment
-  operations where needed.
+- Added/updated client wrappers for budget, cost centers, internal transfers,
+  investment operations where needed.
 
 ### Dividends, Prices, Performance, Dashboard
 
@@ -154,6 +154,38 @@ git diff --check -- lib/services/goalService.ts lib/server/goals/localGoalDataSe
 ```
 
 Result: clean.
+
+```bash
+npm test -- --run __tests__/localExpenseService.test.ts __tests__/localExpensesRoutes.test.ts __tests__/localCostCenterService.test.ts __tests__/localCostCentersRoutes.test.ts __tests__/costCenterServiceClient.test.ts
+```
+
+Result: 5 test files, 37 tests passed.
+
+## Slice Notes - 2026-05-22 Cost Centers Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/costCenterService.ts` from Firebase client SDK calls to
+  local `/api/cost-centers` and `/api/expenses?costCenterId=...` calls while
+  preserving the legacy wrapper signatures used by UI components.
+- Added a cost-center-specific local expense list service path so cost-center
+  detail reads stay user-scoped and ordered by ascending expense date.
+- Extended the local expenses route query parser to delegate cost-center expense
+  reads to the new server service path.
+- Added client wrapper, local route, and local server-service regression tests.
+
+Verified:
+
+- Targeted cost center and expenses tests passed: 5 files, 37 tests.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services and shared/client types; rerun
+  the residual usage search before the next slice.
+- `npx tsc --noEmit --incremental false` passed.
+- `git diff --check` passed for touched files.
+- Residual Firebase usage search was rerun; runtime hits still remain outside
+  the cost-center wrapper slice.
 
 ## Known Residual Firebase Runtime Areas
 
