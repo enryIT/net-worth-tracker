@@ -296,6 +296,40 @@ Remaining:
 - Many Firebase runtime hits remain in other services and shared/client types;
   rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-22 Legacy Investment Operation Wrapper
+
+Changed:
+
+- Replaced `lib/services/investmentOperationService.ts` with a compatibility
+  shim that re-exports the existing local API-backed investment operation and
+  internal transfer client wrappers.
+- Removed the Firebase client SDK, Firestore transaction, and dashboard
+  invalidation imports from that active wrapper path so components importing the
+  legacy investment operation service now call local `/api/investment-operations`
+  and `/api/internal-transfers` routes.
+- Updated `__tests__/investmentOperationServiceClient.test.ts` to exercise the
+  legacy wrapper path directly and assert that it no longer imports Firebase
+  runtime modules.
+
+Verified:
+
+- Red test initially failed at module collection with Firebase runtime
+  initialization: `FirebaseError: Firebase: Error (auth/invalid-api-key).`
+- `npm test -- --run __tests__/investmentOperationServiceClient.test.ts`
+  passed: 1 file, 6 tests.
+- `npm test -- --run __tests__/investmentOperationServiceClient.test.ts __tests__/internalTransferServiceClient.test.ts __tests__/localInvestmentOperationService.test.ts __tests__/localInvestmentOperationsRoutes.test.ts __tests__/localInternalTransferService.test.ts __tests__/localInternalTransfersRoutes.test.ts __tests__/investmentOperationService.test.ts`
+  passed: 7 files, 42 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- `git diff --check -- lib/services/investmentOperationService.ts __tests__/investmentOperationServiceClient.test.ts docs/firebase-to-postgres-migration-handoff.md`
+  passed.
+- Residual Firebase usage search was rerun; runtime hits still remain outside
+  the legacy investment operation wrapper slice.
+
+Remaining:
+
+- Many Firebase runtime hits remain in other services and shared/client types;
+  rerun the residual usage search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

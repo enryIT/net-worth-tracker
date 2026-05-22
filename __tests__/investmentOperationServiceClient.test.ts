@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,11 +7,17 @@ import {
   getInvestmentOperations,
   getRealizedInvestmentSummary,
   updateInvestmentOperation,
-} from "@/lib/services/localInvestmentOperationService";
+} from "@/lib/services/investmentOperationService";
 
-describe("investment operation service API client", () => {
+describe("legacy investment operation service API client", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("does not import Firebase runtime modules", () => {
+    const source = readFileSync("lib/services/investmentOperationService.ts", "utf8");
+
+    expect(source).not.toMatch(/firebase\/firestore|lib\/firebase\/config/);
   });
 
   it("loads operations through the local API", async () => {
