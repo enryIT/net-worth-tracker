@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  AuthSessionError,
+  requireUserSession,
+} from '@/lib/server/auth/session';
 import {
   buildAssistantMonthContext,
   buildAssistantYearContext,
@@ -11,7 +10,8 @@ import {
   buildAssistantHistoryContext,
 } from '@/lib/services/assistantMonthContextService';
 import { getDefaultAssistantPreferences } from '@/lib/server/assistant/webSearchPolicy';
-import { getAssistantMemoryDocument } from '@/lib/server/assistant/store';
+import { getLocalAssistantMemoryDocument } from '@/lib/server/assistant/localAssistantMemoryService';
+import { getLocalSettings } from '@/lib/server/settings/localSettingsService';
 
 /**
  * GET /api/ai/assistant/context
@@ -31,22 +31,14 @@ import { getAssistantMemoryDocument } from '@/lib/server/assistant/store';
  */
 export async function GET(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
+    const user = await requireUserSession();
 
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
     const mode = searchParams.get('mode') ?? 'month_analysis';
-
-    const authError = getApiAuthErrorResponse(assertSameUser(decodedToken, userId));
-    if (authError) return authError;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
 
     // Load user preferences to honour includeDummySnapshots for test accounts.
     // Errors are non-fatal — fall back to safe defaults.
-    const memoryDoc = await getAssistantMemoryDocument(userId).catch(() => null);
+    const memoryDoc = await getLocalAssistantMemoryDocument(user.id).catch(() => null);
     const preferences = {
       ...getDefaultAssistantPreferences(),
       ...(memoryDoc?.preferences ?? {}),
@@ -56,13 +48,11 @@ export async function GET(request: NextRequest) {
     let bundle;
 
     if (mode === 'ytd_analysis') {
-      bundle = await buildAssistantYtdContext(userId, includeDummy);
+      bundle = await buildAssistantYtdContext(user.id, includeDummy);
     } else if (mode === 'history_analysis') {
-      // Read cashflowHistoryStartYear from settings; fall back to 5 years ago
-      const { adminDb } = await import('@/lib/firebase/admin');
-      const settingsSnap = await adminDb.collection('assetAllocationTargets').doc(userId).get();
-      const startYear = settingsSnap.data()?.cashflowHistoryStartYear ?? new Date().getFullYear() - 5;
-      bundle = await buildAssistantHistoryContext(userId, startYear, includeDummy);
+      const settings = await getLocalSettings(user.id);
+      const startYear = settings?.cashflowHistoryStartYear ?? new Date().getFullYear() - 5;
+      bundle = await buildAssistantHistoryContext(user.id, startYear, includeDummy);
     } else if (mode === 'year_analysis') {
       const yearParam = searchParams.get('year');
       if (!yearParam) {
@@ -72,7 +62,7 @@ export async function GET(request: NextRequest) {
       if (isNaN(year)) {
         return NextResponse.json({ error: 'year must be a valid integer' }, { status: 400 });
       }
-      bundle = await buildAssistantYearContext(userId, year, includeDummy);
+      bundle = await buildAssistantYearContext(user.id, year, includeDummy);
     } else {
       // Default: month_analysis
       const yearParam = searchParams.get('year');
@@ -91,13 +81,17 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      bundle = await buildAssistantMonthContext(userId, { year, month }, includeDummy);
+      bundle = await buildAssistantMonthContext(user.id, { year, month }, includeDummy);
     }
 
     return NextResponse.json({ bundle });
   } catch (error) {
-    const authError = getApiAuthErrorResponse(error);
-    if (authError) return authError;
+    if (error instanceof AuthSessionError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === 'UNAUTHENTICATED' ? 401 : 403 }
+      );
+    }
 
     console.error('[assistant/context] GET failed:', error);
     return NextResponse.json({ error: 'Errore interno del server' }, { status: 500 });

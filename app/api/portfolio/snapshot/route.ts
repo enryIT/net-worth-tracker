@@ -1,60 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { Timestamp } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebase/admin';
-import { Asset, MonthlySnapshot } from '@/types/assets';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
-  calculateAssetValue,
-  calculateTotalValue,
-  calculateLiquidNetWorth,
-  calculateIlliquidNetWorth,
-  calculateFIRENetWorth,
-} from '@/lib/services/assetService';
-import { calculateCurrentAllocation } from '@/lib/services/assetAllocationService';
-import { updateUserAssetPrices } from '@/lib/helpers/priceUpdater';
-import { buildOwnershipSnapshotBreakdown, getDefaultHouseholdConfig } from '@/lib/utils/householdUtils';
-import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
-import { invalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
-import type { HouseholdConfig } from '@/types/household';
+  assertWritableUser,
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
+import { createLocalAutomatedSnapshot } from "@/lib/server/snapshots/localAutomatedSnapshotService";
 
-const SNAPSHOTS_COLLECTION = 'monthly-snapshots';
-
-function buildAllocationPercentages(
-  byAssetClass: Record<string, number>,
-  totalNetWorth: number
-): Record<string, number> {
-  const result: Record<string, number> = {};
-  for (const assetClass of Object.keys(byAssetClass)) {
-    result[assetClass] = totalNetWorth > 0 ? (byAssetClass[assetClass] / totalNetWorth) * 100 : 0;
-  }
-  return result;
-}
-
-async function getHouseholdConfigForSnapshot(userId: string): Promise<HouseholdConfig> {
-  const fallback = getDefaultHouseholdConfig(userId);
-
-  try {
-    const snapshot = await adminDb.collection('householdConfigs').doc(userId).get();
-    if (!snapshot.exists) {
-      return fallback;
-    }
-
-    const data = snapshot.data() as Partial<HouseholdConfig>;
-    return {
-      ...fallback,
-      ...data,
-      userId,
-      participants: data.participants?.length ? data.participants : fallback.participants,
-      profiles: data.profiles?.length ? data.profiles : fallback.profiles,
-      attributionRules: data.attributionRules ?? [],
-    };
-  } catch {
-    return fallback;
-  }
-}
+const snapshotRequestSchema = z.object({
+  userId: z.string().min(1).optional(),
+  year: z.number().int().min(1900).max(2100).optional(),
+  month: z.number().int().min(1).max(12).optional(),
+  cronSecret: z.string().optional(),
+});
 
 /**
  * POST /api/portfolio/snapshot
@@ -83,7 +41,7 @@ async function getHouseholdConfigForSnapshot(userId: string): Promise<HouseholdC
  * Idempotency:
  *   - If snapshot exists for year/month: Updates (overwrites)
  *   - If new: Creates
- *   - Uses Firestore .set() (not .add()) for upsert behavior
+ *   - Uses the local snapshot upsert service for one record per month
  *
  * Hall of Fame Integration:
  *   - NOT called here (see lines 120-121)
@@ -97,186 +55,52 @@ async function getHouseholdConfigForSnapshot(userId: string): Promise<HouseholdC
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get user ID and optional year/month from request
-    const requestBody = await request.json();
-    const { userId, year, month, cronSecret } = requestBody;
+    const body: unknown = await request.json();
+    const parsedBody = snapshotRequestSchema.safeParse(body);
 
-    // Verify cron secret if provided (for scheduled jobs)
-    if (cronSecret && cronSecret !== process.env.CRON_SECRET) {
+    if (!parsedBody.success) {
       return NextResponse.json(
-        { error: 'Invalid cron secret' },
-        { status: 401 }
-      );
-    }
-
-    // Scheduled snapshots are authenticated with a shared secret because there is
-    // no end-user Firebase session involved. All interactive callers must present
-    // a Firebase ID token that matches the requested userId.
-    if (!cronSecret) {
-      const decodedToken = await requireFirebaseAuth(request);
-      assertSameUser(decodedToken, userId);
-    } else if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
+        { error: "Richiesta snapshot non valida.", issues: parsedBody.error.flatten() },
         { status: 400 }
       );
     }
 
-    // Attempt fresh price updates before snapshot
-    //
-    // Error handling strategy: Non-blocking, use stale prices if update fails
-    //
-    // Why continue on failure?
-    //   - Yahoo Finance API occasionally times out or rate-limits
-    //   - Assets already have lastPriceUpdate from previous successful fetches
-    //   - Better to have snapshot with slightly stale prices than no snapshot
-    //   - Monthly snapshots are meant for historical trends, not real-time tracking
-    //
-    // Alternative considered: Fail snapshot if prices fail
-    //   Rejected: Creates brittleness in automated monthly snapshots
-    //   Single API failure would break entire snapshot creation
-    console.log(`Updating prices for user ${userId}...`);
-    try {
-      const priceUpdateResult = await updateUserAssetPrices(userId);
-      console.log(`Price update result: ${priceUpdateResult.message}`);
-    } catch (error) {
-      console.error('Error updating prices:', error);
-      // Continue with existing prices (potentially stale)
+    const { cronSecret, month, userId, year } = parsedBody.data;
+
+    if (cronSecret) {
+      if (cronSecret !== process.env.CRON_SECRET) {
+        return NextResponse.json({ error: "Invalid cron secret" }, { status: 401 });
+      }
+
+      if (!userId) {
+        return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+      }
+
+      return NextResponse.json(
+        await createLocalAutomatedSnapshot(userId, { year, month })
+      );
     }
 
-    // Get all assets for the user using Firebase Admin SDK
-    const assetsRef = adminDb.collection('assets');
-    const assetsSnapshot = await assetsRef.where('userId', '==', userId).get();
+    const user = await requireUserSession();
+    assertWritableUser(user);
 
-    if (assetsSnapshot.empty) {
-      return NextResponse.json({
-        success: false,
-        message: 'No assets found for user',
-        snapshotId: null,
-      });
-    }
-
-    const assets: Asset[] = assetsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Asset[];
-
-    // Use Italy timezone for month/year calculation
-    //
-    // Critical for consistent snapshot timing:
-    //   - Server runs in UTC (Vercel default)
-    //   - Cron triggers at 00:00 UTC = 01:00 or 02:00 CET (depends on DST)
-    //   - Without timezone adjustment: Snapshot created for "yesterday" in Italy
-    //
-    // Example without adjustment:
-    //   Cron runs: 2024-03-01 00:30 UTC
-    //   UTC month: March (3)
-    //   Italy time: 2024-02-29 01:30 CET (still February!)
-    //   Result: Would create March snapshot before February ends in Italy
-    //
-    // getItalyMonthYear() ensures snapshots align with Italian investor's
-    // local calendar month boundaries
-    const { month: currentMonth, year: currentYear } = (await import('@/lib/utils/dateHelpers')).getItalyMonthYear();
-    const snapshotYear = year ?? currentYear;
-    const snapshotMonth = month ?? currentMonth;
-
-    const totalNetWorth = calculateTotalValue(assets);
-    const liquidNetWorth = calculateLiquidNetWorth(assets);
-    const illiquidNetWorth = calculateIlliquidNetWorth(assets);
-    const fireNetWorth = calculateFIRENetWorth(assets, false);
-    const allocation = calculateCurrentAllocation(assets);
-
-    // Convert absolute allocation values to percentages for historical charts.
-    // Why store both absolute and percentage:
-    //   - byAssetClass: absolute values for net worth calculations
-    //   - assetAllocation: percentages for allocation drift charts over time
-    // Kept percentages for backward compatibility (early versions stored only percentages).
-    const assetAllocation = buildAllocationPercentages(allocation.byAssetClass, totalNetWorth);
-    const householdConfig = await getHouseholdConfigForSnapshot(userId);
-    const ownershipBreakdown = buildOwnershipSnapshotBreakdown(
-      assets,
-      calculateAssetValue,
-      householdConfig,
-      new Date(snapshotYear, snapshotMonth - 1, 1)
+    return NextResponse.json(
+      await createLocalAutomatedSnapshot(user.id, { year, month })
     );
-
-    const snapshotId = `${userId}-${snapshotYear}-${snapshotMonth}`;
-
-    // Check if snapshot already exists
-    const existingSnapshotDocumentRef = adminDb
-      .collection(SNAPSHOTS_COLLECTION)
-      .doc(snapshotId);
-    const existingSnapshotDocument = await existingSnapshotDocumentRef.get();
-
-    const monthlySnapshotDocument: Omit<MonthlySnapshot, 'createdAt'> & {
-      createdAt: FirebaseFirestore.Timestamp;
-    } = {
-      userId,
-      year: snapshotYear,
-      month: snapshotMonth,
-      totalNetWorth,
-      liquidNetWorth,
-      illiquidNetWorth,
-      fireNetWorth,
-      byAssetClass: allocation.byAssetClass,
-      byAsset: ownershipBreakdown.byAsset,
-      byOwnershipProfile: ownershipBreakdown.byOwnershipProfile,
-      byParticipant: ownershipBreakdown.byParticipant,
-      assetAllocation,
-      createdAt: Timestamp.now(),
-    };
-
-    // Save snapshot
-    await existingSnapshotDocumentRef.set(monthlySnapshotDocument);
-    await invalidateDashboardOverviewSummaryServer(
-      userId,
-      existingSnapshotDocument.exists ? 'snapshot_overwritten' : 'snapshot_created'
-    );
-
-    // Hall of Fame Integration: Client-side trigger pattern
-    //
-    // Design Decision: Client calls updateHallOfFame after snapshot success
-    // See: app/dashboard/page.tsx createSnapshot function
-    //
-    // Why not update here?
-    //   - Client wants to show loading state during Hall of Fame calculation
-    //   - Allows UI to display success message before expensive ranking recalc
-    //   - Separates snapshot creation (fast) from ranking (slow, O(n²))
-    //
-    // Other update locations:
-    //   ✓ portfolio/snapshot/manual/route.ts: Server-side trigger
-    //   ✓ cron/monthly-snapshot/route.ts: Server-side trigger
-    //
-    // If adding new snapshot endpoints:
-    //   Consider whether client or server should trigger Hall of Fame update
-    //   based on whether UI needs to show progress feedback
-
-    return NextResponse.json({
-      success: true,
-      message: existingSnapshotDocument.exists
-        ? 'Snapshot aggiornato con successo'
-        : 'Snapshot creato con successo',
-      snapshotId,
-      data: {
-        year: snapshotYear,
-        month: snapshotMonth,
-        totalNetWorth,
-        liquidNetWorth,
-        assetsCount: assets.length,
-      },
-    });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
+    if (error instanceof AuthSessionError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
+      );
     }
 
-    console.error('Error creating snapshot:', error);
+    console.error("[LOCAL_AUTOMATED_SNAPSHOT_ROUTE_ERROR]", error);
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to create snapshot',
-        details: (error as Error).message
+        error: "Si e verificato un errore durante la creazione snapshot.",
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );

@@ -1,13 +1,56 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
-import { Timestamp } from 'firebase-admin/firestore';
-import { updateHallOfFame } from '@/lib/services/hallOfFameService.server';
-import { invalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  assertWritableUser,
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
+import { createLocalManualSnapshot } from "@/lib/server/snapshots/localManualSnapshotService";
+
+const numberRecordSchema = z.record(z.string(), z.number());
+
+const ownershipSplitSchema = z.object({
+  participantId: z.string().min(1),
+  participantName: z.string().min(1),
+  percentage: z.number(),
+});
+
+const ownershipProfileBreakdownSchema = z.object({
+  profileName: z.string().min(1),
+  totalValue: z.number(),
+});
+
+const participantBreakdownSchema = z.object({
+  participantName: z.string().min(1),
+  totalValue: z.number(),
+});
+
+const manualSnapshotAssetSchema = z.object({
+  assetId: z.string().min(1),
+  ticker: z.string().min(1),
+  name: z.string().min(1),
+  quantity: z.number(),
+  price: z.number(),
+  totalValue: z.number(),
+  ownershipProfileId: z.string().optional(),
+  ownershipProfileName: z.string().optional(),
+  ownershipSplits: z.array(ownershipSplitSchema).optional(),
+});
+
+const manualSnapshotSchema = z.object({
+  year: z.number().int().min(1900).max(2100),
+  month: z.number().int().min(1).max(12),
+  totalNetWorth: z.number(),
+  liquidNetWorth: z.number(),
+  illiquidNetWorth: z.number(),
+  fireNetWorth: z.number().optional(),
+  byAssetClass: numberRecordSchema,
+  byAsset: z.array(manualSnapshotAssetSchema).default([]),
+  byOwnershipProfile: z.record(z.string(), ownershipProfileBreakdownSchema).optional(),
+  byParticipant: z.record(z.string(), participantBreakdownSchema).optional(),
+  assetAllocation: numberRecordSchema,
+  note: z.string().trim().max(500).optional(),
+});
 
 /**
  * POST /api/portfolio/snapshot/manual
@@ -58,164 +101,33 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const body = await request.json();
-    const {
-      userId,
-      year,
-      month,
-      totalNetWorth,
-      liquidNetWorth,
-      illiquidNetWorth,
-      byAssetClass,
-      byAsset,
-      byOwnershipProfile,
-      byParticipant,
-      assetAllocation,
-    } = body;
+    const user = await requireUserSession();
+    assertWritableUser(user);
 
-    // ========== Required Field Validation ==========
-    //
-    // Manual snapshots require all data upfront (no automatic calculation)
-    // Validation order: Basic fields → Numeric fields → Object fields → Ranges
-    assertSameUser(decodedToken, userId);
+    const body: unknown = await request.json();
+    const parsedBody = manualSnapshotSchema.safeParse(body);
 
-    if (!year || !month) {
+    if (!parsedBody.success) {
       return NextResponse.json(
-        { error: 'year and month are required' },
+        { error: "Snapshot manuale non valido.", issues: parsedBody.error.flatten() },
         { status: 400 }
       );
     }
 
-    if (totalNetWorth === undefined || totalNetWorth === null) {
-      return NextResponse.json(
-        { error: 'totalNetWorth is required' },
-        { status: 400 }
-      );
-    }
-
-    if (liquidNetWorth === undefined || liquidNetWorth === null) {
-      return NextResponse.json(
-        { error: 'liquidNetWorth is required' },
-        { status: 400 }
-      );
-    }
-
-    if (illiquidNetWorth === undefined || illiquidNetWorth === null) {
-      return NextResponse.json(
-        { error: 'illiquidNetWorth is required' },
-        { status: 400 }
-      );
-    }
-
-    if (!byAssetClass || typeof byAssetClass !== 'object') {
-      return NextResponse.json(
-        { error: 'byAssetClass is required and must be an object' },
-        { status: 400 }
-      );
-    }
-
-    if (!assetAllocation || typeof assetAllocation !== 'object') {
-      return NextResponse.json(
-        { error: 'assetAllocation is required and must be an object' },
-        { status: 400 }
-      );
-    }
-
-    // ========== Range Validation ==========
-    //
-    // Year range validation: 1900-2100
-    //
-    // Why these bounds?
-    //   - 1900: Reasonable lower bound for historical financial data
-    //   - 2100: Future-proofing without allowing absurd values (year 9999)
-    //   - Prevents: Typos (202 instead of 2024), date parsing errors
-    //
-    // Edge case: Year 2100 will need updating
-    // TODO(2099-01-01): Extend upper bound to 2200
-    if (year < 1900 || year > 2100) {
-      return NextResponse.json(
-        { error: 'Invalid year' },
-        { status: 400 }
-      );
-    }
-
-    if (month < 1 || month > 12) {
-      return NextResponse.json(
-        { error: 'Invalid month (must be 1-12)' },
-        { status: 400 }
-      );
-    }
-
-    // Snapshot document ID format: "{userId}-{year}-{M}"
-    //
-    // Examples:
-    //   user123-2024-1
-    //   user123-2024-12
-    //
-    // Design considerations:
-    //   - Composite key enables:
-    //     - One snapshot per user per month (automatic upsert)
-    //     - Efficient queries by userId prefix
-    //   - Month NOT zero-padded: format is "2024-1" not "2024-01"
-    //   - Sorting uses year/month fields, not lexicographic ID comparison
-    //   - Alternative considered: Auto-generated IDs
-    //     Rejected: Would allow duplicate snapshots per month
-    const snapshotId = `${userId}-${year}-${month}`;
-
-    // Create snapshot object
-    const snapshot = {
-      userId,
-      year,
-      month,
-      totalNetWorth,
-      liquidNetWorth,
-      illiquidNetWorth,
-      byAssetClass,
-      byAsset: byAsset || [],
-      byOwnershipProfile: byOwnershipProfile || {},
-      byParticipant: byParticipant || {},
-      assetAllocation,
-      createdAt: Timestamp.now(),
-    };
-
-    // Save to Firestore
-    await adminDb.collection('monthly-snapshots').doc(snapshotId).set(snapshot);
-    await invalidateDashboardOverviewSummaryServer(userId, 'manual_snapshot_created');
-
-    // Update Hall of Fame rankings after snapshot creation
-    //
-    // Error handling: Non-critical failure (snapshot still succeeds)
-    //
-    // Rationale:
-    //   - Hall of Fame is a secondary feature (nice-to-have, not essential)
-    //   - Snapshot data is the critical operation (must succeed)
-    //   - Ranking errors (e.g., DB timeout) shouldn't block snapshot imports
-    //   - User can manually recalculate rankings later if needed
-    //
-    // This mirrors the error handling in cron/monthly-snapshot/route.ts
-    try {
-      await updateHallOfFame(userId);
-      console.log('Hall of Fame updated successfully after manual snapshot');
-    } catch (error) {
-      console.error('Error updating Hall of Fame:', error);
-      // Snapshot succeeds even if Hall of Fame update fails
-    }
-
-    return NextResponse.json({
-      success: true,
-      snapshotId,
-      message: 'Manual snapshot created successfully',
-    });
-  } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
-
-    console.error('Error creating manual snapshot:', error);
     return NextResponse.json(
-      { error: 'Failed to create manual snapshot' },
+      await createLocalManualSnapshot(user.id, parsedBody.data)
+    );
+  } catch (error) {
+    if (error instanceof AuthSessionError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
+      );
+    }
+
+    console.error("[LOCAL_MANUAL_SNAPSHOT_ROUTE_ERROR]", error);
+    return NextResponse.json(
+      { error: "Si e verificato un errore durante la creazione snapshot." },
       { status: 500 }
     );
   }

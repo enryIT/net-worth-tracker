@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase/firestore';
+import type { Timestamp } from 'firebase/firestore';
 
 // WARNING: If you add a type here, also update:
 // - DividendTable.tsx (type badge map)

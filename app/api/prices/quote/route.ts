@@ -1,81 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getQuote } from '@/lib/services/yahooFinanceService';
-import { convertToEur } from '@/lib/services/currencyConversionService';
-import { getApiAuthErrorResponse, requireFirebaseAuth } from '@/lib/server/apiAuth';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import {
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
+import { convertToEur } from "@/lib/services/currencyConversionService";
+import { getQuote } from "@/lib/services/yahooFinanceService";
 
-/**
- * GET /api/prices/quote
- *
- * Fetch real-time price quote for a single ticker from Yahoo Finance.
- * Also normalizes GBp (pence) to GBP and pre-converts the price to EUR
- * so the client can store currentPriceEur immediately at asset creation.
- *
- * Query Parameters:
- *   @param ticker - Stock/ETF ticker symbol (e.g., "AAPL", "VOO")
- *
- * Response:
- *   {
- *     ticker: string,
- *     price: number,        // normalized price (GBp → GBP)
- *     currency: string,     // normalized currency (GBp → GBP)
- *     currentPriceEur?: number  // price converted to EUR (omitted for EUR assets or on FX failure)
- *   }
- *
- * Related:
- *   - yahooFinanceService.ts: Quote fetching implementation
- *   - currencyConversionService.ts: Frankfurter FX conversion
- */
+const quoteQuerySchema = z.object({
+  ticker: z.string().trim().min(1),
+});
+
 export async function GET(request: NextRequest) {
   try {
-    await requireFirebaseAuth(request);
+    await requireUserSession();
 
-    const searchParams = request.nextUrl.searchParams;
-    const ticker = searchParams.get('ticker');
+    const parsedQuery = quoteQuerySchema.safeParse({
+      ticker: request.nextUrl.searchParams.get("ticker"),
+    });
 
-    if (!ticker) {
+    if (!parsedQuery.success) {
       return NextResponse.json(
-        { error: 'Ticker is required' },
+        {
+          error: "Ticker non valido.",
+          issues: parsedQuery.error.flatten(),
+        },
         { status: 400 }
       );
     }
 
-    const quote = await getQuote(ticker);
-
-    // Normalize GBp (pence) → GBP (pounds) for LSE tickers.
-    // Yahoo Finance returns prices in pence for UK-listed assets (e.g. SWDA.L: 4874 GBp = 48.74 GBP).
-    // Mirror the same normalization done in priceUpdater.ts.
-    const isGBp = quote.currency === 'GBp';
-    const normalizedPrice = isGBp && quote.price ? quote.price / 100 : quote.price;
-    const normalizedCurrency = isGBp ? 'GBP' : quote.currency;
-
+    const quote = await getQuote(parsedQuery.data.ticker);
+    const { price, currency } = normalizeQuotePrice(
+      quote.price,
+      quote.currency
+    );
     let currentPriceEur: number | undefined;
 
-    if (normalizedPrice && normalizedPrice > 0 && normalizedCurrency && normalizedCurrency.toUpperCase() !== 'EUR') {
+    if (price !== null && currency !== "EUR" && price > 0) {
       try {
-        currentPriceEur = await convertToEur(normalizedPrice, normalizedCurrency);
-      } catch (fxError) {
-        // FX failure is non-fatal: the client falls back to showing the native price.
-        // currentPriceEur will be populated on the next price-update run.
-        console.warn(`[/api/prices/quote] FX conversion failed for ${ticker} (${normalizedCurrency}→EUR):`, fxError);
+        currentPriceEur = await convertToEur(price, currency);
+      } catch (error) {
+        console.warn("[LOCAL_PRICE_QUOTE_FX_ERROR]", error);
       }
     }
 
     return NextResponse.json({
       ...quote,
-      price: normalizedPrice,
-      currency: normalizedCurrency,
+      price,
+      currency,
       ...(currentPriceEur !== undefined ? { currentPriceEur } : {}),
     });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
+    return handlePriceQuoteRouteError(error);
+  }
+}
 
-    console.error('Error fetching quote:', error);
+function normalizeQuotePrice(price: number | null, currency: string) {
+  if (price === null) {
+    return { price, currency };
+  }
+
+  if (currency === "GBp") {
+    return {
+      price: price / 100,
+      currency: "GBP",
+    };
+  }
+
+  return { price, currency };
+}
+
+function handlePriceQuoteRouteError(error: unknown) {
+  if (error instanceof AuthSessionError) {
     return NextResponse.json(
-      { error: 'Failed to fetch quote' },
-      { status: 500 }
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
     );
   }
+
+  console.error("[LOCAL_PRICE_QUOTE_ERROR]", error);
+  return NextResponse.json(
+    { error: "Si e verificato un errore durante il recupero quotazione." },
+    { status: 500 }
+  );
 }

@@ -17,7 +17,7 @@ import {
   createInternalTransfer,
   deleteInternalTransfer,
   updateInternalTransfer,
-} from '@/lib/services/investmentOperationService';
+} from '@/lib/services/internalTransferService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';

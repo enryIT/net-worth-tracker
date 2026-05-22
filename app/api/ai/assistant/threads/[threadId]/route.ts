@@ -1,77 +1,65 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
 import {
-  deleteAssistantThread,
-  getAssistantThreadDetail,
+  deleteLocalAssistantThread,
+  getLocalAssistantThreadDetail,
   isAssistantStoreError,
-} from '@/lib/server/assistant/store';
+} from "@/lib/server/assistant/localAssistantThreadService";
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ threadId: string }> }
 ) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const userId = request.nextUrl.searchParams.get('userId');
-
-    assertSameUser(decodedToken, userId);
-
+    const user = await requireUserSession();
     const { threadId } = await params;
-    const detail = await getAssistantThreadDetail(threadId, userId as string);
-
-    return NextResponse.json(detail);
-  } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
-
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/threads/[threadId]] GET error:', error);
     return NextResponse.json(
-      { error: 'Impossibile recuperare il thread richiesto' },
-      { status: 500 }
+      await getLocalAssistantThreadDetail(threadId, user.id)
+    );
+  } catch (error) {
+    return handleThreadDetailRouteError(
+      error,
+      "[LOCAL_ASSISTANT_THREAD_DETAIL_GET_ERROR]"
     );
   }
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ threadId: string }> }
 ) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const userId = request.nextUrl.searchParams.get('userId');
-
-    assertSameUser(decodedToken, userId);
-
+    const user = await requireUserSession();
     const { threadId } = await params;
-
-    // Ownership is verified inside deleteAssistantThread — throws 403 if mismatch
-    await deleteAssistantThread(threadId, userId as string);
+    await deleteLocalAssistantThread(threadId, user.id);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
-
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/threads/[threadId]] DELETE error:', error);
-    return NextResponse.json(
-      { error: 'Impossibile eliminare il thread richiesto' },
-      { status: 500 }
+    return handleThreadDetailRouteError(
+      error,
+      "[LOCAL_ASSISTANT_THREAD_DETAIL_DELETE_ERROR]"
     );
   }
+}
+
+function handleThreadDetailRouteError(error: unknown, logMessage: string) {
+  if (error instanceof AuthSessionError) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
+    );
+  }
+
+  if (isAssistantStoreError(error)) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  console.error(logMessage, error);
+  return NextResponse.json(
+    { error: "Impossibile gestire il thread richiesto" },
+    { status: 500 }
+  );
 }

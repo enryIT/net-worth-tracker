@@ -1,83 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { syncDividendExpenses } from '@/lib/services/dividendIncomeService';
-import { Dividend } from '@/types/dividend';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  assertWritableUser,
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
+import { syncLocalDividendExpenses } from "@/lib/server/dividends/localDividendExpenseSyncService";
 
-/**
- * POST /api/dividends/sync-expenses
- *
- * Bulk synchronize dividend entries with expense entries
- *
- * Use Case:
- *   - User enables dividend income tracking after creating dividends
- *   - User changes dividend income category settings
- *   - Manual reconciliation of dividend-expense linkage
- *
- * Request Body:
- *   {
- *     userId: string,
- *     dividends: Dividend[],          // Dividends to process
- *     categoryId: string,             // Expense category to use
- *     categoryName: string,
- *     subCategoryId?: string,         // Optional
- *     subCategoryName?: string        // Optional
- *   }
- *
- * Response:
- *   {
- *     success: boolean,
- *     result: {
- *       created: number,    // New expenses created
- *       updated: number,    // Existing expenses updated
- *       skipped: number     // Already synced
- *     }
- *   }
- *
- * Related:
- *   - dividendIncomeService.ts: Sync implementation
- */
+const legacyDividendSchema = z.object({
+  id: z.string().min(1),
+}).passthrough();
+
+const syncDividendExpensesSchema = z.object({
+  dividends: z.array(legacyDividendSchema).optional(),
+  categoryId: z.string().min(1),
+  categoryName: z.string().min(1),
+  subCategoryId: z.string().min(1).optional(),
+  subCategoryName: z.string().min(1).optional(),
+});
+
 export async function POST(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const body = await request.json();
-    const { userId, dividends, categoryId, categoryName, subCategoryId, subCategoryName } = body;
+    const user = await requireUserSession();
+    assertWritableUser(user);
 
-    assertSameUser(decodedToken, userId);
+    const body: unknown = await request.json();
+    const parsedBody = syncDividendExpensesSchema.safeParse(body);
 
-    if (!dividends || !categoryId || !categoryName) {
+    if (!parsedBody.success) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: "Sincronizzazione dividendi non valida.", issues: parsedBody.error.flatten() },
         { status: 400 }
       );
     }
 
-    const result = await syncDividendExpenses(
-      userId,
-      dividends as Dividend[],
-      categoryId,
-      categoryName,
-      subCategoryId,
-      subCategoryName
-    );
+    const result = await syncLocalDividendExpenses(user.id, {
+      dividendIds: parsedBody.data.dividends?.map((dividend) => dividend.id),
+      categoryId: parsedBody.data.categoryId,
+      categoryName: parsedBody.data.categoryName,
+      subCategoryId: parsedBody.data.subCategoryId,
+      subCategoryName: parsedBody.data.subCategoryName,
+    });
 
     return NextResponse.json({
       success: true,
       result,
     });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
+    return handleDividendExpenseSyncRouteError(error);
+  }
+}
 
-    console.error('Error in sync-expenses API:', error);
+function handleDividendExpenseSyncRouteError(error: unknown) {
+  if (error instanceof AuthSessionError) {
     return NextResponse.json(
-      { error: 'Failed to sync dividend expenses' },
-      { status: 500 }
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
     );
   }
+
+  console.error("[LOCAL_DIVIDEND_EXPENSE_SYNC_ERROR]", error);
+  return NextResponse.json(
+    { error: "Si e verificato un errore durante la sincronizzazione dividendi." },
+    { status: 500 }
+  );
 }

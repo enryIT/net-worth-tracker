@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query/queryKeys';
 import {
-  getInternalTransfers,
   getInvestmentOperations,
   getRealizedInvestmentSummary,
-} from '@/lib/services/investmentOperationService';
+} from '@/lib/services/localInvestmentOperationService';
+import { getInternalTransfers } from '@/lib/services/internalTransferService';
 
 export function useInvestmentOperations(userId: string | undefined) {
   return useQuery({

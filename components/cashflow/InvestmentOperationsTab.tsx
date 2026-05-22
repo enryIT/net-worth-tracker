@@ -17,7 +17,7 @@ import {
   createInvestmentOperation,
   deleteInvestmentOperation,
   updateInvestmentOperation,
-} from '@/lib/services/investmentOperationService';
+} from '@/lib/services/localInvestmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';

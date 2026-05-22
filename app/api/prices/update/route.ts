@@ -1,58 +1,33 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { updateUserAssetPrices } from '@/lib/helpers/priceUpdater';
+import { NextRequest, NextResponse } from "next/server";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
-import { invalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
+  assertWritableUser,
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
+import { updateLocalUserAssetPrices } from "@/lib/server/prices/localPriceUpdateService";
 
-/**
- * POST /api/prices/update
- *
- * Update current prices for all user assets from Yahoo Finance
- *
- * Request Body:
- *   {
- *     userId: string  // Required
- *   }
- *
- * Response:
- *   {
- *     success: boolean,
- *     message: string,
- *     updatedCount: number,
- *     failedTickers: string[]
- *   }
- *
- * Related:
- *   - priceUpdater.ts: Price fetching implementation
- *   - yahooFinanceService.ts: API integration
- */
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    // Get user ID from request
-    const body = await request.json();
-    const { userId } = body;
+    const user = await requireUserSession();
+    assertWritableUser(user);
 
-    assertSameUser(decodedToken, userId);
-
-    // Update prices using the shared helper function
-    const result = await updateUserAssetPrices(userId);
-    await invalidateDashboardOverviewSummaryServer(userId, 'asset_prices_updated');
-
-    return NextResponse.json(result);
+    return NextResponse.json(await updateLocalUserAssetPrices(user.id));
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
+    return handlePriceUpdateRouteError(error);
+  }
+}
 
-    console.error('Error updating prices:', error);
+function handlePriceUpdateRouteError(error: unknown) {
+  if (error instanceof AuthSessionError) {
     return NextResponse.json(
-      { error: 'Failed to update prices', details: (error as Error).message },
-      { status: 500 }
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
     );
   }
+
+  console.error("[LOCAL_PRICE_UPDATE_ERROR]", error);
+  return NextResponse.json(
+    { error: "Si e verificato un errore durante l'aggiornamento prezzi." },
+    { status: 500 }
+  );
 }

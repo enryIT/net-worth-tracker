@@ -1,71 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
 import {
-  createAssistantThread,
+  createLocalAssistantThread,
   isAssistantStoreError,
-  listAssistantThreads,
-} from '@/lib/server/assistant/store';
-import { AssistantCreateThreadInput } from '@/types/assistant';
+  listLocalAssistantThreads,
+} from "@/lib/server/assistant/localAssistantThreadService";
 
-export async function GET(request: NextRequest) {
+const assistantModeSchema = z.enum([
+  "month_analysis",
+  "year_analysis",
+  "ytd_analysis",
+  "history_analysis",
+  "quarter_analysis",
+  "chat",
+]);
+
+const monthSelectorSchema = z.object({
+  year: z.number().int(),
+  month: z.number().int().min(-2).max(12),
+});
+
+const createThreadSchema = z.object({
+  mode: assistantModeSchema.default("chat"),
+  pinnedMonth: monthSelectorSchema.nullish(),
+  pinnedYear: z.number().int().nullable().optional(),
+});
+
+export async function GET(_request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const userId = request.nextUrl.searchParams.get('userId');
-
-    assertSameUser(decodedToken, userId);
-
-    const threads = await listAssistantThreads(userId as string);
+    const user = await requireUserSession();
+    const threads = await listLocalAssistantThreads(user.id);
     return NextResponse.json({ threads });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
-
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/threads] GET error:', error);
-    return NextResponse.json(
-      { error: 'Impossibile recuperare i thread dell’assistente' },
-      { status: 500 }
-    );
+    return handleThreadRouteError(error, "[LOCAL_ASSISTANT_THREADS_GET_ERROR]");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const body = (await request.json()) as AssistantCreateThreadInput;
+    const user = await requireUserSession();
+    const body: unknown = await request.json();
+    const parsedBody = createThreadSchema.safeParse(body);
 
-    assertSameUser(decodedToken, body.userId);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: "Thread assistente non valido.", issues: parsedBody.error.flatten() },
+        { status: 400 }
+      );
+    }
 
-    const thread = await createAssistantThread({
-      userId: body.userId,
-      mode: body.mode ?? 'chat',
-      pinnedMonth: body.pinnedMonth ?? null,
+    const thread = await createLocalAssistantThread({
+      userId: user.id,
+      mode: parsedBody.data.mode,
+      pinnedMonth: parsedBody.data.pinnedMonth ?? null,
+      pinnedYear: parsedBody.data.pinnedYear ?? null,
     });
 
     return NextResponse.json({ thread });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
+    return handleThreadRouteError(error, "[LOCAL_ASSISTANT_THREADS_POST_ERROR]");
+  }
+}
 
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/threads] POST error:', error);
+function handleThreadRouteError(error: unknown, logMessage: string) {
+  if (error instanceof AuthSessionError) {
     return NextResponse.json(
-      { error: 'Impossibile creare il thread dell’assistente' },
-      { status: 500 }
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
     );
   }
+
+  if (isAssistantStoreError(error)) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  console.error(logMessage, error);
+  return NextResponse.json(
+    { error: "Impossibile gestire i thread dell'assistente" },
+    { status: 500 }
+  );
 }

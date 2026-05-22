@@ -1,156 +1,94 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
-import { Timestamp } from 'firebase-admin/firestore';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
-import { invalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
+  AuthSessionError,
+  assertWritableUser,
+  requireUserSession,
+} from "@/lib/server/auth/session";
+import {
+  deleteLocalAsset,
+  updateLocalAsset,
+} from "@/lib/server/assets/localAssetService";
 
-/**
- * DELETE /api/assets/[assetId]
- *
- * Delete asset with cascade cleanup of related data
- *
- * Cascade Logic:
- *   - Asset document: Deleted
- *   - Future dividends (exDate > today): Deleted
- *   - Historical dividends (exDate <= today): Preserved
- *   - Linked expenses: Preserved (user's cashflow history)
- *
- * Why preserve historical data?
- *   - User needs historical dividend/expense records for taxes
- *   - Asset deletion represents "I no longer own this" not "this never existed"
- *   - Past cashflow impacts (expenses) should remain in financial history
- *
- * Request Body:
- *   {
- *     userId: string  // Required for ownership verification
- *   }
- *
- * URL Parameters:
- *   @param assetId - Asset document ID to delete
- *
- * Response:
- *   {
- *     success: boolean,
- *     message: string,
- *     deletedFutureDividends: number  // Count of future dividends removed
- *   }
- *
- * Security:
- *   - Uses Admin SDK (bypasses security rules)
- *   - Manual asset ownership verification required
- *
- * Related:
- *   - dividends/[dividendId]/route.ts: Delete individual dividends
- *   - assetService.ts: Asset management logic
- */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ assetId: string }> }
-) {
+const assetFormSchema = z.object({
+  ticker: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  type: z.enum([
+    "stock",
+    "etf",
+    "bond",
+    "crypto",
+    "commodity",
+    "cash",
+    "realestate",
+    "pensionfund",
+  ]),
+  assetClass: z.enum(["equity", "bonds", "crypto", "realestate", "cash", "commodity"]),
+  subCategory: z.string().trim().optional(),
+  currency: z.string().trim().min(3).max(3),
+  quantity: z.number().nonnegative(),
+  currentPrice: z.number().nonnegative(),
+  currentPriceEur: z.number().nonnegative().optional(),
+  autoUpdatePrice: z.boolean().optional(),
+});
+
+type RouteContext = {
+  params: Promise<{ assetId: string }>;
+};
+
+export async function PUT(request: NextRequest, context: RouteContext) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const { assetId } = await params;
+    const user = await requireUserSession();
+    assertWritableUser(user);
 
-    // Get userId from request body
     const body = await request.json();
-    const { userId } = body;
-    assertSameUser(decodedToken, userId);
+    const assetData = assetFormSchema.parse(body);
+    const { assetId } = await context.params;
+    const asset = await updateLocalAsset(user.id, assetId, assetData);
 
-    // Verify asset exists and belongs to user
-    const assetDoc = await adminDb.collection('assets').doc(assetId).get();
-
-    if (!assetDoc.exists) {
-      return NextResponse.json(
-        { error: 'Asset not found' },
-        { status: 404 }
-      );
+    if (!asset) {
+      return NextResponse.json({ error: "Asset non trovato." }, { status: 404 });
     }
 
-    const asset = assetDoc.data();
-    if (asset?.userId !== userId) {
-      return NextResponse.json(
-        { error: 'Asset does not belong to user' },
-        { status: 403 }
-      );
-    }
-
-    // Future dividends deletion strategy: Delete > today, preserve <= today
-    //
-    // Calculate today at midnight for clean date-only comparison
-    // (Firestore Timestamp includes time component, need consistent cutoff)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayTimestamp = Timestamp.fromDate(today);
-
-    // Query FUTURE dividends (exDate > today)
-    //
-    // Why only future?
-    //   - Historical dividends (exDate <= today): Already paid, part of financial history
-    //   - User may need for tax records, portfolio performance calculations
-    //   - Future dividends: Speculative, no longer relevant if asset sold
-    //
-    // Example: User sells AAPL on 2024-06-15
-    //   - Dividends with exDate <= 2024-06-15: Keep (user was eligible)
-    //   - Dividends with exDate > 2024-06-15: Delete (user no longer owns shares)
-    //
-    // Note: We use exDate (not paymentDate) because exDate determines eligibility
-    const dividendsSnapshot = await adminDb
-      .collection('dividends')
-      .where('assetId', '==', assetId)
-      .where('exDate', '>', todayTimestamp)
-      .get();
-
-    // Atomic batch deletion: All-or-nothing transaction
-    //
-    // Why batch instead of sequential deletes?
-    //   - Atomicity: If asset deletion fails, dividends won't be orphaned
-    //   - Performance: Single network round-trip for multiple deletes
-    //   - Consistency: Avoids race conditions (concurrent reads see consistent state)
-    //
-    // Firestore batch limitations:
-    //   - Max 500 operations per batch
-    //   - Not a concern here (users rarely have 500+ future dividends)
-    //   - If needed in future: Implement batch chunking
-    //
-    // Transaction order:
-    //   1. Add all dividend deletes to batch
-    //   2. Add asset delete to batch
-    //   3. Commit atomically (all succeed or all fail)
-    const batch = adminDb.batch();
-
-    // Delete future dividends
-    dividendsSnapshot.docs.forEach(dividendDoc => {
-      batch.delete(dividendDoc.ref);
-    });
-
-    // Delete the asset
-    batch.delete(assetDoc.ref);
-
-    // Commit atomically
-    await batch.commit();
-    await invalidateDashboardOverviewSummaryServer(userId, 'asset_deleted');
-
-    console.log(`Asset ${assetId} deleted with ${dividendsSnapshot.size} future dividends removed`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Asset deleted successfully',
-      deletedFutureDividends: dividendsSnapshot.size,
-    });
+    return NextResponse.json(asset);
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
+    return handleAssetRouteError(error, "Error updating local asset:");
+  }
+}
+
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  try {
+    const user = await requireUserSession();
+    assertWritableUser(user);
+
+    const { assetId } = await context.params;
+    const deleted = await deleteLocalAsset(user.id, assetId);
+
+    if (!deleted) {
+      return NextResponse.json({ error: "Asset non trovato." }, { status: 404 });
     }
 
-    console.error('Error deleting asset:', error);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return handleAssetRouteError(error, "Error deleting local asset:");
+  }
+}
+
+function handleAssetRouteError(error: unknown, logMessage: string) {
+  if (error instanceof AuthSessionError) {
     return NextResponse.json(
-      { error: 'Failed to delete asset', details: (error as Error).message },
-      { status: 500 }
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
     );
   }
+
+  if (error instanceof z.ZodError) {
+    return NextResponse.json(
+      { error: "Dati asset non validi.", issues: error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  console.error(logMessage, error);
+  return NextResponse.json({ error: "Errore asset." }, { status: 500 });
 }

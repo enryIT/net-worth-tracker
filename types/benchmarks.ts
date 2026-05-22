@@ -1,5 +1,3 @@
-import { Timestamp } from 'firebase-admin/firestore';
-
 export interface BenchmarkComponent {
   ticker: string;
   weight: number; // 0.0 to 1.0, must sum to 1
@@ -27,11 +25,9 @@ export interface BenchmarkReturnsResponse {
   cachedAt: string; // ISO string
 }
 
-// Firestore cache document stored in benchmark-cache/{benchmarkId}.
-// Writable only via Admin SDK; readable by any authenticated user.
 export interface BenchmarkCacheDoc {
   benchmarkId: string;
-  cachedAt: Timestamp;
+  cachedAt: Date;
   // Full history from earliest available ETF data through latest available month.
   // Client filters to the selected period date range.
   monthlyReturns: BenchmarkMonthlyReturn[];

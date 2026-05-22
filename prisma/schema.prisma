@@ -1,0 +1,582 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum LoginEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  TOTP_CHALLENGE
+  RECOVERY_CODE_USED
+}
+
+enum AuditEventAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+  EXPORT
+  LOGIN
+  LOGOUT
+  SECURITY
+}
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique
+  emailVerified    DateTime?
+  name             String?
+  image            String?
+  role             UserRole  @default(USER)
+  isDemo           Boolean   @default(false)
+  registrationsKey String?
+  legacyFirebaseId String?   @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  passwordCredential  PasswordCredential?
+  totpCredential      TotpCredential?
+  recoveryCodes       RecoveryCode[]
+  loginEvents         LoginEvent[]
+  auditEvents         AuditEvent[]
+  preference          UserPreference?
+  setting             UserSetting?
+  assets              Asset[]
+  monthlySnapshots    MonthlySnapshot[]
+  expenseCategories   ExpenseCategory[]
+  expenses            Expense[]
+  costCenters         CostCenter[]
+  budgetConfig        BudgetConfig?
+  internalTransfers   InternalTransfer[]
+  investmentOperations InvestmentOperation[]
+  dividends           Dividend[]
+  dashboardOverviewSummary DashboardOverviewSummary?
+  hallOfFame          HallOfFame?
+  assistantThreads    AssistantThread[]
+  assistantMessages   AssistantMessage[]
+  assistantMemoryItems AssistantMemoryItem[]
+  assistantMemorySuggestions AssistantMemorySuggestion[]
+
+  @@index([email])
+  @@index([legacyFirebaseId])
+}
+
+model Asset {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  ticker           String
+  name             String
+  type             String
+  assetClass       String
+  subCategory      String?
+  currency         String
+  quantity         Float
+  currentPrice     Float
+  currentPriceEur  Float?
+  metadata         Json     @default("{}")
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, assetClass, name])
+  @@index([userId, ticker])
+}
+
+model BenchmarkReturnCache {
+  benchmarkId    String   @id
+  monthlyReturns Json     @default("[]")
+  cachedAt       DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model FxRateCache {
+  key          String   @id
+  monthlyRates Json     @default("[]")
+  cachedAt     DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DashboardOverviewSummary {
+  id                     String   @id @default(uuid()) @db.Uuid
+  userId                 String   @unique @db.Uuid
+  payload                Json?
+  sourceVersion          Int
+  computedAt             DateTime?
+  invalidatedAt          DateTime?
+  lastInvalidationReason String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+model HallOfFame {
+  id                              String   @id @default(uuid()) @db.Uuid
+  userId                          String   @unique @db.Uuid
+  notes                           Json     @default("[]")
+  bestMonthsByNetWorthGrowth      Json     @default("[]")
+  bestMonthsByIncome              Json     @default("[]")
+  worstMonthsByNetWorthDecline    Json     @default("[]")
+  worstMonthsByExpenses           Json     @default("[]")
+  bestYearsByNetWorthGrowth       Json     @default("[]")
+  bestYearsByIncome               Json     @default("[]")
+  worstYearsByNetWorthDecline     Json     @default("[]")
+  worstYearsByExpenses            Json     @default("[]")
+  createdAt                       DateTime @default(now())
+  updatedAt                       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+model MonthlySnapshot {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  year               Int
+  month              Int
+  isDummy            Boolean  @default(false)
+  totalNetWorth      Float
+  liquidNetWorth     Float
+  illiquidNetWorth   Float
+  fireNetWorth       Float?
+  byAssetClass       Json
+  byAsset            Json     @default("[]")
+  byOwnershipProfile Json     @default("{}")
+  byParticipant      Json     @default("{}")
+  assetAllocation    Json
+  note               String?
+  legacyFirebaseId   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, year, month])
+}
+
+model ExpenseCategory {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  name             String
+  type             String
+  color            String?
+  icon             String?
+  subCategories    Json     @default("[]")
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, type, name])
+}
+
+model Expense {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  type             String
+  categoryId       String   @db.Uuid
+  categoryName     String
+  subCategoryId    String?
+  subCategoryName  String?
+  amount           Float
+  currency         String
+  date             DateTime
+  notes            String?
+  link             String?
+  costCenterId     String?  @db.Uuid
+  costCenterName   String?
+  metadata         Json     @default("{}")
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, date])
+  @@index([userId, type, date])
+  @@index([userId, categoryId, date])
+  @@index([userId, costCenterId, date])
+}
+
+model CostCenter {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  name             String
+  description      String?
+  color            String?
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, createdAt])
+}
+
+model BudgetConfig {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @db.Uuid
+  items            Json     @default("[]")
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, legacyFirebaseId])
+}
+
+model InternalTransfer {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  fromCashAssetId    String   @db.Uuid
+  fromCashAssetName  String
+  toCashAssetId      String   @db.Uuid
+  toCashAssetName    String
+  amount             Float
+  currency           String
+  date               DateTime
+  fees               Float?
+  purpose            String?
+  notes              String?
+  linkedExpenseId    String?
+  legacyFirebaseId   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, date])
+  @@index([userId, fromCashAssetId, date])
+  @@index([userId, toCashAssetId, date])
+}
+
+model InvestmentOperation {
+  id                       String   @id @default(uuid()) @db.Uuid
+  userId                   String   @db.Uuid
+  assetId                  String   @db.Uuid
+  assetName                String
+  assetTicker              String
+  type                     String
+  date                     DateTime
+  quantity                 Float
+  pricePerUnit             Float
+  grossAmount              Float
+  fees                     Float
+  taxes                    Float
+  currency                 String
+  cashAssetId              String?  @db.Uuid
+  cashAssetName            String?
+  linkedExpenseId          String?
+  notes                    String?
+  previousQuantity         Float
+  previousAverageCost      Float?
+  resultingQuantity        Float
+  resultingAverageCost     Float?
+  realizedGain             Float?
+  realizedGainTax          Float?
+  netCashEffect            Float
+  legacyFirebaseId         String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, date])
+  @@index([userId, assetId, date])
+  @@index([userId, type, date])
+}
+
+model Dividend {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  assetId          String   @db.Uuid
+  assetTicker      String
+  assetName        String
+  assetIsin        String?
+  exDate           DateTime
+  paymentDate      DateTime
+  dividendPerShare Float
+  quantity         Float
+  grossAmount      Float
+  taxAmount        Float
+  netAmount        Float
+  currency         String
+  dividendType     String
+  notes            String?
+  isAutoGenerated  Boolean  @default(false)
+  expenseId        String?
+  grossAmountEur   Float?
+  taxAmountEur     Float?
+  netAmountEur     Float?
+  exchangeRate     Float?
+  costPerShare     Float?
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, paymentDate])
+  @@index([userId, assetId, paymentDate])
+  @@index([userId, dividendType, paymentDate])
+}
+
+model UserPreference {
+  userId     String   @id @db.Uuid
+  colorTheme String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserSetting {
+  userId    String   @id @db.Uuid
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AssistantThread {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  title              String
+  mode               String
+  pinnedMonth        Json?
+  pinnedYear         Int?
+  lastMessagePreview String   @default("")
+  messageCount       Int      @default(0)
+  legacyFirebaseId   String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages AssistantMessage[]
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, updatedAt])
+  @@index([userId, mode, updatedAt])
+}
+
+model AssistantMessage {
+  id               String   @id @default(uuid()) @db.Uuid
+  threadId         String   @db.Uuid
+  userId           String   @db.Uuid
+  role             String
+  content          String   @db.Text
+  mode             String
+  monthContext     Json?
+  webSearchUsed    Boolean  @default(false)
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+
+  thread AssistantThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([threadId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AssistantMemoryItem {
+  id                   String   @id
+  userId               String   @db.Uuid
+  category             String
+  text                 String   @db.Text
+  structuredGoal       Json?
+  sourceThreadId       String?
+  sourceMessageId      String?
+  status               String
+  completedAt          DateTime?
+  derivedFromContext   Boolean?
+  evidenceSummary      String?  @db.Text
+  lastEvaluationAt     DateTime?
+  lastEvaluationResult Json?
+  legacyFirebaseId     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  suggestions AssistantMemorySuggestion[]
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, status, createdAt])
+  @@index([userId, category, status])
+}
+
+model AssistantMemorySuggestion {
+  id               String   @id
+  userId           String   @db.Uuid
+  itemId           String
+  type             String
+  status           String
+  evidenceSummary  String   @db.Text
+  evaluation       Json
+  legacyFirebaseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item AssistantMemoryItem @relation(fields: [itemId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@unique([id, userId])
+  @@unique([userId, legacyFirebaseId])
+  @@index([userId, status, createdAt])
+  @@index([userId, itemId])
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique
+  userId       String   @db.Uuid
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordCredential {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @db.Uuid
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TotpCredential {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @unique @db.Uuid
+  encryptedSecret String
+  confirmedAt     DateTime?
+  disabledAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+}
+
+model LoginEvent {
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String?        @db.Uuid
+  email     String?
+  type      LoginEventType
+  ipAddress String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+  @@index([type, createdAt])
+}
+
+model AuditEvent {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String?          @db.Uuid
+  actorUserId String?         @db.Uuid
+  action     AuditEventAction
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime         @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

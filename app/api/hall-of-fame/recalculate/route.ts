@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateHallOfFame } from '@/lib/services/hallOfFameService.server';
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  assertWritableUser,
+  AuthSessionError,
+  requireUserSession,
+} from '@/lib/server/auth/session';
+import { updateLocalHallOfFame } from '@/lib/server/hall-of-fame/localHallOfFameService';
 
 /**
  * POST /api/hall-of-fame/recalculate
@@ -33,28 +33,26 @@ import {
  */
 export async function POST(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const body = await request.json();
-    const { userId } = body;
+    const user = await requireUserSession();
+    assertWritableUser(user);
 
-    assertSameUser(decodedToken, userId);
-
-    // Recalculate Hall of Fame
-    await updateHallOfFame(userId);
+    await updateLocalHallOfFame(user.id);
 
     return NextResponse.json({
       success: true,
-      message: 'Hall of Fame recalculated successfully',
+      message: 'Hall of Fame ricalcolata correttamente.',
     });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
+    if (error instanceof AuthSessionError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === 'UNAUTHENTICATED' ? 401 : 403 }
+      );
     }
 
     console.error('Error recalculating Hall of Fame:', error);
     return NextResponse.json(
-      { error: 'Failed to recalculate Hall of Fame' },
+      { error: 'Si e verificato un errore durante il ricalcolo Hall of Fame.' },
       { status: 500 }
     );
   }

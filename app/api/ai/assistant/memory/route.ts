@@ -1,201 +1,228 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import {
-  assertSameUser,
-  getApiAuthErrorResponse,
-  requireFirebaseAuth,
-} from '@/lib/server/apiAuth';
+  AuthSessionError,
+  requireUserSession,
+} from "@/lib/server/auth/session";
 import {
-  deleteAssistantMemoryDocument,
-  getAssistantMemoryDocument,
+  deleteLocalAssistantMemoryDocument,
+  getLocalAssistantMemoryDocument,
   isAssistantStoreError,
-  setAssistantGoalEvaluation,
-  updateAssistantMemoryDocument,
-} from '@/lib/server/assistant/store';
-import {
-  AssistantMemoryItem,
-  AssistantMemorySuggestion,
-  AssistantPreferences,
-} from '@/types/assistant';
+  setLocalAssistantGoalEvaluation,
+  updateLocalAssistantMemoryDocument,
+} from "@/lib/server/assistant/localAssistantMemoryService";
+import type {
+  AssistantGoalEvaluationResult,
+  AssistantStructuredGoal,
+} from "@/types/assistant";
 
-export async function GET(request: NextRequest) {
+const assistantPreferencesSchema = z.object({
+  responseStyle: z.enum(["balanced", "concise", "deep"]).optional(),
+  includeMacroContext: z.boolean().optional(),
+  memoryEnabled: z.boolean().optional(),
+  includeDummySnapshots: z.boolean().optional(),
+  householdScopeLabel: z.string().optional(),
+});
+
+const memoryItemSchema = z.object({
+  id: z.string().min(1),
+  category: z.enum(["goal", "preference", "risk", "fact"]),
+  text: z.string().min(1),
+  structuredGoal: z.custom<AssistantStructuredGoal>().optional(),
+  sourceThreadId: z.string().optional(),
+  sourceMessageId: z.string().optional(),
+  status: z.enum(["active", "completed", "archived"]).optional(),
+  completedAt: z.coerce.date().optional(),
+  derivedFromContext: z.boolean().optional(),
+  evidenceSummary: z.string().optional(),
+  lastEvaluationAt: z.coerce.date().optional(),
+  lastEvaluationResult: z.custom<AssistantGoalEvaluationResult>().optional(),
+});
+
+const suggestionSchema = z.object({
+  id: z.string().min(1),
+  itemId: z.string().min(1),
+  type: z.literal("complete_goal"),
+  status: z.enum(["pending", "ignored", "accepted"]),
+  evidenceSummary: z.string().min(1),
+  evaluation: z.custom<AssistantGoalEvaluationResult>(),
+});
+
+const patchMemorySchema = z.object({
+  preferences: assistantPreferencesSchema.optional(),
+  item: memoryItemSchema.optional(),
+  suggestion: suggestionSchema.optional(),
+  action: z.enum(["acceptSuggestion", "ignoreSuggestion", "reactivateGoal"]).optional(),
+  suggestionId: z.string().optional(),
+  itemId: z.string().optional(),
+});
+
+const deleteMemorySchema = z.object({
+  itemId: z.string().optional(),
+  resetAll: z.boolean().optional(),
+});
+
+export async function GET(_request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const userId = request.nextUrl.searchParams.get('userId');
-
-    assertSameUser(decodedToken, userId);
-
-    const { adminDb } = await import('@/lib/firebase/admin');
-
-    // Run memory fetch and dummy-snapshot check in parallel.
-    // hasDummySnapshots drives conditional UI — the toggle is only shown when relevant.
-    const [memory, dummySnap] = await Promise.all([
-      getAssistantMemoryDocument(userId as string),
-      adminDb
-        .collection('monthly-snapshots')
-        .where('userId', '==', userId)
-        .where('isDummy', '==', true)
-        .limit(1)
-        .get(),
-    ]);
-
-    return NextResponse.json({ ...memory, hasDummySnapshots: !dummySnap.empty });
+    const user = await requireUserSession();
+    return NextResponse.json(await getLocalAssistantMemoryDocument(user.id));
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
-
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/memory] GET error:', error);
-    return NextResponse.json(
-      { error: 'Impossibile recuperare memoria e preferenze dell’assistente' },
-      { status: 500 }
-    );
+    return handleMemoryRouteError(error, "[LOCAL_ASSISTANT_MEMORY_GET_ERROR]");
   }
 }
 
 export async function PATCH(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const body = (await request.json()) as {
-      userId: string;
-      preferences?: Partial<AssistantPreferences>;
-      item?: Partial<AssistantMemoryItem> & Pick<AssistantMemoryItem, 'id' | 'text' | 'category'>;
-      suggestion?: Partial<AssistantMemorySuggestion> & Pick<AssistantMemorySuggestion, 'id' | 'itemId' | 'type' | 'status' | 'evidenceSummary' | 'evaluation'>;
-      action?: 'acceptSuggestion' | 'ignoreSuggestion' | 'reactivateGoal';
-      suggestionId?: string;
-      itemId?: string;
-    };
+    const user = await requireUserSession();
+    const body: unknown = await request.json();
+    const parsedBody = patchMemorySchema.safeParse(body);
 
-    assertSameUser(decodedToken, body.userId);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: "Memoria assistente non valida.", issues: parsedBody.error.flatten() },
+        { status: 400 }
+      );
+    }
 
+    const input = parsedBody.data;
     let memory;
 
-    if (body.action === 'acceptSuggestion') {
-      if (!body.suggestionId || !body.itemId) {
-        return NextResponse.json({ error: 'suggestionId e itemId sono obbligatori' }, { status: 400 });
+    if (input.action === "acceptSuggestion") {
+      if (!input.suggestionId || !input.itemId) {
+        return NextResponse.json(
+          { error: "suggestionId e itemId sono obbligatori" },
+          { status: 400 }
+        );
       }
 
-      const current = await getAssistantMemoryDocument(body.userId);
-      const suggestion = current.suggestions.find((entry) => entry.id === body.suggestionId);
-      const item = current.items.find((entry) => entry.id === body.itemId);
+      const current = await getLocalAssistantMemoryDocument(user.id);
+      const suggestion = current.suggestions.find(
+        (entry) => entry.id === input.suggestionId
+      );
+      const item = current.items.find((entry) => entry.id === input.itemId);
 
       if (!suggestion || !item) {
-        return NextResponse.json({ error: 'Suggerimento o obiettivo non trovato' }, { status: 404 });
+        return NextResponse.json(
+          { error: "Suggerimento o obiettivo non trovato" },
+          { status: 404 }
+        );
       }
 
-      await setAssistantGoalEvaluation(body.userId, item.id, suggestion.evaluation);
-      await updateAssistantMemoryDocument(body.userId, {
+      await setLocalAssistantGoalEvaluation(user.id, item.id, suggestion.evaluation);
+      await updateLocalAssistantMemoryDocument(user.id, {
         item: {
           ...item,
-          status: 'completed',
+          status: "completed",
           completedAt: new Date(),
           evidenceSummary: suggestion.evidenceSummary,
           derivedFromContext: true,
         },
       });
-      memory = await updateAssistantMemoryDocument(body.userId, {
+      memory = await updateLocalAssistantMemoryDocument(user.id, {
         suggestion: {
           ...suggestion,
-          status: 'accepted',
+          status: "accepted",
         },
       });
-    } else if (body.action === 'ignoreSuggestion') {
-      if (!body.suggestionId) {
-        return NextResponse.json({ error: 'suggestionId obbligatorio' }, { status: 400 });
+    } else if (input.action === "ignoreSuggestion") {
+      if (!input.suggestionId) {
+        return NextResponse.json(
+          { error: "suggestionId obbligatorio" },
+          { status: 400 }
+        );
       }
 
-      const current = await getAssistantMemoryDocument(body.userId);
-      const suggestion = current.suggestions.find((entry) => entry.id === body.suggestionId);
+      const current = await getLocalAssistantMemoryDocument(user.id);
+      const suggestion = current.suggestions.find(
+        (entry) => entry.id === input.suggestionId
+      );
       if (!suggestion) {
-        return NextResponse.json({ error: 'Suggerimento non trovato' }, { status: 404 });
+        return NextResponse.json(
+          { error: "Suggerimento non trovato" },
+          { status: 404 }
+        );
       }
 
-      memory = await updateAssistantMemoryDocument(body.userId, {
+      memory = await updateLocalAssistantMemoryDocument(user.id, {
         suggestion: {
           ...suggestion,
-          status: 'ignored',
+          status: "ignored",
         },
       });
-    } else if (body.action === 'reactivateGoal') {
-      if (!body.itemId) {
-        return NextResponse.json({ error: 'itemId obbligatorio' }, { status: 400 });
+    } else if (input.action === "reactivateGoal") {
+      if (!input.itemId) {
+        return NextResponse.json({ error: "itemId obbligatorio" }, { status: 400 });
       }
 
-      const current = await getAssistantMemoryDocument(body.userId);
-      const item = current.items.find((entry) => entry.id === body.itemId);
+      const current = await getLocalAssistantMemoryDocument(user.id);
+      const item = current.items.find((entry) => entry.id === input.itemId);
       if (!item) {
-        return NextResponse.json({ error: 'Obiettivo non trovato' }, { status: 404 });
+        return NextResponse.json(
+          { error: "Obiettivo non trovato" },
+          { status: 404 }
+        );
       }
 
-      memory = await updateAssistantMemoryDocument(body.userId, {
+      memory = await updateLocalAssistantMemoryDocument(user.id, {
         item: {
           ...item,
-          status: 'active',
+          status: "active",
           completedAt: undefined,
         },
       });
     } else {
-      memory = await updateAssistantMemoryDocument(body.userId, {
-        preferences: body.preferences,
-        item: body.item,
-        suggestion: body.suggestion,
+      memory = await updateLocalAssistantMemoryDocument(user.id, {
+        preferences: input.preferences,
+        item: input.item,
+        suggestion: input.suggestion,
       });
     }
 
     return NextResponse.json(memory);
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
-    }
-
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/memory] PATCH error:', error);
-    return NextResponse.json(
-      { error: 'Impossibile aggiornare memoria e preferenze dell’assistente' },
-      { status: 500 }
-    );
+    return handleMemoryRouteError(error, "[LOCAL_ASSISTANT_MEMORY_PATCH_ERROR]");
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
-    const body = (await request.json()) as {
-      userId: string;
-      itemId?: string;
-      resetAll?: boolean;
-    };
+    const user = await requireUserSession();
+    const body: unknown = await request.json();
+    const parsedBody = deleteMemorySchema.safeParse(body);
 
-    assertSameUser(decodedToken, body.userId);
-
-    const memory = await deleteAssistantMemoryDocument(body.userId, {
-      itemId: body.itemId,
-      resetAll: body.resetAll,
-    });
-
-    return NextResponse.json(memory);
-  } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: "Richiesta eliminazione memoria non valida.", issues: parsedBody.error.flatten() },
+        { status: 400 }
+      );
     }
 
-    if (isAssistantStoreError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-
-    console.error('[API /ai/assistant/memory] DELETE error:', error);
     return NextResponse.json(
-      { error: 'Impossibile eliminare dati dalla memoria dell’assistente' },
-      { status: 500 }
+      await deleteLocalAssistantMemoryDocument(user.id, {
+        itemId: parsedBody.data.itemId,
+        resetAll: parsedBody.data.resetAll,
+      })
+    );
+  } catch (error) {
+    return handleMemoryRouteError(error, "[LOCAL_ASSISTANT_MEMORY_DELETE_ERROR]");
+  }
+}
+
+function handleMemoryRouteError(error: unknown, logMessage: string) {
+  if (error instanceof AuthSessionError) {
+    return NextResponse.json(
+      { error: error.message },
+      { status: error.code === "UNAUTHENTICATED" ? 401 : 403 }
     );
   }
+
+  if (isAssistantStoreError(error)) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  console.error(logMessage, error);
+  return NextResponse.json(
+    { error: "Impossibile gestire la memoria dell'assistente" },
+    { status: 500 }
+  );
 }

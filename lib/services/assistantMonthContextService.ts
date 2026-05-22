@@ -1,9 +1,8 @@
 /**
- * Assistant Context Builder (server-side, Admin SDK)
+ * Assistant Context Builder (server-side, local database)
  *
  * Builds AssistantMonthContextBundle for a given user and period. All builders
- * use Firebase Admin SDK because they run inside API routes — the client
- * Firestore SDK requires an authenticated browser session unavailable server-side.
+ * read through server-side local services backed by PostgreSQL/Prisma.
  *
  * Period types (encoded in selector.month):
  *   month > 0  → standard monthly analysis
@@ -14,7 +13,7 @@
  * Design decisions:
  * - Never uses Date.getMonth() / getFullYear() for domain grouping — snapshots
  *   are identified by their stored `year`/`month` integer fields.
- * - Month-end date includes the full last day (23:59:59) so Firestore range
+ * - Month-end date includes the full last day (23:59:59) so database range
  *   queries capture every transaction recorded that day.
  * - Dummy snapshots are excluded by default because they are synthetic test
  *   fixtures that would distort real portfolio numbers. They can be included by
@@ -28,9 +27,11 @@
  *   enough for portfolio analysis since subCategory rarely changes.
  */
 
-import { Timestamp } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebase/admin';
-import { getItalyMonthYear, toDate } from '@/lib/utils/dateHelpers';
+import { getItalyMonthYear } from '@/lib/utils/dateHelpers';
+import { listLocalAssets } from '@/lib/server/assets/localAssetService';
+import { listLocalExpenses } from '@/lib/server/cashflow/localExpenseService';
+import { getLocalSettings } from '@/lib/server/settings/localSettingsService';
+import { listLocalSnapshots } from '@/lib/server/snapshots/localSnapshotService';
 import { AssistantMonthContextBundle, AssistantMonthSelectorValue } from '@/types/assistant';
 import { Asset, AssetAllocationSettings, MonthlySnapshot } from '@/types/assets';
 import { Expense } from '@/types/expenses';
@@ -123,23 +124,10 @@ function findLatestSnapshotAtOrBeforeYear(
   return eligible[eligible.length - 1];
 }
 
-// ─── Admin SDK fetchers ──────────────────────────────────────────────────────
+// ─── Local database fetchers ─────────────────────────────────────────────────
 
 async function fetchSnapshots(userId: string): Promise<MonthlySnapshot[]> {
-  const snap = await adminDb
-    .collection('monthly-snapshots')
-    .where('userId', '==', userId)
-    .orderBy('year', 'asc')
-    .orderBy('month', 'asc')
-    .get();
-
-  return snap.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      ...data,
-      createdAt: toDate(data.createdAt),
-    } as MonthlySnapshot;
-  });
+  return listLocalSnapshots(userId);
 }
 
 async function fetchExpenses(
@@ -147,39 +135,15 @@ async function fetchExpenses(
   startDate: Date,
   endDate: Date
 ): Promise<Expense[]> {
-  const snap = await adminDb
-    .collection('expenses')
-    .where('userId', '==', userId)
-    .where('date', '>=', Timestamp.fromDate(startDate))
-    .where('date', '<=', Timestamp.fromDate(endDate))
-    .get();
-
-  return snap.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      date: toDate(data.date),
-      createdAt: toDate(data.createdAt),
-      updatedAt: toDate(data.updatedAt),
-    } as Expense;
+  return listLocalExpenses(userId, {
+    from: startDate,
+    to: endDate,
+    includeEndDate: true,
   });
 }
 
 async function fetchSettings(userId: string): Promise<AssetAllocationSettings | null> {
-  const doc = await adminDb.collection('assetAllocationTargets').doc(userId).get();
-  if (!doc.exists) {
-    return null;
-  }
-  const data = doc.data();
-  if (!data) {
-    return null;
-  }
-  // Only the fields needed for context building — not the full settings shape
-  return {
-    dividendIncomeCategoryId: data.dividendIncomeCategoryId,
-    cashflowHistoryStartYear: data.cashflowHistoryStartYear,
-  } as AssetAllocationSettings;
+  return getLocalSettings(userId);
 }
 
 /**
@@ -187,39 +151,31 @@ async function fetchSettings(userId: string): Promise<AssetAllocationSettings | 
  * Used to build bySubCategoryAllocation from snapshot byAsset values.
  */
 async function fetchAssets(userId: string): Promise<Asset[]> {
-  const snap = await adminDb
-    .collection('assets')
-    .where('userId', '==', userId)
-    .get();
-
-  return snap.docs.map((doc) => {
-    const data = doc.data();
-    return { id: doc.id, ...data } as Asset;
-  });
+  return listLocalAssets(userId);
 }
 
 async function fetchHouseholdConfig(userId: string): Promise<HouseholdConfig> {
   const fallback = getDefaultHouseholdConfig(userId);
-  try {
-    const doc = await adminDb.collection('householdConfigs').doc(userId).get();
-    if (!doc.exists) return fallback;
+  const settings = await getLocalSettings(userId);
+  const householdConfig = isRecord(settings) ? settings.householdConfig : null;
 
-    const data = doc.data() as Partial<HouseholdConfig> | undefined;
-    return {
-      ...fallback,
-      ...data,
-      userId,
-      participants: data?.participants ?? fallback.participants,
-      profiles: data?.profiles ?? fallback.profiles,
-      attributionRules: data?.attributionRules ?? fallback.attributionRules,
-    };
-  } catch (error) {
-    console.warn('Unable to load household config for assistant context, using personal mode', {
-      userId,
-      error,
-    });
+  if (!isRecord(householdConfig)) {
     return fallback;
   }
+
+  const data = householdConfig as Partial<HouseholdConfig>;
+  return {
+    ...fallback,
+    ...data,
+    userId,
+    participants: data.participants?.length ? data.participants : fallback.participants,
+    profiles: data.profiles?.length ? data.profiles : fallback.profiles,
+    attributionRules: data.attributionRules ?? fallback.attributionRules,
+  };
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === 'object' && input !== null && !Array.isArray(input);
 }
 
 async function applyHouseholdScope(
@@ -414,7 +370,7 @@ function buildAllocationChanges(
  * to minimise latency. Allocation changes are sorted by absolute value and
  * capped at MAX_ALLOCATION_CHANGES.
  *
- * @param userId - Firebase UID of the authenticated user
+ * @param userId - Authenticated local user ID
  * @param selector - The year/month to analyse
  * @returns A fully populated bundle; null-safe for missing snapshots or cashflow
  */
@@ -532,7 +488,7 @@ export async function buildAssistantMonthContext(
  *
  * selector.month is set to 0 to signal a year-level period to the prompt builder.
  *
- * @param userId - Firebase UID of the authenticated user
+ * @param userId - Authenticated local user ID
  * @param year - The year to analyse
  */
 export async function buildAssistantYearContext(
@@ -644,7 +600,7 @@ export async function buildAssistantYearContext(
  * selector.month is set to the last month of the quarter (3, 6, 9, or 12) and
  * selector.quarter is set to 1-4 so getPeriodLabel can render "Q1 2026" instead of "Marzo 2026".
  *
- * @param userId - Firebase UID of the authenticated user
+ * @param userId - Authenticated local user ID
  * @param year - The year of the quarter
  * @param quarter - 1-4 identifying the calendar quarter
  * @param includeDummySnapshots - Include test fixture snapshots (test accounts only)
@@ -748,7 +704,7 @@ export async function buildAssistantQuarterContext(
  *
  * selector.month = -1 signals "YTD" period.
  *
- * @param userId - Firebase UID of the authenticated user
+ * @param userId - Authenticated local user ID
  */
 export async function buildAssistantYtdContext(
   userId: string,

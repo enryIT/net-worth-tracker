@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { invalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
-import { getApiAuthErrorResponse, requireFirebaseAuth } from '@/lib/server/apiAuth';
+import { AuthSessionError, requireUserSession } from '@/lib/server/auth/session';
+import { invalidateLocalDashboardOverviewSummary } from '@/lib/server/dashboard/localDashboardOverviewInvalidationService';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -14,7 +14,7 @@ function getErrorMessage(error: unknown): string {
  */
 export async function POST(request: NextRequest) {
   try {
-    const decodedToken = await requireFirebaseAuth(request);
+    const user = await requireUserSession();
     let body: unknown = {};
 
     try {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       // Invalid or empty JSON body is non-fatal here: keep the default reason and log explicitly.
       console.warn('Failed to parse overview invalidation request body, using default reason', {
-        userId: decodedToken.uid,
+        userId: user.id,
         operation: 'POST /api/dashboard/overview/invalidate',
         error: getErrorMessage(error),
       });
@@ -37,13 +37,15 @@ export async function POST(request: NextRequest) {
       ? requestBody.reason.trim()
       : 'client_mutation';
 
-    await invalidateDashboardOverviewSummaryServer(decodedToken.uid, reason);
+    await invalidateLocalDashboardOverviewSummary(user.id, reason);
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const authErrorResponse = getApiAuthErrorResponse(error);
-    if (authErrorResponse) {
-      return authErrorResponse;
+    if (error instanceof AuthSessionError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === 'UNAUTHENTICATED' ? 401 : 403 }
+      );
     }
 
     console.error('Failed to invalidate dashboard overview summary', {
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
       error: getErrorMessage(error),
     });
     return NextResponse.json(
-      { error: 'Failed to invalidate dashboard overview summary' },
+      { error: 'Si e verificato un errore durante l\'invalidazione dashboard.' },
       { status: 500 }
     );
   }

@@ -1,54 +1,46 @@
 /**
  * Unit tests for buildAssistantMonthContext
  *
- * The service uses Firebase Admin SDK, so we mock adminDb.collection()
- * following the same pattern as dashboardOverviewService.test.ts.
+ * The service reads through local Postgres-backed services, so tests mock the
+ * service boundaries rather than Firebase/Admin SDK query chains.
  * All assertions verify bundle shape, data quality flags, cashflow
  * aggregation, and allocation change computation.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// adminDb mock must be hoisted before the service is imported
-const { snapshotsGetMock, expensesGetMock, settingsDocGetMock } = vi.hoisted(() => ({
-  snapshotsGetMock: vi.fn(),
-  expensesGetMock: vi.fn(),
-  settingsDocGetMock: vi.fn(),
+const {
+  getLocalSettingsMock,
+  listLocalAssetsMock,
+  listLocalExpensesMock,
+  listLocalSnapshotsMock,
+} = vi.hoisted(() => ({
+  getLocalSettingsMock: vi.fn(),
+  listLocalAssetsMock: vi.fn(),
+  listLocalExpensesMock: vi.fn(),
+  listLocalSnapshotsMock: vi.fn(),
 }));
 
-vi.mock('@/lib/firebase/admin', () => ({
-  adminDb: {
-    collection: vi.fn((name: string) => {
-      if (name === 'monthly-snapshots') {
-        return {
-          where: vi.fn().mockReturnThis(),
-          orderBy: vi.fn().mockReturnThis(),
-          get: snapshotsGetMock,
-        };
-      }
-      if (name === 'expenses') {
-        return {
-          where: vi.fn().mockReturnThis(),
-          orderBy: vi.fn().mockReturnThis(),
-          get: expensesGetMock,
-        };
-      }
-      if (name === 'assetAllocationTargets') {
-        return {
-          doc: vi.fn(() => ({ get: settingsDocGetMock })),
-        };
-      }
-      return { where: vi.fn().mockReturnThis(), get: vi.fn().mockResolvedValue({ docs: [] }) };
-    }),
-  },
+vi.mock('@/lib/server/snapshots/localSnapshotService', () => ({
+  listLocalSnapshots: listLocalSnapshotsMock,
 }));
 
-// firebase/config is imported transitively via dateHelpers — mock to avoid real init
-vi.mock('@/lib/firebase/config', () => ({ auth: { currentUser: null }, db: {} }));
+vi.mock('@/lib/server/cashflow/localExpenseService', () => ({
+  listLocalExpenses: listLocalExpensesMock,
+}));
+
+vi.mock('@/lib/server/settings/localSettingsService', () => ({
+  getLocalSettings: getLocalSettingsMock,
+}));
+
+vi.mock('@/lib/server/assets/localAssetService', () => ({
+  listLocalAssets: listLocalAssetsMock,
+}));
 
 import { buildAssistantMonthContext } from '@/lib/services/assistantMonthContextService';
 import { MonthlySnapshot } from '@/types/assets';
 import { Expense } from '@/types/expenses';
+import type { HouseholdConfig } from '@/types/household';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -72,7 +64,7 @@ function makeSnapshotDoc(
     assetAllocation: {},
     createdAt: new Date(year, month - 1, 28),
   };
-  return { data: () => snapshot };
+  return snapshot as MonthlySnapshot;
 }
 
 function makeExpenseDoc(
@@ -92,22 +84,23 @@ function makeExpenseDoc(
     createdAt: date,
     updatedAt: date,
   };
-  return { id: expense.id, data: () => expense };
+  return expense as Expense;
 }
 
-function mockSnapshots(docs: ReturnType<typeof makeSnapshotDoc>[]) {
-  snapshotsGetMock.mockResolvedValue({ docs });
+function mockSnapshots(snapshots: ReturnType<typeof makeSnapshotDoc>[]) {
+  listLocalSnapshotsMock.mockResolvedValue(snapshots);
 }
 
-function mockExpenses(docs: ReturnType<typeof makeExpenseDoc>[]) {
-  expensesGetMock.mockResolvedValue({ docs });
+function mockExpenses(expenses: ReturnType<typeof makeExpenseDoc>[]) {
+  listLocalExpensesMock.mockResolvedValue(expenses);
 }
 
 function mockSettings(dividendIncomeCategoryId?: string) {
-  settingsDocGetMock.mockResolvedValue({
-    exists: true,
-    data: () => ({ dividendIncomeCategoryId }),
-  });
+  getLocalSettingsMock.mockResolvedValue({ dividendIncomeCategoryId });
+}
+
+function mockSettingsWithHouseholdConfig(config: HouseholdConfig) {
+  getLocalSettingsMock.mockResolvedValue({ householdConfig: config });
 }
 
 // ─── Test suite ─────────────────────────────────────────────────────────────
@@ -116,6 +109,73 @@ describe('buildAssistantMonthContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSettings(undefined);
+    listLocalAssetsMock.mockResolvedValue([]);
+  });
+
+  it('reads month context source data from local Postgres-backed services', async () => {
+    mockSnapshots([makeSnapshotDoc(2025, 2, 100_000), makeSnapshotDoc(2025, 3, 110_000)]);
+    mockExpenses([makeExpenseDoc(-300, 'cat-rent', new Date(2025, 2, 31, 12))]);
+
+    await buildAssistantMonthContext('user1', { year: 2025, month: 3 });
+
+    expect(listLocalSnapshotsMock).toHaveBeenCalledWith('user1');
+    expect(listLocalExpensesMock).toHaveBeenCalledWith('user1', {
+      from: new Date(2025, 2, 1, 0, 0, 0),
+      to: new Date(2025, 3, 0, 23, 59, 59),
+      includeEndDate: true,
+    });
+    expect(getLocalSettingsMock).toHaveBeenCalledWith('user1');
+    expect(listLocalAssetsMock).toHaveBeenCalledWith('user1');
+  });
+
+  it('uses household config from local settings when a participant scope is requested', async () => {
+    mockSettingsWithHouseholdConfig({
+      userId: 'user1',
+      enabled: true,
+      participants: [
+        { id: 'self', name: 'Io', role: 'self', sortOrder: 0, active: true },
+        { id: 'partner', name: 'Partner', role: 'partner', sortOrder: 1, active: true },
+      ],
+      profiles: [
+        {
+          id: 'shared-50',
+          name: 'Condiviso 50/50',
+          type: 'shared',
+          sortOrder: 0,
+          active: true,
+          splits: [
+            { participantId: 'self', participantName: 'Io', percentage: 50 },
+            { participantId: 'partner', participantName: 'Partner', percentage: 50 },
+          ],
+        },
+      ],
+      attributionRules: [],
+      defaultAssetProfileId: 'self-100',
+      defaultExpenseProfileId: 'self-100',
+      defaultIncomeProfileId: 'self-100',
+    });
+    mockSnapshots([]);
+    mockExpenses([
+      {
+        ...makeExpenseDoc(-100, 'cat-rent'),
+        attributionProfileId: 'shared-50',
+        attributionProfileName: 'Condiviso 50/50',
+        attributionSplits: [
+          { participantId: 'self', participantName: 'Io', percentage: 50 },
+          { participantId: 'partner', participantName: 'Partner', percentage: 50 },
+        ],
+      },
+    ]);
+
+    const bundle = await buildAssistantMonthContext(
+      'user1',
+      { year: 2025, month: 3 },
+      false,
+      { householdScope: { kind: 'participant', id: 'partner' } }
+    );
+
+    expect(bundle.cashflow.totalExpenses).toBe(-50);
+    expect(bundle.cashflow.transactionCount).toBe(1);
   });
 
   // ── Missing snapshot ──────────────────────────────────────────────────────
@@ -304,19 +364,11 @@ describe('buildAssistantMonthContext', () => {
 
     await buildAssistantMonthContext('user1', { year: 2025, month: 3 });
 
-    // The Timestamp.fromDate call uses the endDate we computed — verify via the
-    // raw Date that would produce it (March has 31 days)
-    // We verify by checking the call to collection('expenses').where(...)
-    // The second where call receives the end timestamp; check it via mock args
-    const expensesCollection = vi.mocked(
-      (await import('@/lib/firebase/admin')).adminDb.collection
-    )('expenses') as any;
-    // The where mock captures calls; we check the date passed to fromDate via the
-    // endDate boundary logic directly by re-deriving it
-    const endDate = new Date(2025, 3, 0, 23, 59, 59); // March 31
-    expect(endDate.getDate()).toBe(31);
-    expect(endDate.getHours()).toBe(23);
-    expect(endDate.getSeconds()).toBe(59);
+    expect(listLocalExpensesMock).toHaveBeenCalledWith('user1', {
+      from: new Date(2025, 2, 1, 0, 0, 0),
+      to: new Date(2025, 3, 0, 23, 59, 59),
+      includeEndDate: true,
+    });
   });
 
   it('end date is correct for February in a leap year (29 days)', async () => {
