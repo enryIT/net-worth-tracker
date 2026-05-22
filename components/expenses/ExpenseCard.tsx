@@ -32,9 +32,9 @@ import {
   Calendar,
   ExternalLink,
 } from 'lucide-react';
-import { Timestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { toDate, type TimestampLike } from '@/lib/utils/dateHelpers';
 
 interface ExpenseCardProps {
   expense: Expense;
@@ -50,8 +50,8 @@ const formatCurrency = (amount: number): string => {
   }).format(Math.abs(amount));
 };
 
-const formatDate = (date: Date | string | Timestamp): string => {
-  const dateObj = date instanceof Date ? date : date instanceof Timestamp ? date.toDate() : new Date(date);
+const formatDate = (date: Date | string | TimestampLike): string => {
+  const dateObj = toDate(date);
   return format(dateObj, 'dd/MM/yyyy', { locale: it });
 };
 

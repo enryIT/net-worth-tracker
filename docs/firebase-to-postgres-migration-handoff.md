@@ -393,6 +393,44 @@ Remaining:
 - Many Firebase runtime hits remain in services, components, utilities, server
   code, and shared types; rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-23 Expense UI Timestamp Boundary
+
+Changed:
+
+- Removed direct `firebase/firestore` `Timestamp` imports from
+  `components/expenses/ExpenseCard.tsx`, `components/expenses/ExpenseTable.tsx`,
+  and `components/expenses/ExpenseDialog.tsx`.
+- Reused the structural `TimestampLike`/`toDate` date helper boundary for expense
+  card/table date formatting and edit-dialog default date conversion while
+  preserving support for Date, string, and Firestore-like timestamp values.
+- Added `__tests__/expenseUiFirebaseBoundary.test.ts` as a source-level
+  regression guard so these active expense UI files do not reintroduce direct
+  Firebase runtime imports for date handling.
+
+Verified:
+
+- Red test initially failed for setup because Vitest globals were not imported;
+  after correcting the test harness, the red test failed for the expected reason:
+  all three expense UI files still imported `firebase/firestore`.
+- `npm test -- --run __tests__/expenseUiFirebaseBoundary.test.ts` passed: 1
+  file, 3 tests.
+- `npm test -- --run __tests__/expenseUiFirebaseBoundary.test.ts __tests__/dateHelpers.test.ts __tests__/expenseCategoryAssignmentMigration.test.ts __tests__/expenseCategoryServiceClient.test.ts`
+  passed: 4 files, 42 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Caveats:
+
+- `components/expenses/ExpenseTable.tsx` and `components/expenses/ExpenseDialog.tsx`
+  still import Firebase-backed `lib/services/assetService.ts` and
+  `lib/services/expenseService.ts`; those remain future client-wrapper/service
+  migration slices. This slice only removes direct Firebase date runtime
+  dependencies from active expense UI components.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities, and
+  shared types; rerun the residual usage search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

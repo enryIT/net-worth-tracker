@@ -39,7 +39,7 @@ import {
 import { updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
 import { deleteInvestmentOperation } from '@/lib/services/investmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
-import { Timestamp } from 'firebase/firestore';
+import { toDate, type TimestampLike } from '@/lib/utils/dateHelpers';
 import {
   Table,
   TableBody,
@@ -76,8 +76,8 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
 
   // ========== Formatting Utilities ==========
 
-  const formatDate = (date: Date | string | Timestamp): string => {
-    const dateObj = date instanceof Date ? date : (date instanceof Timestamp ? date.toDate() : new Date(date));
+  const formatDate = (date: Date | string | TimestampLike): string => {
+    const dateObj = toDate(date);
     return format(dateObj, 'dd/MM/yyyy', { locale: it });
   };
 

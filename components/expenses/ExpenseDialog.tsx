@@ -58,7 +58,7 @@ import { getAssignableOwnershipProfiles, getDefaultProfile, isHouseholdEnabled, 
 import { DEFAULT_PROFILE_SELF_ID } from '@/types/household';
 import { getAllCategories, addSubCategory } from '@/lib/services/expenseCategoryService';
 import { queryKeys } from '@/lib/query/queryKeys';
-import { Timestamp } from 'firebase/firestore';
+import { toDate } from '@/lib/utils/dateHelpers';
 import { CategoryManagementDialog } from '@/components/expenses/CategoryManagementDialog';
 import {
   Dialog,
@@ -311,7 +311,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         subCategoryId: expense.subCategoryId || '',
         amount: Math.abs(expense.amount),
         currency: expense.currency,
-        date: expense.date instanceof Date ? expense.date : (expense.date as Timestamp).toDate(),
+        date: toDate(expense.date),
         notes: expense.notes || '',
         link: expense.link || '',
         isRecurring: expense.isRecurring || false,
