@@ -54,6 +54,35 @@ export type LocalExpenseListOptions = {
   type?: ExpenseType;
 };
 
+export type LocalExpenseCategoryReassignmentInput = {
+  oldCategoryId: string;
+  newCategoryId: string;
+  newCategoryName: string;
+  newSubCategoryId?: string;
+  newSubCategoryName?: string;
+};
+
+export type LocalExpenseSubCategoryReassignmentInput = {
+  categoryId: string;
+  oldSubCategoryId: string;
+  newSubCategoryId?: string;
+  newSubCategoryName?: string;
+};
+
+export type LocalExpenseCategoryMoveInput = {
+  oldCategoryId: string;
+  oldType: ExpenseType;
+  newCategoryId: string;
+  newCategoryName: string;
+  newType: ExpenseType;
+  newSubCategoryId?: string;
+  newSubCategoryName?: string;
+};
+
+export type LocalExpenseSubCategoryMoveInput = LocalExpenseCategoryMoveInput & {
+  oldSubCategoryId: string;
+};
+
 type ExpenseRow = {
   id: string;
   userId: string;
@@ -168,6 +197,106 @@ export async function getLocalMonthlyExpenseSummary(
   return summarizeMonthlyExpenses(year, month, expenses);
 }
 
+export async function countLocalExpensesByCategory(
+  userId: string,
+  categoryId: string
+): Promise<number> {
+  return prisma.expense.count({
+    where: { userId, categoryId },
+  });
+}
+
+export async function countLocalExpensesBySubCategory(
+  userId: string,
+  categoryId: string,
+  subCategoryId: string
+): Promise<number> {
+  return prisma.expense.count({
+    where: { userId, categoryId, subCategoryId },
+  });
+}
+
+export async function reassignLocalExpensesCategory(
+  userId: string,
+  input: LocalExpenseCategoryReassignmentInput
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: { userId, categoryId: input.oldCategoryId },
+    data: {
+      categoryId: input.newCategoryId,
+      categoryName: input.newCategoryName,
+      subCategoryId: input.newSubCategoryId ?? null,
+      subCategoryName: input.newSubCategoryName ?? null,
+    },
+  });
+
+  return result.count;
+}
+
+export async function clearLocalExpensesCategoryAssignment(
+  userId: string,
+  categoryId: string
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: { userId, categoryId },
+    data: {
+      categoryId: "uncategorized",
+      categoryName: "Uncategorized",
+      subCategoryId: null,
+      subCategoryName: null,
+    },
+  });
+
+  return result.count;
+}
+
+export async function reassignLocalExpensesSubCategory(
+  userId: string,
+  input: LocalExpenseSubCategoryReassignmentInput
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: {
+      userId,
+      categoryId: input.categoryId,
+      subCategoryId: input.oldSubCategoryId,
+    },
+    data: {
+      subCategoryId: input.newSubCategoryId ?? null,
+      subCategoryName: input.newSubCategoryName ?? null,
+    },
+  });
+
+  return result.count;
+}
+
+export async function moveLocalExpensesToCategory(
+  userId: string,
+  input: LocalExpenseCategoryMoveInput
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: { userId, categoryId: input.oldCategoryId },
+    data: buildCategoryMoveData(input),
+  });
+
+  return result.count;
+}
+
+export async function moveLocalExpensesFromSubCategory(
+  userId: string,
+  input: LocalExpenseSubCategoryMoveInput
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: {
+      userId,
+      categoryId: input.oldCategoryId,
+      subCategoryId: input.oldSubCategoryId,
+    },
+    data: buildCategoryMoveData(input),
+  });
+
+  return result.count;
+}
+
 type LocalExpenseWriteData = {
   type: string;
   categoryId: string;
@@ -229,6 +358,23 @@ function buildExpenseWhere(
 function normalizeAmount(type: ExpenseType, amount: number): number {
   const absoluteAmount = Math.abs(amount);
   return type === "income" ? absoluteAmount : -absoluteAmount;
+}
+
+function buildCategoryMoveData(
+  input: LocalExpenseCategoryMoveInput
+): Prisma.ExpenseUpdateManyMutationInput {
+  return {
+    ...(needsSignFlip(input.oldType, input.newType) ? { amount: { multiply: -1 } } : {}),
+    categoryId: input.newCategoryId,
+    categoryName: input.newCategoryName,
+    subCategoryId: input.newSubCategoryId ?? null,
+    subCategoryName: input.newSubCategoryName ?? null,
+    type: input.newType,
+  };
+}
+
+function needsSignFlip(oldType: ExpenseType, newType: ExpenseType): boolean {
+  return (oldType === "income") !== (newType === "income");
 }
 
 function summarizeMonthlyExpenses(

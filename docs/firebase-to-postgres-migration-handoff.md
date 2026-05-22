@@ -217,9 +217,43 @@ Verified:
 
 Remaining:
 
-- `lib/services/expenseService.ts` is still Firebase-backed and is still used by
-  category reassignment/count/move UI paths; migrate it in a separate narrow
-  slice instead of broadening this wrapper slice.
+- The category reassignment/count/move bottleneck in `lib/services/expenseService.ts`
+  was migrated in the next slice below.
+- Many Firebase runtime hits remain in other services and shared/client types;
+  rerun the residual usage search before the next slice.
+
+## Slice Notes - 2026-05-22 Expense Category Assignment Helpers
+
+Changed:
+
+- Added `app/api/expenses/category-assignment/route.ts`, a thin local session
+  route for expense category count, reassignment, clear, category move, and
+  subcategory move operations.
+- Added Prisma-backed bulk category assignment helpers to
+  `lib/server/cashflow/localExpenseService.ts`, keeping ownership scoping inside
+  server services and returning `updateMany.count` for write operations.
+- Redirected the selected category-management helpers in
+  `lib/services/expenseService.ts` to the local `/api/expenses/category-assignment`
+  route instead of using Firestore client queries/batches.
+- Added `__tests__/expenseCategoryAssignmentMigration.test.ts` to cover the
+  local client wrapper calls, route auth/write guard behavior, Prisma service
+  scoping, clear-category fallback, and cross income/non-income sign flipping.
+
+Verified:
+
+- Red test initially failed for the expected missing route module:
+  `Cannot find module '@/app/api/expenses/category-assignment/route'`.
+- `npm test -- --run __tests__/expenseCategoryAssignmentMigration.test.ts`
+  passed: 1 file, 8 tests.
+- `npm test -- --run __tests__/expenseCategoryAssignmentMigration.test.ts __tests__/localExpenseService.test.ts __tests__/localExpensesRoutes.test.ts __tests__/expenseCategoryServiceClient.test.ts`
+  passed: 4 files, 38 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- `lib/services/expenseService.ts` still has other Firebase-backed helpers for
+  non-category-assignment workflows, including category/subcategory rename and
+  type-update cascades plus recurring/installment lookups.
 - Many Firebase runtime hits remain in other services and shared/client types;
   rerun the residual usage search before the next slice.
 

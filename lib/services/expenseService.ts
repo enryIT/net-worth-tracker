@@ -847,23 +847,36 @@ export function calculateIncomeExpenseRatio(expenses: Expense[]): number | null 
   return totalIncome / totalExpenses;
 }
 
+async function postExpenseCategoryAssignmentAction(
+  body: Record<string, unknown>,
+  fallbackMessage: string
+): Promise<number> {
+  const response = await fetch('/api/expenses/category-assignment', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(fallbackMessage);
+  }
+
+  const payload = await response.json() as { count?: number };
+  return payload.count ?? 0;
+}
+
 /**
  * Count expenses associated with a category
  */
 export async function getExpenseCountByCategoryId(
   categoryId: string,
-  userId: string
+  _userId: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId)
+    return await postExpenseCategoryAssignmentAction(
+      { action: 'countByCategory', categoryId },
+      'Failed to count expenses by category'
     );
-
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.size;
   } catch (error) {
     console.error('Error counting expenses by category:', error);
     throw new Error('Failed to count expenses by category');
@@ -876,19 +889,13 @@ export async function getExpenseCountByCategoryId(
 export async function getExpenseCountBySubCategoryId(
   categoryId: string,
   subCategoryId: string,
-  userId: string
+  _userId: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId),
-      where('subCategoryId', '==', subCategoryId)
+    return await postExpenseCategoryAssignmentAction(
+      { action: 'countBySubCategory', categoryId, subCategoryId },
+      'Failed to count expenses by subcategory'
     );
-
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.size;
   } catch (error) {
     console.error('Error counting expenses by subcategory:', error);
     throw new Error('Failed to count expenses by subcategory');
@@ -980,49 +987,22 @@ export async function reassignExpensesCategory(
   oldCategoryId: string,
   newCategoryId: string,
   newCategoryName: string,
-  userId: string,
+  _userId: string,
   newSubCategoryId?: string,
   newSubCategoryName?: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', oldCategoryId)
+    return await postExpenseCategoryAssignmentAction(
+      {
+        action: 'reassignCategory',
+        oldCategoryId,
+        newCategoryId,
+        newCategoryName,
+        newSubCategoryId,
+        newSubCategoryName,
+      },
+      'Failed to reassign expenses category'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return 0; // No expenses to reassign
-    }
-
-    const batch = writeBatch(db);
-    let count = 0;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      const updates: any = {
-        categoryId: newCategoryId,
-        categoryName: newCategoryName,
-        updatedAt: Timestamp.now(),
-      };
-
-      // If new subcategory is provided, update it; otherwise clear it
-      if (newSubCategoryId && newSubCategoryName) {
-        updates.subCategoryId = newSubCategoryId;
-        updates.subCategoryName = newSubCategoryName;
-      } else {
-        updates.subCategoryId = null;
-        updates.subCategoryName = null;
-      }
-
-      batch.update(docSnapshot.ref, removeUndefinedFields(updates));
-      count++;
-    });
-
-    await batch.commit();
-    return count;
   } catch (error) {
     console.error('Error reassigning expenses category:', error);
     throw new Error('Failed to reassign expenses category');
@@ -1034,40 +1014,13 @@ export async function reassignExpensesCategory(
  */
 export async function clearExpensesCategoryAssignment(
   categoryId: string,
-  userId: string
+  _userId: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId)
+    return await postExpenseCategoryAssignmentAction(
+      { action: 'clearCategory', categoryId },
+      'Failed to clear expenses category assignment'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return 0; // No expenses to update
-    }
-
-    const batch = writeBatch(db);
-    let count = 0;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      const updates: any = {
-        categoryId: 'uncategorized',
-        categoryName: 'Uncategorized',
-        subCategoryId: null,
-        subCategoryName: null,
-        updatedAt: Timestamp.now(),
-      };
-
-      batch.update(docSnapshot.ref, removeUndefinedFields(updates));
-      count++;
-    });
-
-    await batch.commit();
-    return count;
   } catch (error) {
     console.error('Error clearing expenses category assignment:', error);
     throw new Error('Failed to clear expenses category assignment');
@@ -1080,48 +1033,21 @@ export async function clearExpensesCategoryAssignment(
 export async function reassignExpensesSubCategory(
   categoryId: string,
   oldSubCategoryId: string,
-  userId: string,
+  _userId: string,
   newSubCategoryId?: string,
   newSubCategoryName?: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId),
-      where('subCategoryId', '==', oldSubCategoryId)
+    return await postExpenseCategoryAssignmentAction(
+      {
+        action: 'reassignSubCategory',
+        categoryId,
+        oldSubCategoryId,
+        newSubCategoryId,
+        newSubCategoryName,
+      },
+      'Failed to reassign expenses subcategory'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return 0; // No expenses to reassign
-    }
-
-    const batch = writeBatch(db);
-    let count = 0;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      const updates: any = {
-        updatedAt: Timestamp.now(),
-      };
-
-      // If new subcategory is provided, update it; otherwise clear it
-      if (newSubCategoryId && newSubCategoryName) {
-        updates.subCategoryId = newSubCategoryId;
-        updates.subCategoryName = newSubCategoryName;
-      } else {
-        updates.subCategoryId = null;
-        updates.subCategoryName = null;
-      }
-
-      batch.update(docSnapshot.ref, removeUndefinedFields(updates));
-      count++;
-    });
-
-    await batch.commit();
-    return count;
   } catch (error) {
     console.error('Error reassigning expenses subcategory:', error);
     throw new Error('Failed to reassign expenses subcategory');
@@ -1154,56 +1080,24 @@ export async function moveExpensesToCategory(
   newCategoryId: string,
   newCategoryName: string,
   newType: ExpenseType,
-  userId: string,
+  _userId: string,
   newSubCategoryId?: string,
   newSubCategoryName?: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', oldCategoryId)
+    return await postExpenseCategoryAssignmentAction(
+      {
+        action: 'moveCategory',
+        oldCategoryId,
+        oldType,
+        newCategoryId,
+        newCategoryName,
+        newType,
+        newSubCategoryId,
+        newSubCategoryName,
+      },
+      'Failed to move expenses to category'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return 0;
-    }
-
-    const flipSign = needsSignFlip(oldType, newType);
-    const batch = writeBatch(db);
-    let count = 0;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      const updates: any = {
-        categoryId: newCategoryId,
-        categoryName: newCategoryName,
-        type: newType,
-        updatedAt: Timestamp.now(),
-      };
-
-      // Flip amount sign when crossing income ↔ expense boundary
-      if (flipSign) {
-        const currentAmount = docSnapshot.data().amount;
-        updates.amount = -currentAmount;
-      }
-
-      if (newSubCategoryId && newSubCategoryName) {
-        updates.subCategoryId = newSubCategoryId;
-        updates.subCategoryName = newSubCategoryName;
-      } else {
-        updates.subCategoryId = null;
-        updates.subCategoryName = null;
-      }
-
-      batch.update(docSnapshot.ref, removeUndefinedFields(updates));
-      count++;
-    });
-
-    await batch.commit();
-    return count;
   } catch (error) {
     console.error('Error moving expenses to category:', error);
     throw new Error('Failed to move expenses to category');
@@ -1223,57 +1117,25 @@ export async function moveExpensesFromSubCategory(
   newCategoryId: string,
   newCategoryName: string,
   newType: ExpenseType,
-  userId: string,
+  _userId: string,
   newSubCategoryId?: string,
   newSubCategoryName?: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', oldCategoryId),
-      where('subCategoryId', '==', oldSubCategoryId)
+    return await postExpenseCategoryAssignmentAction(
+      {
+        action: 'moveSubCategory',
+        oldCategoryId,
+        oldSubCategoryId,
+        oldType,
+        newCategoryId,
+        newCategoryName,
+        newType,
+        newSubCategoryId,
+        newSubCategoryName,
+      },
+      'Failed to move expenses from subcategory'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return 0;
-    }
-
-    const flipSign = needsSignFlip(oldType, newType);
-    const batch = writeBatch(db);
-    let count = 0;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      const updates: any = {
-        categoryId: newCategoryId,
-        categoryName: newCategoryName,
-        type: newType,
-        updatedAt: Timestamp.now(),
-      };
-
-      // Flip amount sign when crossing income ↔ expense boundary
-      if (flipSign) {
-        const currentAmount = docSnapshot.data().amount;
-        updates.amount = -currentAmount;
-      }
-
-      if (newSubCategoryId && newSubCategoryName) {
-        updates.subCategoryId = newSubCategoryId;
-        updates.subCategoryName = newSubCategoryName;
-      } else {
-        updates.subCategoryId = null;
-        updates.subCategoryName = null;
-      }
-
-      batch.update(docSnapshot.ref, removeUndefinedFields(updates));
-      count++;
-    });
-
-    await batch.commit();
-    return count;
   } catch (error) {
     console.error('Error moving expenses from subcategory:', error);
     throw new Error('Failed to move expenses from subcategory');
