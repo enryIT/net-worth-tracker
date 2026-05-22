@@ -357,6 +357,42 @@ Remaining:
   `Timestamp` directly; this slice only removed the central `dateHelpers.ts`
   runtime dependency.
 
+## Slice Notes - 2026-05-22 Dividend UI Timestamp Boundary
+
+Changed:
+
+- Removed direct `firebase/firestore` `Timestamp` imports from
+  `components/dividends/DividendTable.tsx` and
+  `components/dividends/DividendDialog.tsx`.
+- Reused the structural `TimestampLike`/`toDate` date helper boundary for
+  dividend table date formatting while preserving support for Date, string, and
+  Firestore-like timestamp values.
+- Added `__tests__/dividendUiFirebaseBoundary.test.ts` as a source-level
+  regression guard so these active dividend UI files do not reintroduce direct
+  Firebase runtime imports for date handling.
+
+Verified:
+
+- Red test initially failed because both dividend UI files imported
+  `firebase/firestore` directly.
+- `npm test -- --run __tests__/dividendUiFirebaseBoundary.test.ts` passed: 1
+  file, 2 tests.
+- `npm test -- --run __tests__/dividendUiFirebaseBoundary.test.ts __tests__/dateHelpers.test.ts __tests__/localDividendsRoutes.test.ts __tests__/localDividendService.test.ts __tests__/localDividendStatsRoute.test.ts __tests__/localDividendStatsService.test.ts __tests__/localDividendExpenseSyncRoute.test.ts __tests__/localDividendExpenseSyncService.test.ts __tests__/localDividendScrapeRoute.test.ts __tests__/localDividendScrapeService.test.ts`
+  passed: 10 files, 54 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Caveats:
+
+- `components/dividends/DividendDialog.tsx` still imports
+  `lib/services/assetService.ts`, which remains Firebase-backed and should be a
+  future assets/client-wrapper migration slice. This slice only removes the
+  direct Firebase date runtime dependency from dividend UI components.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, components, utilities, server
+  code, and shared types; rerun the residual usage search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

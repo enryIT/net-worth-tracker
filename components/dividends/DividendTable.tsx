@@ -15,7 +15,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Dividend, DividendType } from '@/types/dividend';
-import { Timestamp } from 'firebase/firestore';
 import {
   Table,
   TableBody,
@@ -39,7 +38,7 @@ import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { toDate } from '@/lib/utils/dateHelpers';
+import { toDate, type TimestampLike } from '@/lib/utils/dateHelpers';
 import { tableShellSettle } from '@/lib/utils/motionVariants';
 import { cn } from '@/lib/utils';
 
@@ -108,7 +107,7 @@ export function DividendTable({
     );
   }, [dividends]);
 
-  const formatDate = (date: Date | string | Timestamp): string => {
+  const formatDate = (date: Date | string | TimestampLike): string => {
     return format(toDate(date), 'dd/MM/yyyy', { locale: it });
   };
 

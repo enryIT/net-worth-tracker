@@ -22,7 +22,6 @@ import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { Dividend, DividendFormData, DividendType } from '@/types/dividend';
 import { Asset } from '@/types/assets';
 import { getAllAssets } from '@/lib/services/assetService';
-import { Timestamp } from 'firebase/firestore';
 import {
   Dialog,
   DialogContent,
