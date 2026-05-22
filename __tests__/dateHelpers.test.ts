@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
   toDate,
@@ -9,6 +10,14 @@ import {
   formatItalianDate,
   isDateOnOrAfter,
 } from '@/lib/utils/dateHelpers'
+
+describe('dateHelpers module boundary', () => {
+  it('does not import Firebase runtime modules', () => {
+    const source = readFileSync('lib/utils/dateHelpers.ts', 'utf8')
+
+    expect(source).not.toMatch(/firebase\/firestore|lib\/firebase\/config/)
+  })
+})
 
 describe('toDate', () => {
   it('should return same Date when given a Date', () => {

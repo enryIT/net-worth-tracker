@@ -330,6 +330,33 @@ Remaining:
 - Many Firebase runtime hits remain in other services and shared/client types;
   rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-22 Date Helpers Timestamp Boundary
+
+Changed:
+
+- Removed the `firebase/firestore` import from `lib/utils/dateHelpers.ts`.
+- Replaced the Firebase `Timestamp` dependency with a structural local
+  `TimestampLike` type that preserves support for objects exposing `toDate()`.
+- Added a module-boundary regression test in `__tests__/dateHelpers.test.ts` so
+  the shared date helper cannot reintroduce Firebase runtime imports.
+
+Verified:
+
+- Red test initially failed because `lib/utils/dateHelpers.ts` still imported
+  `firebase/firestore`.
+- `npm test -- --run __tests__/dateHelpers.test.ts` passed: 1 file, 21 tests.
+- `npm test -- --run __tests__/dateHelpers.test.ts __tests__/budgetUtils.test.ts __tests__/localDashboardOverviewService.test.ts __tests__/localAutomatedSnapshotService.test.ts __tests__/localPeriodicEmailService.test.ts`
+  passed: 5 files, 48 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- Many Firebase runtime hits remain in other services, components, utilities,
+  and shared types; rerun the residual usage search before the next slice.
+- Several UI components and shared type files still import `firebase/firestore`
+  `Timestamp` directly; this slice only removed the central `dateHelpers.ts`
+  runtime dependency.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
