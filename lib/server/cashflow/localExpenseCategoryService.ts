@@ -50,6 +50,22 @@ export async function updateLocalExpenseCategory(
   categoryId: string,
   categoryData: ExpenseCategoryFormData
 ): Promise<ExpenseCategory | null> {
+  const existingRow = await prisma.expenseCategory.findUnique({
+    where: {
+      id_userId: {
+        id: categoryId,
+        userId,
+      },
+    },
+  });
+
+  if (!existingRow) {
+    return null;
+  }
+
+  const existingCategory = mapExpenseCategoryRow(existingRow);
+  await cascadeExpenseCategoryChanges(userId, categoryId, existingCategory, categoryData);
+
   try {
     const row = await prisma.expenseCategory.update({
       where: {
@@ -92,6 +108,52 @@ type LocalExpenseCategoryWriteData = {
   icon?: string;
   subCategories: Prisma.InputJsonValue;
 };
+
+async function cascadeExpenseCategoryChanges(
+  userId: string,
+  categoryId: string,
+  existingCategory: ExpenseCategory,
+  categoryData: ExpenseCategoryFormData
+): Promise<void> {
+  if (existingCategory.name !== categoryData.name) {
+    await prisma.expense.updateMany({
+      where: { userId, categoryId },
+      data: { categoryName: categoryData.name },
+    });
+  }
+
+  if (existingCategory.type !== categoryData.type) {
+    await prisma.expense.updateMany({
+      where: { userId, categoryId },
+      data: {
+        type: categoryData.type,
+        ...(needsSignFlip(existingCategory.type, categoryData.type)
+          ? { amount: { multiply: -1 } }
+          : {}),
+      },
+    });
+  }
+
+  for (const subCategory of categoryData.subCategories ?? []) {
+    const existingSubCategory = existingCategory.subCategories.find(
+      currentSubCategory => currentSubCategory.id === subCategory.id
+    );
+
+    if (existingSubCategory && existingSubCategory.name !== subCategory.name) {
+      await prisma.expense.updateMany({
+        where: { userId, categoryId, subCategoryId: subCategory.id },
+        data: { subCategoryName: subCategory.name },
+      });
+    }
+  }
+}
+
+function needsSignFlip(
+  oldType: ExpenseCategory["type"],
+  newType: ExpenseCategory["type"]
+): boolean {
+  return (oldType === "income") !== (newType === "income");
+}
 
 function buildCategoryData(
   categoryData: ExpenseCategoryFormData

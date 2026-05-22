@@ -1,151 +1,111 @@
-/**
- * Expense Category Service
- *
- * Manages categories and subcategories for expense classification.
- *
- * Features:
- * - CRUD operations for categories and subcategories
- * - Filter categories by type (fixed, variable, debt, income)
- * - Cascading updates: When category/subcategory names change, all associated expenses are updated
- * - Subcategories stored as nested array within category documents
- *
- * Structure:
- * - Category: Top-level classification (e.g., "Housing", "Food")
- * - SubCategory: Optional second-level classification (e.g., "Housing" → "Rent", "Utilities")
- */
-
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  orderBy
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
-import {
+import type {
   ExpenseCategory,
   ExpenseCategoryFormData,
+  ExpenseSubCategory,
   ExpenseType,
-  ExpenseSubCategory
 } from '@/types/expenses';
-import {
-  updateExpensesCategoryName,
-  updateExpensesSubCategoryName,
-  updateExpensesType,
-} from './expenseService';
 
-const CATEGORIES_COLLECTION = 'expenseCategories';
+const CATEGORY_ERROR_MESSAGE = 'Errore durante la gestione delle categorie.';
 
-/**
- * Remove undefined fields from an object to prevent Firebase errors
- *
- * Firestore rejects documents with undefined values. This helper ensures
- * only defined fields are included in create/update operations.
- *
- * @param obj - Object with potential undefined values
- * @returns Object with undefined fields removed
- */
-function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T> {
-  const cleaned: Partial<T> = {};
-  Object.keys(obj).forEach((key) => {
-    const value = obj[key];
-    if (value !== undefined) {
-      cleaned[key as keyof T] = value;
-    }
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const payload = (await response.json().catch(() => null)) as { error?: string } | T | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload === 'object' && 'error' in payload && payload.error
+        ? payload.error
+        : CATEGORY_ERROR_MESSAGE
+    );
+  }
+
+  return payload as T;
+}
+
+function mapCategory(input: ExpenseCategory): ExpenseCategory {
+  return {
+    ...input,
+    subCategories: input.subCategories ?? [],
+    createdAt: new Date(input.createdAt as Date),
+    updatedAt: new Date(input.updatedAt as Date),
+  };
+}
+
+function toCategoryPayload(category: ExpenseCategory): ExpenseCategoryFormData {
+  return {
+    name: category.name,
+    type: category.type,
+    color: category.color,
+    icon: category.icon,
+    subCategories: category.subCategories ?? [],
+  };
+}
+
+async function listCategories(): Promise<ExpenseCategory[]> {
+  const response = await fetch('/api/expense-categories', {
+    method: 'GET',
+    credentials: 'same-origin',
   });
-  return cleaned;
+
+  const categories = await parseJsonResponse<ExpenseCategory[]>(response);
+  return categories.map(mapCategory);
+}
+
+async function updateCategoryById(
+  categoryId: string,
+  formData: ExpenseCategoryFormData
+): Promise<ExpenseCategory> {
+  const response = await fetch(`/api/expense-categories/${categoryId}`, {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(formData),
+  });
+
+  return mapCategory(await parseJsonResponse<ExpenseCategory>(response));
+}
+
+function createSubCategoryId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
- * Get all categories for a specific user
+ * Get all expense categories for a user
  */
-export async function getAllCategories(userId: string): Promise<ExpenseCategory[]> {
+export async function getAllCategories(_userId: string): Promise<ExpenseCategory[]> {
   try {
-    const categoriesRef = collection(db, CATEGORIES_COLLECTION);
-    const q = query(
-      categoriesRef,
-      where('userId', '==', userId),
-      orderBy('name', 'asc')
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    const categories = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      subCategories: doc.data().subCategories || [],
-    })) as ExpenseCategory[];
-
-    return categories;
+    return await listCategories();
   } catch (error) {
     console.error('Error getting expense categories:', error);
-    throw new Error('Failed to fetch expense categories');
+    throw error;
   }
 }
 
 /**
- * Get categories by type for a specific user
+ * Get categories by type
  */
 export async function getCategoriesByType(
-  userId: string,
+  _userId: string,
   type: ExpenseType
 ): Promise<ExpenseCategory[]> {
   try {
-    const categoriesRef = collection(db, CATEGORIES_COLLECTION);
-    const q = query(
-      categoriesRef,
-      where('userId', '==', userId),
-      where('type', '==', type),
-      orderBy('name', 'asc')
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    const categories = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      subCategories: doc.data().subCategories || [],
-    })) as ExpenseCategory[];
-
-    return categories;
+    const categories = await listCategories();
+    return categories.filter(category => category.type === type);
   } catch (error) {
     console.error('Error getting expense categories by type:', error);
-    throw new Error('Failed to fetch expense categories by type');
+    throw error;
   }
 }
 
 /**
- * Get a single category by ID
+ * Get a category by ID
  */
 export async function getCategoryById(categoryId: string): Promise<ExpenseCategory | null> {
   try {
-    const categoryRef = doc(db, CATEGORIES_COLLECTION, categoryId);
-    const categoryDoc = await getDoc(categoryRef);
-
-    if (!categoryDoc.exists()) {
-      return null;
-    }
-
-    return {
-      id: categoryDoc.id,
-      ...categoryDoc.data(),
-      createdAt: categoryDoc.data().createdAt?.toDate() || new Date(),
-      updatedAt: categoryDoc.data().updatedAt?.toDate() || new Date(),
-      subCategories: categoryDoc.data().subCategories || [],
-    } as ExpenseCategory;
+    const categories = await listCategories();
+    return categories.find(category => category.id === categoryId) ?? null;
   } catch (error) {
     console.error('Error getting expense category:', error);
-    throw new Error('Failed to fetch expense category');
+    throw error;
   }
 }
 
@@ -153,67 +113,38 @@ export async function getCategoryById(categoryId: string): Promise<ExpenseCatego
  * Create a new expense category
  */
 export async function createCategory(
-  userId: string,
+  _userId: string,
   categoryData: ExpenseCategoryFormData
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
-    const categoriesRef = collection(db, CATEGORIES_COLLECTION);
-
-    const cleanedData = removeUndefinedFields({
-      ...categoryData,
-      userId,
-      subCategories: categoryData.subCategories || [],
-      createdAt: now,
-      updatedAt: now,
+    const response = await fetch('/api/expense-categories', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(categoryData),
     });
 
-    const docRef = await addDoc(categoriesRef, cleanedData);
-
-    return docRef.id;
+    const category = await parseJsonResponse<ExpenseCategory>(response);
+    return category.id;
   } catch (error) {
     console.error('Error creating expense category:', error);
-    throw new Error('Failed to create expense category');
+    throw error;
   }
 }
 
 /**
- * Update an existing expense category
- * Automatically updates all associated expenses if the category name changes
+ * Update an expense category
  */
 export async function updateCategory(
   categoryId: string,
-  updates: Partial<ExpenseCategoryFormData>,
-  userId?: string
+  categoryData: ExpenseCategoryFormData,
+  _userId: string
 ): Promise<void> {
   try {
-    // Fetch old category once to check both name and type changes
-    let oldCategory: Awaited<ReturnType<typeof getCategoryById>> | null = null;
-    if ((updates.name || updates.type) && userId) {
-      oldCategory = await getCategoryById(categoryId);
-    }
-
-    // Cascade name change to all associated expenses
-    if (updates.name && userId && oldCategory && oldCategory.name !== updates.name) {
-      await updateExpensesCategoryName(categoryId, updates.name, userId);
-    }
-
-    // Cascade type change to all associated expenses, flipping signs when crossing income ↔ expense
-    if (updates.type && userId && oldCategory && oldCategory.type !== updates.type) {
-      await updateExpensesType(categoryId, oldCategory.type, updates.type, userId);
-    }
-
-    const categoryRef = doc(db, CATEGORIES_COLLECTION, categoryId);
-
-    const cleanedUpdates = removeUndefinedFields({
-      ...updates,
-      updatedAt: Timestamp.now(),
-    });
-
-    await updateDoc(categoryRef, cleanedUpdates);
+    await updateCategoryById(categoryId, categoryData);
   } catch (error) {
     console.error('Error updating expense category:', error);
-    throw new Error('Failed to update expense category');
+    throw error;
   }
 }
 
@@ -222,84 +153,71 @@ export async function updateCategory(
  */
 export async function deleteCategory(categoryId: string): Promise<void> {
   try {
-    const categoryRef = doc(db, CATEGORIES_COLLECTION, categoryId);
-    await deleteDoc(categoryRef);
+    await parseJsonResponse<{ success: boolean }>(
+      await fetch(`/api/expense-categories/${categoryId}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      })
+    );
   } catch (error) {
     console.error('Error deleting expense category:', error);
-    throw new Error('Failed to delete expense category');
+    throw error;
   }
 }
 
 /**
- * Add a subcategory to an existing category
+ * Add a subcategory to a category
  */
-export async function addSubCategory(
-  categoryId: string,
-  subCategoryName: string
-): Promise<void> {
+export async function addSubCategory(categoryId: string, subCategoryName: string): Promise<void> {
   try {
     const category = await getCategoryById(categoryId);
     if (!category) {
       throw new Error('Category not found');
     }
 
-    // Check if subcategory already exists
-    if (category.subCategories.some(sub => sub.name === subCategoryName)) {
-      throw new Error('Subcategory already exists');
-    }
-
-    // Generate a simple ID for the subcategory
     const newSubCategory: ExpenseSubCategory = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: createSubCategoryId(),
       name: subCategoryName,
     };
 
-    const updatedSubCategories = [...category.subCategories, newSubCategory];
-
-    await updateCategory(categoryId, {
-      subCategories: updatedSubCategories,
+    await updateCategoryById(categoryId, {
+      ...toCategoryPayload(category),
+      subCategories: [...(category.subCategories ?? []), newSubCategory],
     });
   } catch (error) {
     console.error('Error adding subcategory:', error);
-    throw new Error('Failed to add subcategory');
+    throw error;
   }
 }
 
 /**
  * Remove a subcategory from a category
  */
-export async function removeSubCategory(
-  categoryId: string,
-  subCategoryId: string
-): Promise<void> {
+export async function removeSubCategory(categoryId: string, subCategoryId: string): Promise<void> {
   try {
     const category = await getCategoryById(categoryId);
     if (!category) {
       throw new Error('Category not found');
     }
 
-    const updatedSubCategories = category.subCategories.filter(
-      sub => sub.id !== subCategoryId
-    );
-
-    await updateCategory(categoryId, {
-      subCategories: updatedSubCategories,
+    await updateCategoryById(categoryId, {
+      ...toCategoryPayload(category),
+      subCategories: (category.subCategories ?? []).filter(sub => sub.id !== subCategoryId),
     });
   } catch (error) {
     console.error('Error removing subcategory:', error);
-    throw new Error('Failed to remove subcategory');
+    throw error;
   }
 }
 
 /**
  * Update a subcategory name
- * Automatically updates all associated expenses with the new subcategory name
  */
 export async function updateSubCategory(
   categoryId: string,
   subCategoryId: string,
   newName: string,
-  userId?: string
+  _userId: string
 ): Promise<void> {
   try {
     const category = await getCategoryById(categoryId);
@@ -307,27 +225,14 @@ export async function updateSubCategory(
       throw new Error('Category not found');
     }
 
-    // Find the old subcategory to check if name is different
-    const oldSubCategory = category.subCategories.find(sub => sub.id === subCategoryId);
-
-    if (oldSubCategory && oldSubCategory.name !== newName && userId) {
-      // Update all expenses with this subcategory
-      await updateExpensesSubCategoryName(categoryId, subCategoryId, newName, userId);
-    }
-
-    const updatedSubCategories = category.subCategories.map(sub =>
-      sub.id === subCategoryId ? { ...sub, name: newName } : sub
-    );
-
-    // Use direct Firestore update to avoid infinite recursion
-    const categoryRef = doc(db, CATEGORIES_COLLECTION, categoryId);
-    const cleanedUpdates = removeUndefinedFields({
-      subCategories: updatedSubCategories,
-      updatedAt: Timestamp.now(),
+    await updateCategoryById(categoryId, {
+      ...toCategoryPayload(category),
+      subCategories: (category.subCategories ?? []).map(sub =>
+        sub.id === subCategoryId ? { ...sub, name: newName } : sub
+      ),
     });
-    await updateDoc(categoryRef, cleanedUpdates);
   } catch (error) {
     console.error('Error updating subcategory:', error);
-    throw new Error('Failed to update subcategory');
+    throw error;
   }
 }

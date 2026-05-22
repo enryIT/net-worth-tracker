@@ -61,8 +61,8 @@ acceptance is satisfied.
   - cost centers
   - internal transfers
   - investment operations
-- Added/updated client wrappers for budget, cost centers, internal transfers,
-  investment operations where needed.
+- Added/updated client wrappers for budget, cost centers, expense categories,
+  internal transfers, investment operations where needed.
 
 ### Dividends, Prices, Performance, Dashboard
 
@@ -186,6 +186,42 @@ Remaining:
 - `git diff --check` passed for touched files.
 - Residual Firebase usage search was rerun; runtime hits still remain outside
   the cost-center wrapper slice.
+
+## Slice Notes - 2026-05-22 Expense Categories Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/expenseCategoryService.ts` from Firebase client SDK
+  calls to local `/api/expense-categories` routes while preserving the legacy
+  function signatures used by settings and expense UI components.
+- Preserved category name/type cascade behavior in the Prisma-backed server
+  service by updating owned local expenses when an owned category is renamed or
+  moved between expense types.
+- Added client wrapper regression coverage for list, create, update, delete,
+  subcategory add/remove/update, local API error handling, and no-op legacy
+  Firebase user arguments.
+- Extended local expense category service tests to cover denormalized expense
+  cascade updates and the owned-category not-found path.
+
+Verified:
+
+- Red tests failed before implementation for the new client wrapper and local
+  cascade expectations.
+- `npm test -- --run __tests__/expenseCategoryServiceClient.test.ts`
+  passed: 1 file, 8 tests.
+- `npm test -- --run __tests__/localExpenseCategoryService.test.ts`
+  passed: 1 file, 5 tests.
+- `npm test -- --run __tests__/localExpenseCategoriesRoutes.test.ts __tests__/localExpensesRoutes.test.ts __tests__/costCenterServiceClient.test.ts`
+  passed: 3 files, 25 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- `lib/services/expenseService.ts` is still Firebase-backed and is still used by
+  category reassignment/count/move UI paths; migrate it in a separate narrow
+  slice instead of broadening this wrapper slice.
+- Many Firebase runtime hits remain in other services and shared/client types;
+  rerun the residual usage search before the next slice.
 
 ## Known Residual Firebase Runtime Areas
 
