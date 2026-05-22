@@ -1,11 +1,8 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
-import { invalidateDashboardOverviewSummary } from '@/lib/services/dashboardOverviewInvalidation';
-import { Asset, AssetClass, AssetAllocationTarget, AssetAllocationSettings, AllocationResult, SubCategoryTarget, SpecificAssetAllocation, AllocationData } from '@/types/assets';
-import { calculateAssetValue, calculateTotalValue } from './assetService';
+import { Asset, AssetClass, AssetAllocationTarget, AssetAllocationSettings, AllocationResult, SpecificAssetAllocation } from '@/types/assets';
 import { DEFAULT_SUB_CATEGORIES, DEFAULT_EQUITY_SUB_TARGETS } from '@/lib/constants/defaultSubCategories';
 
-const ALLOCATION_TARGETS_COLLECTION = 'assetAllocationTargets';
+const USER_SETTINGS_API_PATH = '/api/user/settings';
+const DASHBOARD_OVERVIEW_INVALIDATE_API_PATH = '/api/dashboard/overview/invalidate';
 
 function settingsAffectDashboardOverview(settings: AssetAllocationSettings): boolean {
   return (
@@ -31,63 +28,20 @@ function serializeCoastFirePensions(
 }
 
 /**
- * Get allocation settings for a user
- *
- * Includes: targets, userAge, riskFreeRate, withdrawalRate, plannedAnnualExpenses,
- * coastFireRetirementAge, coastFirePensions, coastFireTaxBrackets,
- * includePrimaryResidenceInFIRE, dividendIncomeCategoryId, dividendIncomeSubCategoryId
+ * Get allocation settings for a user through the local user settings API.
  */
 export async function getSettings(
-  userId: string
+  _userId: string
 ): Promise<AssetAllocationSettings | null> {
-  try {
-    const targetRef = doc(db, ALLOCATION_TARGETS_COLLECTION, userId);
-    const targetDoc = await getDoc(targetRef);
+  const response = await fetch(USER_SETTINGS_API_PATH, {
+    method: 'GET',
+    headers: { 'content-type': 'application/json' },
+  });
 
-    if (!targetDoc.exists()) {
-      return null;
-    }
-
-    const data = targetDoc.data();
-
-    // Support both old format (only targets) and new format (with userAge, riskFreeRate, withdrawalRate, and plannedAnnualExpenses)
-    return {
-      userAge: data.userAge,
-      riskFreeRate: data.riskFreeRate,
-      withdrawalRate: data.withdrawalRate,
-      plannedAnnualExpenses: data.plannedAnnualExpenses,
-      coastFireRetirementAge: data.coastFireRetirementAge,
-      coastFireCustomExpenses: data.coastFireCustomExpenses,
-      coastFirePensions: data.coastFirePensions,
-      coastFireTaxBrackets: data.coastFireTaxBrackets,
-      includePrimaryResidenceInFIRE: data.includePrimaryResidenceInFIRE,
-      dividendIncomeCategoryId: data.dividendIncomeCategoryId,
-      dividendIncomeSubCategoryId: data.dividendIncomeSubCategoryId,
-      fireProjectionScenarios: data.fireProjectionScenarios,
-      monteCarloScenarios: data.monteCarloScenarios,
-      goalBasedInvestingEnabled: data.goalBasedInvestingEnabled,
-      goalDrivenAllocationEnabled: data.goalDrivenAllocationEnabled,
-      defaultDebitCashAssetId: data.defaultDebitCashAssetId,
-      defaultCreditCashAssetId: data.defaultCreditCashAssetId,
-      stampDutyEnabled: data.stampDutyEnabled,
-      stampDutyRate: data.stampDutyRate,
-      checkingAccountSubCategory: data.checkingAccountSubCategory,
-      cashflowHistoryStartYear: data.cashflowHistoryStartYear,
-      laborIncomeCategoryIds: data.laborIncomeCategoryIds ?? [],
-      assistantResponseStyle: data.assistantResponseStyle,
-      assistantMacroContextEnabled: data.assistantMacroContextEnabled,
-      assistantMemoryEnabled: data.assistantMemoryEnabled,
-      costCentersEnabled: data.costCentersEnabled,
-      monthlyEmailEnabled: data.monthlyEmailEnabled,
-      quarterlyEmailEnabled: data.quarterlyEmailEnabled,
-      yearlyEmailEnabled: data.yearlyEmailEnabled,
-      monthlyEmailRecipients: data.monthlyEmailRecipients,
-      targets: data.targets as AssetAllocationTarget,
-    };
-  } catch (error) {
-    console.error('Error getting allocation settings:', error);
-    throw new Error('Failed to fetch allocation settings');
-  }
+  return readSettingsResponse<AssetAllocationSettings | null>(
+    response,
+    'Failed to fetch allocation settings'
+  );
 }
 
 /**
@@ -101,250 +55,29 @@ export async function getTargets(
 }
 
 /**
- * Set allocation settings for a user (includes targets, age, and risk-free rate)
+ * Set allocation settings for a user through the local user settings API.
  *
- * IMPORTANT: Uses Firestore merge mode to preserve fields not included in this update.
- * This prevents data loss when different parts of the app update different settings fields.
+ * The server-side settings store merges top-level fields and replaces the whole
+ * targets object when targets are provided, preserving the legacy wrapper
+ * contract for deleted nested allocation categories.
  */
 export async function setSettings(
   userId: string,
   settings: AssetAllocationSettings
 ): Promise<void> {
-  try {
-    const targetRef = doc(db, ALLOCATION_TARGETS_COLLECTION, userId);
+  const response = await fetch(USER_SETTINGS_API_PATH, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(serializeSettingsPatch(settings)),
+  });
 
-    // CRITICAL: If targets is being updated, we need to REPLACE it completely (not merge)
-    // to ensure deleted subcategories are removed from Firestore.
-    // Firestore merge: true does recursive merge, keeping old nested keys.
-    if (settings.targets !== undefined) {
-      // Get existing document to preserve other fields
-      const existingDoc = await getDoc(targetRef);
-      const existingData = existingDoc.exists() ? existingDoc.data() : {};
+  await readSettingsResponse<{ ok: true }>(
+    response,
+    'Failed to save allocation settings'
+  );
 
-      // Build complete document with all fields
-      const docData: any = {
-        ...existingData, // Keep all existing fields
-        userId,
-        targets: settings.targets, // COMPLETELY REPLACE targets (not merge)
-        updatedAt: Timestamp.now(),
-      };
-
-      // Override with new values for defined fields
-      if (settings.userAge !== undefined) {
-        docData.userAge = settings.userAge;
-      }
-      if (settings.riskFreeRate !== undefined) {
-        docData.riskFreeRate = settings.riskFreeRate;
-      }
-      if (settings.withdrawalRate !== undefined) {
-        docData.withdrawalRate = settings.withdrawalRate;
-      }
-      if (settings.plannedAnnualExpenses !== undefined) {
-        docData.plannedAnnualExpenses = settings.plannedAnnualExpenses;
-      }
-      if (settings.coastFireRetirementAge !== undefined) {
-        docData.coastFireRetirementAge = settings.coastFireRetirementAge;
-      }
-      // When the key is present but undefined, remove the field from docData so setDoc drops it.
-      // deleteField() is not allowed with setDoc() without merge:true; omitting the key achieves the same result.
-      if ('coastFireCustomExpenses' in settings) {
-        if (settings.coastFireCustomExpenses !== undefined) {
-          docData.coastFireCustomExpenses = settings.coastFireCustomExpenses;
-        } else {
-          delete docData.coastFireCustomExpenses;
-        }
-      }
-      if (settings.coastFirePensions !== undefined) {
-        docData.coastFirePensions = serializeCoastFirePensions(settings.coastFirePensions);
-      }
-      if (settings.coastFireTaxBrackets !== undefined) {
-        docData.coastFireTaxBrackets = settings.coastFireTaxBrackets;
-      }
-      if (settings.includePrimaryResidenceInFIRE !== undefined) {
-        docData.includePrimaryResidenceInFIRE = settings.includePrimaryResidenceInFIRE;
-      }
-      if (settings.dividendIncomeCategoryId !== undefined) {
-        docData.dividendIncomeCategoryId = settings.dividendIncomeCategoryId;
-      }
-      if (settings.dividendIncomeSubCategoryId !== undefined) {
-        docData.dividendIncomeSubCategoryId = settings.dividendIncomeSubCategoryId;
-      }
-      if (settings.fireProjectionScenarios !== undefined) {
-        docData.fireProjectionScenarios = settings.fireProjectionScenarios;
-      }
-      if (settings.monteCarloScenarios !== undefined) {
-        docData.monteCarloScenarios = settings.monteCarloScenarios;
-      }
-      if (settings.goalBasedInvestingEnabled !== undefined) {
-        docData.goalBasedInvestingEnabled = settings.goalBasedInvestingEnabled;
-      }
-      if (settings.goalDrivenAllocationEnabled !== undefined) {
-        docData.goalDrivenAllocationEnabled = settings.goalDrivenAllocationEnabled;
-      }
-      if (settings.defaultDebitCashAssetId !== undefined) {
-        docData.defaultDebitCashAssetId = settings.defaultDebitCashAssetId;
-      }
-      if (settings.defaultCreditCashAssetId !== undefined) {
-        docData.defaultCreditCashAssetId = settings.defaultCreditCashAssetId;
-      }
-      if (settings.stampDutyEnabled !== undefined) {
-        docData.stampDutyEnabled = settings.stampDutyEnabled;
-      }
-      if (settings.stampDutyRate !== undefined) {
-        docData.stampDutyRate = settings.stampDutyRate;
-      }
-      if (settings.checkingAccountSubCategory !== undefined) {
-        docData.checkingAccountSubCategory = settings.checkingAccountSubCategory;
-      }
-      if (settings.cashflowHistoryStartYear !== undefined) {
-        docData.cashflowHistoryStartYear = settings.cashflowHistoryStartYear;
-      }
-      if (settings.laborIncomeCategoryIds !== undefined) {
-        docData.laborIncomeCategoryIds = settings.laborIncomeCategoryIds;
-      }
-      if (settings.assistantResponseStyle !== undefined) {
-        docData.assistantResponseStyle = settings.assistantResponseStyle;
-      }
-      if (settings.assistantMacroContextEnabled !== undefined) {
-        docData.assistantMacroContextEnabled = settings.assistantMacroContextEnabled;
-      }
-      if (settings.assistantMemoryEnabled !== undefined) {
-        docData.assistantMemoryEnabled = settings.assistantMemoryEnabled;
-      }
-      if (settings.costCentersEnabled !== undefined) {
-        docData.costCentersEnabled = settings.costCentersEnabled;
-      }
-      if (settings.monthlyEmailEnabled !== undefined) {
-        docData.monthlyEmailEnabled = settings.monthlyEmailEnabled;
-      }
-      if (settings.quarterlyEmailEnabled !== undefined) {
-        docData.quarterlyEmailEnabled = settings.quarterlyEmailEnabled;
-      }
-      if (settings.yearlyEmailEnabled !== undefined) {
-        docData.yearlyEmailEnabled = settings.yearlyEmailEnabled;
-      }
-      if (settings.monthlyEmailRecipients !== undefined) {
-        docData.monthlyEmailRecipients = settings.monthlyEmailRecipients;
-      }
-
-      // Use setDoc WITHOUT merge to completely replace targets
-      await setDoc(targetRef, docData);
-    } else {
-      // No targets update, use normal merge behavior
-      const docData: any = {
-        userId,
-        updatedAt: Timestamp.now(),
-      };
-
-      if (settings.userAge !== undefined) {
-        docData.userAge = settings.userAge;
-      }
-      if (settings.riskFreeRate !== undefined) {
-        docData.riskFreeRate = settings.riskFreeRate;
-      }
-      if (settings.withdrawalRate !== undefined) {
-        docData.withdrawalRate = settings.withdrawalRate;
-      }
-      if (settings.plannedAnnualExpenses !== undefined) {
-        docData.plannedAnnualExpenses = settings.plannedAnnualExpenses;
-      }
-      if (settings.coastFireRetirementAge !== undefined) {
-        docData.coastFireRetirementAge = settings.coastFireRetirementAge;
-      }
-      // When the key is present but undefined, remove the field from docData so setDoc drops it.
-      // deleteField() is not allowed with setDoc() without merge:true; omitting the key achieves the same result.
-      if ('coastFireCustomExpenses' in settings) {
-        if (settings.coastFireCustomExpenses !== undefined) {
-          docData.coastFireCustomExpenses = settings.coastFireCustomExpenses;
-        } else {
-          delete docData.coastFireCustomExpenses;
-        }
-      }
-      if (settings.coastFirePensions !== undefined) {
-        docData.coastFirePensions = serializeCoastFirePensions(settings.coastFirePensions);
-      }
-      if (settings.coastFireTaxBrackets !== undefined) {
-        docData.coastFireTaxBrackets = settings.coastFireTaxBrackets;
-      }
-      if (settings.includePrimaryResidenceInFIRE !== undefined) {
-        docData.includePrimaryResidenceInFIRE = settings.includePrimaryResidenceInFIRE;
-      }
-      if (settings.dividendIncomeCategoryId !== undefined) {
-        docData.dividendIncomeCategoryId = settings.dividendIncomeCategoryId;
-      }
-      if (settings.dividendIncomeSubCategoryId !== undefined) {
-        docData.dividendIncomeSubCategoryId = settings.dividendIncomeSubCategoryId;
-      }
-      if (settings.fireProjectionScenarios !== undefined) {
-        docData.fireProjectionScenarios = settings.fireProjectionScenarios;
-      }
-      if (settings.monteCarloScenarios !== undefined) {
-        docData.monteCarloScenarios = settings.monteCarloScenarios;
-      }
-      if (settings.goalBasedInvestingEnabled !== undefined) {
-        docData.goalBasedInvestingEnabled = settings.goalBasedInvestingEnabled;
-      }
-      if (settings.goalDrivenAllocationEnabled !== undefined) {
-        docData.goalDrivenAllocationEnabled = settings.goalDrivenAllocationEnabled;
-      }
-      if (settings.defaultDebitCashAssetId !== undefined) {
-        docData.defaultDebitCashAssetId = settings.defaultDebitCashAssetId;
-      }
-      if (settings.defaultCreditCashAssetId !== undefined) {
-        docData.defaultCreditCashAssetId = settings.defaultCreditCashAssetId;
-      }
-      if (settings.stampDutyEnabled !== undefined) {
-        docData.stampDutyEnabled = settings.stampDutyEnabled;
-      }
-      if (settings.stampDutyRate !== undefined) {
-        docData.stampDutyRate = settings.stampDutyRate;
-      }
-      if (settings.checkingAccountSubCategory !== undefined) {
-        docData.checkingAccountSubCategory = settings.checkingAccountSubCategory;
-      }
-      if (settings.cashflowHistoryStartYear !== undefined) {
-        docData.cashflowHistoryStartYear = settings.cashflowHistoryStartYear;
-      }
-      if (settings.laborIncomeCategoryIds !== undefined) {
-        docData.laborIncomeCategoryIds = settings.laborIncomeCategoryIds;
-      }
-      if (settings.assistantResponseStyle !== undefined) {
-        docData.assistantResponseStyle = settings.assistantResponseStyle;
-      }
-      if (settings.assistantMacroContextEnabled !== undefined) {
-        docData.assistantMacroContextEnabled = settings.assistantMacroContextEnabled;
-      }
-      if (settings.assistantMemoryEnabled !== undefined) {
-        docData.assistantMemoryEnabled = settings.assistantMemoryEnabled;
-      }
-      if (settings.costCentersEnabled !== undefined) {
-        docData.costCentersEnabled = settings.costCentersEnabled;
-      }
-      if (settings.monthlyEmailEnabled !== undefined) {
-        docData.monthlyEmailEnabled = settings.monthlyEmailEnabled;
-      }
-      if (settings.quarterlyEmailEnabled !== undefined) {
-        docData.quarterlyEmailEnabled = settings.quarterlyEmailEnabled;
-      }
-      if (settings.yearlyEmailEnabled !== undefined) {
-        docData.yearlyEmailEnabled = settings.yearlyEmailEnabled;
-      }
-      if (settings.monthlyEmailRecipients !== undefined) {
-        docData.monthlyEmailRecipients = settings.monthlyEmailRecipients;
-      }
-
-      // Use merge: true to preserve existing fields
-      await setDoc(targetRef, docData, { merge: true });
-    }
-
-    if (settingsAffectDashboardOverview(settings)) {
-      await invalidateDashboardOverviewSummary(userId, 'overview_settings_updated');
-    }
-  } catch (error) {
-    console.error('Error setting allocation settings:', error);
-    // Re-throw original error to preserve Firebase error codes (e.g., permission-denied)
-    // This allows retry logic in AuthContext to detect and handle permission errors
-    throw error;
+  if (settingsAffectDashboardOverview(settings)) {
+    await invalidateDashboardOverviewSummary(userId, 'overview_settings_updated');
   }
 }
 
@@ -356,6 +89,76 @@ export async function setTargets(
   targets: AssetAllocationTarget
 ): Promise<void> {
   await setSettings(userId, { targets });
+}
+
+function serializeSettingsPatch(settings: AssetAllocationSettings): Record<string, unknown> {
+  return stripUndefined({
+    ...settings,
+    coastFirePensions: serializeCoastFirePensions(settings.coastFirePensions),
+  });
+}
+
+function stripUndefined(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined)
+  );
+}
+
+async function readSettingsResponse<T>(
+  response: Response,
+  fallbackMessage: string
+): Promise<T> {
+  const body = (await response.json().catch(() => null)) as { error?: string } | T | null;
+
+  if (!response.ok) {
+    const errorMessage = body && typeof body === 'object' && 'error' in body
+      ? body.error
+      : undefined;
+    throw new Error(errorMessage ?? fallbackMessage);
+  }
+
+  return body as T;
+}
+
+async function invalidateDashboardOverviewSummary(
+  _userId: string,
+  reason: string
+): Promise<void> {
+  try {
+    await fetch(DASHBOARD_OVERVIEW_INVALIDATE_API_PATH, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+  } catch (error) {
+    console.warn('[assetAllocationService] Failed to mark overview summary stale:', error);
+  }
+}
+
+function calculateAssetValue(asset: Asset): number {
+  const isGBpFallback = asset.currency === 'GBp';
+  const normalizedFallbackPrice = isGBpFallback
+    ? asset.currentPrice / 100
+    : asset.currentPrice;
+
+  const priceInEur =
+    asset.currency &&
+    asset.currency.toUpperCase() !== 'EUR' &&
+    asset.currentPriceEur !== undefined
+      ? asset.currentPriceEur
+      : normalizedFallbackPrice;
+
+  const baseValue = asset.quantity * priceInEur;
+
+  if (asset.assetClass === 'realestate' && asset.outstandingDebt) {
+    return Math.max(0, baseValue - asset.outstandingDebt);
+  }
+
+  return baseValue;
+}
+
+function calculateTotalValue(assets: Asset[]): number {
+  return assets.reduce((total, asset) => total + calculateAssetValue(asset), 0);
 }
 
 /**

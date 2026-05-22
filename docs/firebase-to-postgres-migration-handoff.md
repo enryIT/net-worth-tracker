@@ -257,6 +257,45 @@ Remaining:
 - Many Firebase runtime hits remain in other services and shared/client types;
   rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-22 Asset Allocation Settings Wrapper
+
+Changed:
+
+- Redirected `lib/services/assetAllocationService.ts` settings reads/writes from
+  Firestore client SDK calls to the local `/api/user/settings` route while
+  preserving the legacy `getSettings`, `getTargets`, `setSettings`, and
+  `setTargets` function signatures used by settings and FIRE UI components.
+- Removed the indirect runtime import of `lib/services/assetService.ts` from the
+  allocation wrapper by keeping the small asset-value calculation local to the
+  allocation module.
+- Kept dashboard overview invalidation as a local `/api/dashboard/overview/invalidate`
+  fetch for settings fields that affect cached overview totals.
+- Added `__tests__/assetAllocationServiceClientMigration.test.ts` to cover local
+  settings API reads/writes, legacy target helpers, source-level Firebase import
+  removal, and local allocation calculation behavior.
+
+Verified:
+
+- Red test initially failed because the wrapper still used Firestore
+  `getDoc`/`setDoc` and still imported Firebase/`assetService`.
+- `npm test -- --run __tests__/assetAllocationServiceClientMigration.test.ts`
+  passed: 1 file, 5 tests.
+- `npm test -- --run __tests__/assetAllocationServiceClientMigration.test.ts __tests__/localSettingsRoutes.test.ts __tests__/localSettingsService.test.ts __tests__/chartService.test.ts`
+  passed: 4 files, 14 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Caveats:
+
+- A broader `__tests__/apiAuthRoutes.test.ts` run was attempted and failed in
+  unrelated pre-existing paths because NextAuth `headers()` was invoked outside
+  request scope and one cron snapshot path needs `DATABASE_URL`; this slice did
+  not modify those routes.
+
+Remaining:
+
+- Many Firebase runtime hits remain in other services and shared/client types;
+  rerun the residual usage search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -265,7 +304,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 High-value next targets:
 
 - `lib/services/assetService.ts`
-- `lib/services/assetAllocationService.ts`
 - `lib/services/expenseService.ts`
 - `lib/services/expenseCategoryService.ts`
 - `lib/services/dummySnapshotGenerator.ts`
