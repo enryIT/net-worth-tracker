@@ -42,6 +42,9 @@ acceptance is satisfied.
 - Added local registration, password credentials, TOTP enrollment, recovery-code
   support, login/session/audit tables, and tests.
 - Added local settings and preferences services/routes.
+- Redirected `lib/services/userPreferencesService.ts` to the local
+  `/api/user/preferences` route so the color theme client wrapper no longer
+  imports Firebase at runtime.
 - Added app data export/import and legacy import scaffolding.
 
 ### Core Financial Data
@@ -97,6 +100,18 @@ acceptance is satisfied.
 The following commands passed during the latest handoff preparation:
 
 ```bash
+npm test -- --run __tests__/userPreferencesServiceClient.test.ts __tests__/localUserPreferencesRoutes.test.ts __tests__/localUserPreferencesService.test.ts
+```
+
+Result: 3 test files, 10 tests passed.
+
+```bash
+npx tsc --noEmit --incremental false
+```
+
+Result: passed after swap was made available in the validation environment.
+
+```bash
 npm test -- --run __tests__/householdUtils.test.ts __tests__/householdFeatureRegression.test.ts __tests__/pdfHouseholdData.test.ts __tests__/localAutomatedSnapshotService.test.ts __tests__/localHouseholdService.test.ts __tests__/localHouseholdRoutes.test.ts __tests__/householdServiceClient.test.ts
 ```
 
@@ -138,7 +153,6 @@ High-value next targets:
 - `lib/server/dividendProcessor.ts`
 - `lib/server/monthlyEmailService.ts`
 - `lib/helpers/priceUpdater.ts`
-- `lib/services/userPreferencesService.ts`
 - `lib/server/assistant/store.ts`
 - `lib/server/apiAuth.ts`
 - `lib/utils/authFetch.ts`

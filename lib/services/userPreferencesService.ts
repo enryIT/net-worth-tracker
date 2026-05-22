@@ -1,25 +1,36 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
-
-const COLLECTION = 'userPreferences';
-
 export type ColorTheme = 'default' | 'solar-dusk' | 'elegant-luxury' | 'midnight-bloom' | 'cyberpunk' | 'retro-arcade';
 
 export interface UserPreferences {
   colorTheme?: ColorTheme;
 }
 
-export async function getUserPreferences(userId: string): Promise<UserPreferences> {
-  const ref = doc(db, COLLECTION, userId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return {};
-  return snap.data() as UserPreferences;
+const API_PATH = '/api/user/preferences';
+
+export async function getUserPreferences(_userId: string): Promise<UserPreferences> {
+  const response = await fetch(API_PATH, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Impossibile caricare le preferenze utente.');
+  }
+
+  return (await response.json()) as UserPreferences;
 }
 
 export async function setUserPreferences(
-  userId: string,
+  _userId: string,
   prefs: Partial<UserPreferences>
 ): Promise<void> {
-  const ref = doc(db, COLLECTION, userId);
-  await setDoc(ref, prefs, { merge: true });
+  const response = await fetch(API_PATH, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
+
+  if (!response.ok) {
+    throw new Error('Impossibile salvare le preferenze utente.');
+  }
 }
