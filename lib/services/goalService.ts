@@ -1,5 +1,3 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { Asset, AssetClass } from '@/types/assets';
 import {
   GoalBasedInvestingData,
@@ -13,67 +11,42 @@ import { calculateAssetValue } from './assetService';
 //
 // Manages CRUD operations for investment goals and provides pure calculation
 // functions for goal progress, allocation analysis, and validation.
-// Data is stored as a single Firestore document per user.
+// Data is stored in the local settings API under the authenticated user.
 
-const GOALS_COLLECTION = 'goalBasedInvesting';
+const API_PATH = '/api/goals';
 
-// ==================== Firestore CRUD ====================
+// ==================== Local API CRUD ====================
 
-/** Fetch all goal data for a user, returns null if no document exists */
+/** Fetch all goal data for the authenticated user, returns null if no data exists */
 export async function getGoalData(
-  userId: string
+  _userId: string
 ): Promise<GoalBasedInvestingData | null> {
-  try {
-    const docRef = doc(db, GOALS_COLLECTION, userId);
-    const docSnap = await getDoc(docRef);
+  const response = await fetch(API_PATH, {
+    method: 'GET',
+    credentials: 'include',
+  });
 
-    if (!docSnap.exists()) {
-      return null;
-    }
-
-    const data = docSnap.data();
-    return {
-      goals: (data.goals || []) as InvestmentGoal[],
-      assignments: (data.assignments || []) as GoalAssetAssignment[],
-    };
-  } catch (error) {
-    console.error('Error getting goal data:', error);
+  if (!response.ok) {
     throw new Error('Failed to fetch goal data');
   }
+
+  return (await response.json()) as GoalBasedInvestingData | null;
 }
 
-/** Save all goal data for a user (complete replacement) */
+/** Save all goal data for the authenticated user (complete replacement) */
 export async function saveGoalData(
-  userId: string,
+  _userId: string,
   data: GoalBasedInvestingData
 ): Promise<void> {
-  try {
-    const docRef = doc(db, GOALS_COLLECTION, userId);
-    // Strip undefined values — Firestore rejects them
-    const cleanGoals = data.goals.map((g) => {
-      const clean: Record<string, unknown> = {
-        id: g.id,
-        name: g.name,
-        priority: g.priority,
-        color: g.color,
-        createdAt: g.createdAt,
-        updatedAt: g.updatedAt,
-      };
-      if (g.targetAmount != null) clean.targetAmount = g.targetAmount;
-      if (g.targetDate != null) clean.targetDate = g.targetDate;
-      if (g.recommendedAllocation != null) clean.recommendedAllocation = g.recommendedAllocation;
-      if (g.notes != null) clean.notes = g.notes;
-      return clean;
-    });
-    await setDoc(docRef, {
-      goals: cleanGoals,
-      assignments: data.assignments,
-      userId,
-      updatedAt: Timestamp.now(),
-    });
-  } catch (error) {
-    console.error('Error saving goal data:', error);
-    throw error;
+  const response = await fetch(API_PATH, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to save goal data');
   }
 }
 

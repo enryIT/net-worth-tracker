@@ -52,6 +52,8 @@ acceptance is satisfied.
 - Migrated local assets read/write APIs and services.
 - Migrated snapshots, manual snapshots, automated snapshots, monthly snapshot
   cron service/route, and tests.
+- Migrated goal-based investing reads/writes from the Firebase client wrapper to
+  a local `/api/goals` route backed by `UserSetting.data.goalBasedInvesting`.
 - Migrated cashflow slices:
   - expenses
   - expense categories
@@ -135,6 +137,24 @@ git diff --check -- lib/services/householdService.ts lib/server/household/localH
 
 Result: clean.
 
+```bash
+npm test -- --run __tests__/goalService.test.ts __tests__/goalServiceClient.test.ts __tests__/localGoalDataService.test.ts __tests__/localGoalsRoute.test.ts __tests__/assistantGoalEvaluation.test.ts
+```
+
+Result: 5 test files, 45 tests passed.
+
+```bash
+npx tsc --noEmit --incremental false
+```
+
+Result: passed.
+
+```bash
+git diff --check -- lib/services/goalService.ts lib/server/goals/localGoalDataService.ts app/api/goals/route.ts __tests__/goalServiceClient.test.ts __tests__/localGoalDataService.test.ts __tests__/localGoalsRoute.test.ts docs/firebase-to-postgres-migration-handoff.md
+```
+
+Result: clean.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -143,8 +163,10 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 High-value next targets:
 
 - `lib/services/assetService.ts`
+- `lib/services/assetAllocationService.ts`
 - `lib/services/expenseService.ts`
 - `lib/services/expenseCategoryService.ts`
+- `lib/services/dummySnapshotGenerator.ts`
 - `lib/services/snapshotService.ts`
 - `lib/services/performanceService.ts`
 - `lib/services/dividendService.ts`
