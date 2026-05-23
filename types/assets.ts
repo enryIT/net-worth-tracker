@@ -1,4 +1,6 @@
-import { Timestamp } from 'firebase/firestore';
+export type AssetDateLike = {
+  toDate(): Date;
+};
 import type { OwnershipSplit } from './household';
 
 // AssetType: Granular classification used in UI (stock, ETF, bond, pension fund, etc.)
@@ -41,8 +43,8 @@ export interface CouponRateTier {
 export interface BondDetails {
   couponRate: number;          // Annual coupon rate as percentage (e.g. 4.0 for 4%). Fallback when no schedule.
   couponFrequency: CouponFrequency;
-  issueDate: Date | Timestamp; // Reference date for coupon schedule (first coupon = issueDate + 1 period)
-  maturityDate: Date | Timestamp; // Bond redemption date (no coupons generated after this)
+  issueDate: Date | AssetDateLike; // Reference date for coupon schedule (first coupon = issueDate + 1 period)
+  maturityDate: Date | AssetDateLike; // Bond redemption date (no coupons generated after this)
   nominalValue?: number;       // Face value per unit in currency (e.g. 1000 for a €1000 bond). Default: 1
   couponRateSchedule?: CouponRateTier[]; // Step-up tiers; overrides couponRate when present
   finalPremiumRate?: number;   // Bonus % of nominalValue paid at maturity (e.g. 0.8 for BTP Valore 0.8%)
@@ -95,9 +97,9 @@ export interface Asset {
   ownershipProfileId?: string;
   ownershipProfileName?: string;
   ownershipSplits?: OwnershipSplit[];
-  lastPriceUpdate: Date | Timestamp;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  lastPriceUpdate: Date | AssetDateLike;
+  createdAt: Date | AssetDateLike;
+  updatedAt: Date | AssetDateLike;
 }
 
 export interface AssetFormData {
@@ -299,14 +301,14 @@ export interface MonthlySnapshot {
   assetAllocation: {
     [assetClass: string]: number;
   };
-  createdAt: Date | Timestamp;
+  createdAt: Date | AssetDateLike;
   note?: string; // Optional note to document significant financial events (max 500 characters)
 }
 
 export interface PriceHistory {
   ticker: string;
   price: number;
-  date: Date | Timestamp;
+  date: Date | AssetDateLike;
   currency: string;
 }
 

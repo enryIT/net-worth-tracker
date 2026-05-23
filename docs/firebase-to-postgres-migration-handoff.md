@@ -523,6 +523,36 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-23 Asset Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/assets.ts`.
+- Added a local structural `AssetDateLike` type so asset, bond, snapshot, and
+  price-history date fields remain compatible with provider-like values that
+  expose `toDate()` without importing Firebase.
+- Added `__tests__/assetTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the asset shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/assets.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/assetTypesFirebaseBoundary.test.ts` passed: 1
+  file, 1 test.
+- `npm test -- --run __tests__/assetTypesFirebaseBoundary.test.ts __tests__/assetHistoryUtils.test.ts __tests__/assetDialogHelpers.test.ts __tests__/couponUtils.test.ts __tests__/localAutomatedSnapshotService.test.ts __tests__/chartService.test.ts __tests__/fireService.test.ts __tests__/householdUtils.test.ts __tests__/assetAllocationServiceClientMigration.test.ts`
+  passed: 9 files, 128 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- `git diff --check -- types/assets.ts __tests__/assetTypesFirebaseBoundary.test.ts docs/firebase-to-postgres-migration-handoff.md`
+  passed.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
