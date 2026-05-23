@@ -1,4 +1,6 @@
-import { Timestamp } from 'firebase/firestore';
+export type CostCenterDateLike = {
+  toDate(): Date;
+};
 
 // A cost center groups expenses under a named object or project (e.g. "Automobile Dacia").
 // Expenses opt-in by setting costCenterId + costCenterName (denormalized).
@@ -10,8 +12,8 @@ export interface CostCenter {
   description?: string;
   // Hex color for visual distinction in list and charts.
   color?: string;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | CostCenterDateLike;
+  updatedAt: Date | CostCenterDateLike;
 }
 
 export interface CostCenterFormData {

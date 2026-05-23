@@ -580,6 +580,33 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-23 Cost Center Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/costCenters.ts`.
+- Added a local structural `CostCenterDateLike` type so cost center date fields
+  remain compatible with provider-like values that expose `toDate()` without
+  importing Firebase.
+- Added `__tests__/costCenterTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the cost center shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/costCenters.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/costCenterTypesFirebaseBoundary.test.ts` passed: 1
+  file, 1 test.
+- `npm test -- --run __tests__/costCenterTypesFirebaseBoundary.test.ts __tests__/costCenterServiceClient.test.ts __tests__/localCostCenterService.test.ts __tests__/localCostCentersRoutes.test.ts __tests__/localExpenseService.test.ts __tests__/localExpensesRoutes.test.ts`
+  passed: 6 files, 38 tests.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
