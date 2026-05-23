@@ -1,4 +1,6 @@
-import type { Timestamp } from 'firebase/firestore';
+export type DividendDateLike = {
+  toDate(): Date;
+};
 
 // WARNING: If you add a type here, also update:
 // - DividendTable.tsx (type badge map)
@@ -22,8 +24,8 @@ export interface Dividend {
   assetTicker: string; // Denormalized for efficient queries
   assetName: string; // Denormalized for efficient queries
   assetIsin?: string; // Optional ISIN code
-  exDate: Date | Timestamp; // Ex-dividend date
-  paymentDate: Date | Timestamp; // Payment date
+  exDate: Date | DividendDateLike; // Ex-dividend date
+  paymentDate: Date | DividendDateLike; // Payment date
   dividendPerShare: number; // Dividend amount per share
   quantity: number; // Number of shares owned at ex-date
   grossAmount: number; // Total gross dividend (dividendPerShare × quantity)
@@ -47,8 +49,8 @@ export interface Dividend {
   // Undefined for legacy records created before this field was introduced — those fall back
   // to the current asset.averageCost.
   costPerShare?: number;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | DividendDateLike;
+  updatedAt: Date | DividendDateLike;
 }
 
 export interface DividendFormData {

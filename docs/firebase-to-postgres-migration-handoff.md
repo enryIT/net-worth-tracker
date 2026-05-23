@@ -553,6 +553,33 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-23 Dividend Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/dividend.ts`.
+- Added a local structural `DividendDateLike` type so dividend date fields remain
+  compatible with provider-like values that expose `toDate()` without importing
+  Firebase.
+- Added `__tests__/dividendTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the dividend shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/dividend.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/dividendTypesFirebaseBoundary.test.ts` passed: 1
+  file, 1 test.
+- `npm test -- --run __tests__/dividendTypesFirebaseBoundary.test.ts __tests__/dividendUiFirebaseBoundary.test.ts __tests__/localDividendService.test.ts __tests__/localDividendsRoutes.test.ts __tests__/localDividendStatsService.test.ts __tests__/localDividendStatsRoute.test.ts __tests__/localDividendExpenseSyncService.test.ts __tests__/localDividendExpenseSyncRoute.test.ts __tests__/localDividendScrapeService.test.ts __tests__/localDividendScrapeRoute.test.ts`
+  passed: 10 files, 34 tests.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
