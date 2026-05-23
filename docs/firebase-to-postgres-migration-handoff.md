@@ -431,6 +431,38 @@ Remaining:
 - Many Firebase runtime hits remain in services, server code, utilities, and
   shared types; rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-23 Goal UI Timestamp Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `components/goals/GoalFormDialog.tsx`.
+- Replaced new-goal timestamp creation with plain `Date` values, preserving the
+  existing `InvestmentGoal` contract that already accepts `Date` timestamps.
+- Added `__tests__/goalUiFirebaseBoundary.test.ts` as a source-level regression
+  guard so the active goal form UI does not reintroduce direct Firebase runtime
+  imports for timestamp creation.
+
+Verified:
+
+- Red test initially failed for the expected reason: `GoalFormDialog.tsx` still
+  imported `firebase/firestore`.
+- `npm test -- --run __tests__/goalUiFirebaseBoundary.test.ts` passed: 1 file,
+  1 test.
+- `npm test -- --run __tests__/goalUiFirebaseBoundary.test.ts __tests__/goalServiceClient.test.ts __tests__/localGoalDataService.test.ts __tests__/localGoalsRoute.test.ts __tests__/assistantGoalEvaluation.test.ts`
+  passed: 5 files, 25 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Caveats:
+
+- Shared `types/goals.ts` still imports Firebase `Timestamp`; this slice only
+  removes the active goal form UI runtime dependency.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities, and
+  shared types; rerun the residual usage search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

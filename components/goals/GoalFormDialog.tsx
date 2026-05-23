@@ -6,7 +6,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Timestamp } from 'firebase/firestore';
 import { AssetClass } from '@/types/assets';
 import {
   InvestmentGoal,
@@ -143,7 +142,7 @@ export function GoalFormDialog({
 
     setSaving(true);
     try {
-      const now = Timestamp.now();
+      const now = new Date();
       const parsedTarget = targetAmount ? parseFloat(targetAmount) : undefined;
       const goalData: InvestmentGoal = {
         id: goal?.id || createId('goal'),
