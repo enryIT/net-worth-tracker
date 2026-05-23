@@ -1,5 +1,8 @@
-import type { Timestamp } from 'firebase/firestore';
 import type { ExpenseType } from './expenses';
+
+export type HouseholdDateLike = {
+  toDate(): Date;
+};
 
 export const DEFAULT_PARTICIPANT_SELF_ID = 'self';
 
@@ -13,7 +16,7 @@ export interface HouseholdParticipant {
   sortOrder: number;
   active: boolean;
   isDefault?: boolean;
-  archivedAt?: Date | Timestamp;
+  archivedAt?: Date | HouseholdDateLike;
 }
 
 export interface OwnershipSplit {
@@ -29,7 +32,7 @@ export interface OwnershipProfileVersion {
   validFrom: string;
   validTo?: string;
   splits: OwnershipSplit[];
-  createdAt?: Date | Timestamp;
+  createdAt?: Date | HouseholdDateLike;
 }
 
 export interface OwnershipProfile {
@@ -43,7 +46,7 @@ export interface OwnershipProfile {
   active: boolean;
   isDefault?: boolean;
   archived?: boolean;
-  archivedAt?: Date | Timestamp;
+  archivedAt?: Date | HouseholdDateLike;
 }
 
 export interface AttributionRule {
@@ -72,8 +75,8 @@ export interface HouseholdConfig {
   defaultAssetProfileId: string;
   defaultExpenseProfileId: string;
   defaultIncomeProfileId: string;
-  createdAt?: Date | Timestamp;
-  updatedAt?: Date | Timestamp;
+  createdAt?: Date | HouseholdDateLike;
+  updatedAt?: Date | HouseholdDateLike;
 }
 
 export type HouseholdAuditEntityType =
@@ -95,7 +98,7 @@ export interface HouseholdAuditEntry {
   summary: string;
   before?: unknown;
   after?: unknown;
-  createdAt: Date | Timestamp;
+  createdAt: Date | HouseholdDateLike;
 }
 
 export type InternalTransferPurpose =

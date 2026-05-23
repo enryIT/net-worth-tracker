@@ -664,6 +664,34 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-23 Household Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/household.ts`.
+- Added a local structural `HouseholdDateLike` type so household config,
+  participant, profile, and audit date fields remain compatible with
+  provider-like values that expose `toDate()` without importing Firebase.
+- Added `__tests__/householdTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the household shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/household.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/householdTypesFirebaseBoundary.test.ts` passed: 1
+  file, 1 test.
+- `npm test -- --run __tests__/householdTypesFirebaseBoundary.test.ts __tests__/householdUtils.test.ts __tests__/householdFeatureRegression.test.ts __tests__/householdServiceClient.test.ts __tests__/localHouseholdService.test.ts __tests__/localHouseholdRoutes.test.ts __tests__/assistantMonthContextService.test.ts`
+  passed: 7 files, 55 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
