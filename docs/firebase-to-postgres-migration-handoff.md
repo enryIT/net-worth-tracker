@@ -495,6 +495,34 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-23 Investment Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/investments.ts`.
+- Added a local structural `InvestmentDateLike` type so investment operation and
+  internal transfer date fields remain compatible with provider-like values that
+  expose `toDate()` without importing Firebase.
+- Added `__tests__/investmentTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the investment shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/investments.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/investmentTypesFirebaseBoundary.test.ts` passed: 1
+  file, 1 test.
+- `npm test -- --run __tests__/investmentTypesFirebaseBoundary.test.ts __tests__/investmentOperationServiceClient.test.ts __tests__/internalTransferServiceClient.test.ts __tests__/localInvestmentOperationService.test.ts __tests__/localInvestmentOperationsRoutes.test.ts __tests__/localInternalTransferService.test.ts __tests__/localInternalTransfersRoutes.test.ts __tests__/investmentOperationService.test.ts`
+  passed: 8 files, 43 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

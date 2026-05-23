@@ -1,5 +1,8 @@
-import { Timestamp } from 'firebase/firestore';
 import type { InternalTransferPurpose } from './household';
+
+export type InvestmentDateLike = {
+  toDate(): Date;
+};
 
 export type InvestmentOperationType = 'buy' | 'sell' | 'contribution' | 'withdrawal' | 'fee' | 'tax';
 
@@ -10,7 +13,7 @@ export interface InvestmentOperation {
   assetName: string;
   assetTicker: string;
   type: InvestmentOperationType;
-  date: Date | Timestamp;
+  date: Date | InvestmentDateLike;
   quantity: number;
   pricePerUnit: number;
   grossAmount: number;
@@ -28,8 +31,8 @@ export interface InvestmentOperation {
   realizedGain?: number;
   realizedGainTax?: number;
   netCashEffect: number;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | InvestmentDateLike;
+  updatedAt: Date | InvestmentDateLike;
 }
 
 export interface InvestmentOperationFormData {
@@ -72,13 +75,13 @@ export interface InternalTransfer {
   toCashAssetName: string;
   amount: number;
   currency: string;
-  date: Date | Timestamp;
+  date: Date | InvestmentDateLike;
   fees?: number;
   purpose?: InternalTransferPurpose;
   notes?: string;
   linkedExpenseId?: string;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | InvestmentDateLike;
+  updatedAt: Date | InvestmentDateLike;
 }
 
 export interface InternalTransferFormData {
