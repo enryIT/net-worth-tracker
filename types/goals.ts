@@ -1,6 +1,6 @@
 import { AssetClass } from './assets';
 
-export type GoalTimestampLike = {
+export type GoalDateLike = {
   toDate(): Date;
 };
 
@@ -24,8 +24,8 @@ export interface InvestmentGoal {
   color: string;                   // Hex color for charts
   recommendedAllocation?: Partial<Record<AssetClass, number>>; // Suggested asset class mix, values sum to 100
   notes?: string;                  // Free-text notes (max 500 chars)
-  createdAt: Date | GoalTimestampLike;
-  updatedAt: Date | GoalTimestampLike;
+  createdAt: Date | GoalDateLike;
+  updatedAt: Date | GoalDateLike;
 }
 
 // Links an asset (by percentage) to a goal.

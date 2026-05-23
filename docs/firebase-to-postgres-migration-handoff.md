@@ -469,7 +469,7 @@ Changed:
 
 - Removed the direct `firebase/firestore` `Timestamp` import from
   `types/goals.ts`.
-- Added a local structural `GoalTimestampLike` type so existing Firestore-like
+- Added a local structural `GoalDateLike` type so existing provider-like
   values with `toDate()` remain type-compatible without importing Firebase.
 - Updated goal type comments from legacy Firestore storage wording to local
   authenticated user settings wording.

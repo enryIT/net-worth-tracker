@@ -10,7 +10,7 @@ describe('goal type Firebase boundary', () => {
     expect(source).not.toMatch(forbiddenFirebaseImport);
   });
 
-  it('keeps pure goal service fixtures free of Firebase timestamp imports', () => {
+  it('keeps pure goal service fixtures free of Firebase provider imports', () => {
     const source = readFileSync('__tests__/goalService.test.ts', 'utf8');
 
     expect(source).not.toMatch(forbiddenFirebaseImport);
