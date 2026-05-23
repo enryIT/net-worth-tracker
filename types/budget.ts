@@ -1,6 +1,9 @@
-import type { Timestamp } from 'firebase/firestore';
 import { ExpenseType } from './expenses';
 import type { OwnershipSplit } from './household';
+
+export type BudgetDateLike = {
+  toDate(): Date;
+};
 
 // Budget feature types
 //
@@ -37,7 +40,7 @@ export interface BudgetItem {
 export interface BudgetConfig {
   userId: string;
   items: BudgetItem[];
-  updatedAt: Date | Timestamp | string;
+  updatedAt: Date | BudgetDateLike | string;
 }
 
 export type BudgetViewMode = 'annual' | 'monthly';
