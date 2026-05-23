@@ -463,6 +463,38 @@ Remaining:
 - Many Firebase runtime hits remain in services, server code, utilities, and
   shared types; rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-23 Goal Shared Type Timestamp Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/goals.ts`.
+- Added a local structural `GoalTimestampLike` type so existing Firestore-like
+  values with `toDate()` remain type-compatible without importing Firebase.
+- Updated goal type comments from legacy Firestore storage wording to local
+  authenticated user settings wording.
+- Replaced the pure `__tests__/goalService.test.ts` timestamp fixture with a
+  plain `Date` and removed the now-unneeded Firebase config mock.
+- Added `__tests__/goalTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the shared goal type boundary and pure goal service
+  fixture.
+
+Verified:
+
+- Red test initially failed for the expected reason: both `types/goals.ts` and
+  `__tests__/goalService.test.ts` still imported Firebase runtime modules.
+- `npm test -- --run __tests__/goalTypesFirebaseBoundary.test.ts` passed: 1 file,
+  2 tests.
+- `npm test -- --run __tests__/goalTypesFirebaseBoundary.test.ts __tests__/goalUiFirebaseBoundary.test.ts __tests__/goalService.test.ts __tests__/goalServiceClient.test.ts __tests__/localGoalDataService.test.ts __tests__/localGoalsRoute.test.ts __tests__/assistantGoalEvaluation.test.ts`
+  passed: 7 files, 48 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

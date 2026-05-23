@@ -1,13 +1,11 @@
 /**
  * Unit tests for goal service pure functions.
  * Tests calculation logic, validation, and orphan cleanup.
- * Firebase-dependent functions (getGoalData, saveGoalData) are NOT tested here.
+ * API-dependent functions (getGoalData, saveGoalData) are NOT tested here.
  */
 
 import { describe, it, expect } from 'vitest';
 
-// Mock Firebase-dependent modules before importing goalService
-vi.mock('@/lib/firebase/config', () => ({ db: {} }));
 vi.mock('@/lib/services/assetService', () => ({
   calculateAssetValue: (asset: any) => {
     const base = asset.quantity * asset.currentPrice;
@@ -23,11 +21,10 @@ import {
   getAvailablePercentage,
 } from '@/lib/services/goalService';
 import { vi } from 'vitest';
-import { Timestamp } from 'firebase/firestore';
 
 // ==================== Test Fixtures ====================
 
-const now = Timestamp.now();
+const now = new Date('2026-01-01T00:00:00.000Z');
 
 const mockAssets = [
   {

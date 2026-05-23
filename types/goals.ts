@@ -1,5 +1,8 @@
-import { Timestamp } from 'firebase/firestore';
 import { AssetClass } from './assets';
+
+export type GoalTimestampLike = {
+  toDate(): Date;
+};
 
 // Goal-Based Investing Types
 //
@@ -11,7 +14,7 @@ import { AssetClass } from './assets';
 export type GoalPriority = 'alta' | 'media' | 'bassa';
 
 // A financial goal with target amount, optional deadline, and recommended allocation.
-// Goals are stored as an array in a single Firestore document per user.
+// Goals are stored as an array in the authenticated user's local settings row.
 export interface InvestmentGoal {
   id: string;
   name: string;                    // e.g., "Acquisto Casa", "Pensione"
@@ -21,8 +24,8 @@ export interface InvestmentGoal {
   color: string;                   // Hex color for charts
   recommendedAllocation?: Partial<Record<AssetClass, number>>; // Suggested asset class mix, values sum to 100
   notes?: string;                  // Free-text notes (max 500 chars)
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | GoalTimestampLike;
+  updatedAt: Date | GoalTimestampLike;
 }
 
 // Links an asset (by percentage) to a goal.
@@ -33,7 +36,7 @@ export interface GoalAssetAssignment {
   percentage: number; // 0-100, percentage of this asset's value assigned to this goal
 }
 
-// Top-level Firestore document per user (collection: goalBasedInvesting/{userId})
+// Top-level goal-based investing payload for the authenticated user.
 export interface GoalBasedInvestingData {
   goals: InvestmentGoal[];
   assignments: GoalAssetAssignment[];
