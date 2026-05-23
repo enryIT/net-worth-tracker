@@ -1,5 +1,9 @@
-import { Timestamp } from 'firebase/firestore';
 import type { OwnershipSplit } from './household';
+
+export type ExpenseDateLike = {
+  toDate(): Date;
+  toMillis(): number;
+};
 
 // Expense categories for cashflow tracking.
 // These are mutually exclusive and determine UI filtering/display logic.
@@ -30,8 +34,8 @@ export interface ExpenseCategory {
   color?: string;
   icon?: string;
   subCategories: ExpenseSubCategory[];
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | ExpenseDateLike;
+  updatedAt: Date | ExpenseDateLike;
 }
 
 export interface ExpenseCategoryFormData {
@@ -56,7 +60,7 @@ export interface Expense {
   subCategoryName?: string; // Denormalized for faster queries
   amount: number; // Sign convention: POSITIVE for income, NEGATIVE for expenses/debts
   currency: string;
-  date: Date | Timestamp;
+  date: Date | ExpenseDateLike;
   notes?: string;
   link?: string; // Optional link (e.g., Amazon order, receipt, etc.)
   // Recurring payment configuration
@@ -96,8 +100,8 @@ export interface Expense {
   attributionProfileId?: string;
   attributionProfileName?: string;
   attributionSplits?: OwnershipSplit[];
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date | ExpenseDateLike;
+  updatedAt: Date | ExpenseDateLike;
 }
 
 export interface ExpenseFormData {

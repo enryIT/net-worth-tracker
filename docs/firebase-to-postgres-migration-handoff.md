@@ -607,6 +607,35 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-23 Expense Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/expenses.ts`.
+- Added a local structural `ExpenseDateLike` type so expense and expense-category
+  date fields remain compatible with provider-like values that expose `toDate()`
+  and `toMillis()` without importing Firebase.
+- Added `__tests__/expenseTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the expense shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/expenses.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/expenseTypesFirebaseBoundary.test.ts` passed: 1
+  file, 1 test.
+- `npm test -- --run __tests__/expenseTypesFirebaseBoundary.test.ts __tests__/expenseUiFirebaseBoundary.test.ts __tests__/expenseCategoryAssignmentMigration.test.ts __tests__/expenseCategoryServiceClient.test.ts __tests__/localExpenseService.test.ts __tests__/localExpensesRoutes.test.ts`
+  passed: 6 files, 42 tests.
+- `npx tsc --noEmit --incremental false` passed after `ExpenseDateLike` was
+  expanded to include the `toMillis()` method used by category UI sorting.
+
+Remaining:
+
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and other shared types; rerun the residual usage search
+  before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
