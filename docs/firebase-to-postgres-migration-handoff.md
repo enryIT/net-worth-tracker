@@ -726,6 +726,36 @@ Remaining:
   components, tests, and `types/hall-of-fame.ts`; rerun the residual usage
   search before the next slice.
 
+## Slice Notes - 2026-05-24 Hall of Fame Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/hall-of-fame.ts`.
+- Added a local structural `HallOfFameDateLike` type so Hall of Fame note and
+  aggregate update timestamps remain compatible with provider-like values
+  exposing `toDate()` without importing Firebase.
+- Added `__tests__/hallOfFameTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the Hall of Fame shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/hall-of-fame.ts`
+  still imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/hallOfFameTypesFirebaseBoundary.test.ts` passed:
+  1 file, 1 test.
+- `npm test -- --run __tests__/hallOfFameTypesFirebaseBoundary.test.ts __tests__/localHallOfFameService.test.ts __tests__/localMonthlySnapshotCronService.test.ts __tests__/localManualSnapshotService.test.ts`
+  passed: 4 files, 8 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- Firebase-backed Hall of Fame runtime services still remain in
+  `lib/services/hallOfFameService.ts` and `lib/services/hallOfFameService.server.ts`;
+  this slice only removed the shared type Firebase boundary.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, and tests; rerun the residual usage search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

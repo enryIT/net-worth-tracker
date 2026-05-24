@@ -1,4 +1,6 @@
-import { Timestamp } from 'firebase/firestore';
+export type HallOfFameDateLike = {
+  toDate(): Date;
+};
 
 /**
  * Type union for Hall of Fame section identifiers
@@ -38,8 +40,8 @@ export interface HallOfFameNote {
   sections: HallOfFameSectionKey[]; // Ranking sections where this note should appear
   year: number; // Year in Italy timezone (via getItalyYear)
   month?: number; // Month 1-12 in Italy timezone (undefined for yearly notes)
-  createdAt: Date | Timestamp; // Creation timestamp
-  updatedAt: Date | Timestamp; // Last update timestamp
+  createdAt: Date | HallOfFameDateLike; // Creation timestamp
+  updatedAt: Date | HallOfFameDateLike; // Last update timestamp
 }
 
 /**
@@ -87,5 +89,5 @@ export interface HallOfFameData {
   worstYearsByNetWorthDecline: YearlyRecord[]; // Peggiori anni per decremento NW
   worstYearsByExpenses: YearlyRecord[]; // Peggiori anni per spese
 
-  updatedAt: Date | Timestamp;
+  updatedAt: Date | HallOfFameDateLike;
 }
