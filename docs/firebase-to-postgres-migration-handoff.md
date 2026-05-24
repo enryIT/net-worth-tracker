@@ -756,6 +756,42 @@ Remaining:
 - Many Firebase runtime hits remain in services, server code, utilities,
   components, and tests; rerun the residual usage search before the next slice.
 
+## Slice Notes - 2026-05-24 Authenticated Fetch Local Session Boundary
+
+Changed:
+
+- Redirected `lib/utils/authFetch.ts` away from Firebase client auth token
+  lookup and bearer-token injection.
+- `authenticatedFetch()` now uses the local Auth.js cookie session by defaulting
+  requests to `credentials: "same-origin"` while preserving the existing helper
+  signature and caller-supplied request options.
+- Added `__tests__/authFetchLocalSession.test.ts` as a source-level and behavior
+  regression guard so the shared fetch helper cannot reintroduce Firebase
+  runtime imports or Firebase bearer-token injection.
+
+Verified:
+
+- Red test initially failed for the expected reasons: `authFetch.ts` still
+  imported `@/lib/firebase/config` and still added a Firebase bearer token
+  instead of using cookie credentials.
+- `npm test -- --run __tests__/authFetchLocalSession.test.ts` passed: 1 file,
+  2 tests.
+- `npm test -- --run __tests__/authFetchLocalSession.test.ts __tests__/pdfHouseholdData.test.ts __tests__/localDashboardOverviewRoute.test.ts __tests__/localAssistantContextRoute.test.ts __tests__/localDividendsRoutes.test.ts`
+  passed: 5 files, 16 tests.
+
+Caveats:
+
+- This slice assumes migrated `app/api/*` callers authenticate through the local
+  cookie session. Discovery found no remaining `app/api` route importing
+  `requireFirebaseAuth`, but `lib/server/apiAuth.ts` still exists as a legacy
+  helper and several legacy services still use Firebase runtime dependencies.
+- Final residual search still found 415 matching lines across the requested
+  scope. `lib/utils/authFetch.ts` no longer appears; the only touched-file hit is
+  the boundary regex in `__tests__/authFetchLocalSession.test.ts`.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

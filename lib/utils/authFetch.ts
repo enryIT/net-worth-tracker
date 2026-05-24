@@ -1,27 +1,15 @@
-import { auth } from '@/lib/firebase/config';
-
 /**
- * Attach the current Firebase ID token to private API requests.
+ * Send private API requests using the local Auth.js cookie session.
  *
- * The app already knows the signed-in user client-side, but route handlers that
- * use the Admin SDK must still verify the caller explicitly.
+ * Migrated route handlers resolve ownership from the server-side session, so the
+ * client wrapper must not attach legacy Firebase bearer tokens.
  */
 export async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {}
 ): Promise<Response> {
-  const currentUser = auth.currentUser;
-
-  if (!currentUser) {
-    throw new Error('Utente non autenticato');
-  }
-
-  const idToken = await currentUser.getIdToken();
-  const headers = new Headers(init.headers);
-  headers.set('Authorization', `Bearer ${idToken}`);
-
   return fetch(input, {
     ...init,
-    headers,
+    credentials: init.credentials ?? 'same-origin',
   });
 }
