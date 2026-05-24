@@ -1,5 +1,8 @@
 import { MonthlySnapshot } from './assets';
-import { Timestamp } from 'firebase/firestore';
+
+export type PerformanceDateLike = {
+  toDate(): Date;
+};
 
 // Time period types
 export type TimePeriod =
@@ -139,39 +142,39 @@ export interface MonthlyReturnHeatmapData {
   }[];
 }
 
-// Firestore-serialized version of CashFlowData (Date → Timestamp)
-export interface FirestoreCashFlowData {
-  date: Timestamp;
+// Serialized cache version of CashFlowData.
+export interface SerializedCashFlowData {
+  date: PerformanceDateLike;
   income: number;
   expenses: number;
   dividendIncome: number;
   netCashFlow: number;
 }
 
-// Firestore-serialized version of PerformanceMetrics (Date fields → Timestamp)
-export interface FirestorePerformanceMetrics extends Omit<PerformanceMetrics, 'startDate' | 'endDate' | 'dividendEndDate' | 'cashFlows'> {
-  startDate: Timestamp;
-  endDate: Timestamp;
-  dividendEndDate: Timestamp;
-  cashFlows: FirestoreCashFlowData[];
+// Serialized cache version of PerformanceMetrics.
+export interface SerializedPerformanceMetrics extends Omit<PerformanceMetrics, 'startDate' | 'endDate' | 'dividendEndDate' | 'cashFlows'> {
+  startDate: PerformanceDateLike;
+  endDate: PerformanceDateLike;
+  dividendEndDate: PerformanceDateLike;
+  cashFlows: SerializedCashFlowData[];
 }
 
-// Firestore-serialized version of RollingPeriodPerformance
-export interface FirestoreRollingPeriodPerformance extends Omit<RollingPeriodPerformance, 'periodEndDate' | 'periodStartDate'> {
-  periodEndDate: Timestamp;
-  periodStartDate: Timestamp;
+// Serialized cache version of RollingPeriodPerformance.
+export interface SerializedRollingPeriodPerformance extends Omit<RollingPeriodPerformance, 'periodEndDate' | 'periodStartDate'> {
+  periodEndDate: PerformanceDateLike;
+  periodStartDate: PerformanceDateLike;
 }
 
-// Firestore-serialized PerformanceData (excludes custom — never cached)
-export interface FirestorePerformanceData {
-  ytd: FirestorePerformanceMetrics;
-  oneYear: FirestorePerformanceMetrics;
-  threeYear: FirestorePerformanceMetrics;
-  fiveYear: FirestorePerformanceMetrics;
-  allTime: FirestorePerformanceMetrics;
-  rolling12M: FirestoreRollingPeriodPerformance[];
-  rolling36M: FirestoreRollingPeriodPerformance[];
-  lastUpdated: Timestamp;
+// Serialized cache version of PerformanceData (excludes custom — never cached).
+export interface SerializedPerformanceData {
+  ytd: SerializedPerformanceMetrics;
+  oneYear: SerializedPerformanceMetrics;
+  threeYear: SerializedPerformanceMetrics;
+  fiveYear: SerializedPerformanceMetrics;
+  allTime: SerializedPerformanceMetrics;
+  rolling12M: SerializedRollingPeriodPerformance[];
+  rolling36M: SerializedRollingPeriodPerformance[];
+  lastUpdated: PerformanceDateLike;
   snapshotCount: number;
 }
 
@@ -180,8 +183,8 @@ export interface PerformanceCacheDocument {
   userId: string;
   // Encodes snapshot count + last snapshot date; invalidated automatically when snapshots change
   cacheKey: string;
-  cachedAt: Timestamp;
-  data: FirestorePerformanceData;
+  cachedAt: PerformanceDateLike;
+  data: SerializedPerformanceData;
 }
 
 // Underwater drawdown chart data

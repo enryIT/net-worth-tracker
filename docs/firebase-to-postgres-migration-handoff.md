@@ -692,6 +692,40 @@ Remaining:
   components, tests, and other shared types; rerun the residual usage search
   before the next slice.
 
+## Slice Notes - 2026-05-24 Performance Shared Type Date Boundary
+
+Changed:
+
+- Removed the direct `firebase/firestore` `Timestamp` import from
+  `types/performance.ts`.
+- Added a local structural `PerformanceDateLike` type so serialized performance
+  cache date fields remain compatible with provider-like values exposing
+  `toDate()` without importing Firebase.
+- Renamed the performance cache serialization type names from provider-specific
+  `Firestore*` names to neutral `Serialized*` names and updated the legacy
+  performance service annotations accordingly.
+- Added `__tests__/performanceTypesFirebaseBoundary.test.ts` as a source-level
+  regression guard for the performance shared type boundary.
+
+Verified:
+
+- Red test initially failed for the expected reason: `types/performance.ts` still
+  imported `firebase/firestore` directly.
+- `npm test -- --run __tests__/performanceTypesFirebaseBoundary.test.ts` passed:
+  1 file, 1 test.
+- `npm test -- --run __tests__/performanceTypesFirebaseBoundary.test.ts __tests__/performanceService.test.ts __tests__/localPerformanceYieldRoutes.test.ts __tests__/localDividendStatsService.test.ts`
+  passed: 4 files, 75 tests.
+- `npx tsc --noEmit --incremental false` passed.
+
+Remaining:
+
+- `lib/services/performanceService.ts` itself remains Firebase-backed for its
+  legacy performance cache reads/writes and should be migrated in a later local
+  service/API slice.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and `types/hall-of-fame.ts`; rerun the residual usage
+  search before the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

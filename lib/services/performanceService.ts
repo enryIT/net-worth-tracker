@@ -12,10 +12,10 @@ import {
   MonthlyReturnHeatmapData,
   UnderwaterDrawdownData,
   PerformanceCacheDocument,
-  FirestorePerformanceData,
-  FirestorePerformanceMetrics,
-  FirestoreCashFlowData,
-  FirestoreRollingPeriodPerformance,
+  SerializedPerformanceData,
+  SerializedPerformanceMetrics,
+  SerializedCashFlowData,
+  SerializedRollingPeriodPerformance,
 } from '@/types/performance';
 import { getExpensesByDateRange } from './expenseService';
 import { getUserSnapshots } from './snapshotService';
@@ -1427,15 +1427,15 @@ export async function calculatePerformanceForPeriod(
 
 // ===== PERFORMANCE CACHE HELPERS =====
 
-function serializeCashFlow(cf: CashFlowData): FirestoreCashFlowData {
+function serializeCashFlow(cf: CashFlowData): SerializedCashFlowData {
   return { ...cf, date: Timestamp.fromDate(cf.date) };
 }
 
-function deserializeCashFlow(cf: FirestoreCashFlowData): CashFlowData {
+function deserializeCashFlow(cf: SerializedCashFlowData): CashFlowData {
   return { ...cf, date: cf.date.toDate() };
 }
 
-function serializeMetrics(m: PerformanceMetrics): FirestorePerformanceMetrics {
+function serializeMetrics(m: PerformanceMetrics): SerializedPerformanceMetrics {
   return {
     ...m,
     startDate: Timestamp.fromDate(m.startDate),
@@ -1445,7 +1445,7 @@ function serializeMetrics(m: PerformanceMetrics): FirestorePerformanceMetrics {
   };
 }
 
-function deserializeMetrics(m: FirestorePerformanceMetrics): PerformanceMetrics {
+function deserializeMetrics(m: SerializedPerformanceMetrics): PerformanceMetrics {
   return {
     ...m,
     startDate: m.startDate.toDate(),
@@ -1455,7 +1455,7 @@ function deserializeMetrics(m: FirestorePerformanceMetrics): PerformanceMetrics 
   };
 }
 
-function serializeRolling(r: RollingPeriodPerformance): FirestoreRollingPeriodPerformance {
+function serializeRolling(r: RollingPeriodPerformance): SerializedRollingPeriodPerformance {
   return {
     ...r,
     periodStartDate: Timestamp.fromDate(r.periodStartDate),
@@ -1463,7 +1463,7 @@ function serializeRolling(r: RollingPeriodPerformance): FirestoreRollingPeriodPe
   };
 }
 
-function deserializeRolling(r: FirestoreRollingPeriodPerformance): RollingPeriodPerformance {
+function deserializeRolling(r: SerializedRollingPeriodPerformance): RollingPeriodPerformance {
   return {
     ...r,
     periodStartDate: r.periodStartDate.toDate(),
@@ -1471,7 +1471,7 @@ function deserializeRolling(r: FirestoreRollingPeriodPerformance): RollingPeriod
   };
 }
 
-function serializePerformanceData(data: PerformanceData): FirestorePerformanceData {
+function serializePerformanceData(data: PerformanceData): SerializedPerformanceData {
   return {
     ytd: serializeMetrics(data.ytd),
     oneYear: serializeMetrics(data.oneYear),
@@ -1485,7 +1485,7 @@ function serializePerformanceData(data: PerformanceData): FirestorePerformanceDa
   };
 }
 
-function deserializePerformanceData(raw: FirestorePerformanceData): PerformanceData {
+function deserializePerformanceData(raw: SerializedPerformanceData): PerformanceData {
   return {
     ytd: deserializeMetrics(raw.ytd),
     oneYear: deserializeMetrics(raw.oneYear),
