@@ -1,30 +1,17 @@
-import { Timestamp } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebase/admin';
-import {
-  DASHBOARD_OVERVIEW_SOURCE_VERSION,
-  DASHBOARD_OVERVIEW_SUMMARY_COLLECTION,
-} from '@/lib/services/dashboardOverviewConstants';
+import { invalidateLocalDashboardOverviewSummary } from '@/lib/server/dashboard/localDashboardOverviewInvalidationService';
 
 /**
- * Server-side counterpart for overview summary invalidation.
+ * Server-side compatibility wrapper for overview summary invalidation.
  *
- * Routes that use the Admin SDK bypass Firestore security rules, so they must mark
- * the materialized summary stale explicitly when they change overview-relevant data.
+ * Legacy callers keep importing this module, while persistence is owned by the
+ * local Prisma-backed dashboard overview invalidation service.
  */
 export async function invalidateDashboardOverviewSummaryServer(
   userId: string,
   reason: string
 ): Promise<void> {
   try {
-    await adminDb.collection(DASHBOARD_OVERVIEW_SUMMARY_COLLECTION).doc(userId).set(
-      {
-        userId,
-        sourceVersion: DASHBOARD_OVERVIEW_SOURCE_VERSION,
-        invalidatedAt: Timestamp.now(),
-        lastInvalidationReason: reason,
-      },
-      { merge: true }
-    );
+    await invalidateLocalDashboardOverviewSummary(userId, reason);
   } catch (error) {
     console.warn('[dashboardOverviewInvalidationServer] Failed to mark summary stale:', error);
   }

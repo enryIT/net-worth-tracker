@@ -792,6 +792,43 @@ Caveats:
   components, tests, and comments; rerun the residual usage search before the
   next slice.
 
+## Slice Notes - 2026-05-24 Dashboard Overview Server Invalidation Boundary
+
+Changed:
+
+- Redirected `lib/services/dashboardOverviewInvalidation.server.ts` away from
+  Firebase Admin runtime access.
+- Preserved the exported `invalidateDashboardOverviewSummaryServer()` helper as
+  a compatibility wrapper while delegating persistence to
+  `invalidateLocalDashboardOverviewSummary()` in the existing local
+  Prisma-backed dashboard overview invalidation service.
+- Added `__tests__/dashboardOverviewInvalidationServerMigration.test.ts` as a
+  source-level and delegation regression guard so the legacy helper cannot
+  reintroduce Firebase Admin imports.
+
+Verified:
+
+- Red test initially failed for the expected reasons: the legacy helper still
+  imported `firebase-admin/firestore`, `@/lib/firebase/admin`, used `adminDb`,
+  and did not call the local invalidation service.
+- `npm test -- --run __tests__/dashboardOverviewInvalidationServerMigration.test.ts`
+  passed: 1 file, 2 tests.
+- `npm test -- --run __tests__/dashboardOverviewInvalidationServerMigration.test.ts __tests__/localDashboardOverviewInvalidationService.test.ts __tests__/localDashboardOverviewInvalidationRoute.test.ts __tests__/localDashboardOverviewService.test.ts __tests__/localDashboardOverviewRoute.test.ts`
+  passed: 5 files, 10 tests.
+
+Caveats:
+
+- This slice only migrates the legacy server invalidation helper. The old
+  Firebase-backed dashboard overview read/recompute service in
+  `lib/services/dashboardOverviewService.ts` still remains for a later slice.
+- Final residual search still found 411 matching lines across the requested
+  scope. `lib/services/dashboardOverviewInvalidation.server.ts` no longer
+  appears; the only touched-file hit is the boundary regex in
+  `__tests__/dashboardOverviewInvalidationServerMigration.test.ts`.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -801,10 +838,10 @@ High-value next targets:
 
 - `lib/services/assetService.ts`
 - `lib/services/expenseService.ts`
-- `lib/services/expenseCategoryService.ts`
 - `lib/services/dummySnapshotGenerator.ts`
 - `lib/services/snapshotService.ts`
 - `lib/services/performanceService.ts`
+- `lib/services/dashboardOverviewService.ts`
 - `lib/services/dividendService.ts`
 - `lib/services/dividendIncomeService.ts`
 - `lib/server/dividendUseCase.ts`
@@ -813,7 +850,6 @@ High-value next targets:
 - `lib/helpers/priceUpdater.ts`
 - `lib/server/assistant/store.ts`
 - `lib/server/apiAuth.ts`
-- `lib/utils/authFetch.ts`
 - `lib/utils/authHelpers.ts`
 - shared types importing `firebase/firestore` `Timestamp`
 
