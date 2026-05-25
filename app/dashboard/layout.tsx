@@ -40,7 +40,7 @@ export default function DashboardLayout({
             )}
 
             {/* Page transitions handled by template.tsx which re-mounts on every navigation */}
-            <main className="flex-1 overflow-y-auto bg-gray-50 p-4 dark:bg-gray-950 md:p-6 desktop:pb-6 max-desktop:portrait:[padding-bottom:calc(env(safe-area-inset-bottom,0px)+88px)] max-desktop:landscape:pb-6">
+            <main className="flex-1 overflow-y-auto bg-background p-4 desktop:p-6 desktop:pb-6 max-desktop:portrait:[padding-bottom:calc(env(safe-area-inset-bottom,0px)+88px)] max-desktop:landscape:pb-6">
               {children}
             </main>
           </SidebarInset>

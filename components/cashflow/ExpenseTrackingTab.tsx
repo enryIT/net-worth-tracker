@@ -262,6 +262,13 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   const currentMonth = String(new Date().getMonth() + 1); // 1-based month (1-12)
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+
+  // Opens the add-expense dialog when the bottom-nav "+" button fires the custom event.
+  useEffect(() => {
+    const handler = () => { setEditingExpense(null); setDialogOpen(true); };
+    window.addEventListener('cashflow:add-expense', handler);
+    return () => window.removeEventListener('cashflow:add-expense', handler);
+  }, []);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
@@ -805,16 +812,6 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
           Nuova Spesa
         </Button>
       </div>
-
-      {/* Mobile FAB */}
-      <Button
-        onClick={handleAddExpense}
-        disabled={isDemo}
-        className="fixed bottom-24 right-4 z-40 h-14 w-14 rounded-full shadow-lg desktop:hidden"
-        aria-label="Nuova Spesa"
-      >
-        <Plus className="h-6 w-6" />
-      </Button>
 
       {/* ── Hero Cashflow Card ─────────────────────────────────────────────── */}
       {/* Mirrors the cashflow card in the Overview/Panoramica page, but driven  */}

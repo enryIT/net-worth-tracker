@@ -16,43 +16,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { AssistenteBanner } from '@/components/layout/AssistenteBanner';
 import { LogoutDialog } from '@/components/layout/LogoutDialog';
-import {
-  PieChart,
-  History,
-  Trophy,
-  Flame,
-  Settings,
-  TrendingUp,
-  LogOut,
-  MoreVertical,
-  Sun,
-  Moon,
-  Monitor,
-} from 'lucide-react';
+import { ThemePicker } from '@/components/layout/ThemePicker';
+import { Settings, LogOut, MoreVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { drawerContainer, drawerItem } from '@/lib/utils/motionVariants';
-import { applyThemeWithTransition } from '@/lib/utils/themeTransition';
 import { useLogout } from '@/lib/hooks/useLogout';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTheme } from 'next-themes';
 import { getDisplayInfo } from '@/lib/utils/userDisplayUtils';
-
-// WARNING: If you add/remove navigation items here, also update:
-// - Sidebar.tsx (analysisNav / planningNav arrays)
-// - BottomNavigation.tsx (secondaryHrefs array)
-
-type NavEntry = { name: string; href: string; icon: React.ComponentType<{ className?: string }> };
-
-const analisiNav: NavEntry[] = [
-  { name: 'Allocazione', href: '/dashboard/allocation', icon: PieChart },
-  { name: 'Rendimenti', href: '/dashboard/performance', icon: TrendingUp },
-  { name: 'Storico', href: '/dashboard/history', icon: History },
-  { name: 'Hall of Fame', href: '/dashboard/hall-of-fame', icon: Trophy },
-];
-
-const pianificazioneNav: NavEntry[] = [
-  { name: 'FIRE e Simulazioni', href: '/dashboard/fire-simulations', icon: Flame },
-];
+import { analysisNav, planningNav } from '@/lib/constants/navigation';
 
 interface SecondaryMenuDrawerProps {
   open: boolean;
@@ -63,7 +34,6 @@ export function SecondaryMenuDrawer({ open, onOpenChange }: SecondaryMenuDrawerP
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
   const { confirmLogout, setConfirmLogout, handleSignOut } = useLogout(() => onOpenChange(false));
 
   // Lock body scroll when open
@@ -119,6 +89,9 @@ export function SecondaryMenuDrawer({ open, onOpenChange }: SecondaryMenuDrawerP
             {/* Panel */}
             <motion.div
               key="panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu navigazione"
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
@@ -141,9 +114,10 @@ export function SecondaryMenuDrawer({ open, onOpenChange }: SecondaryMenuDrawerP
                 {/* Analisi */}
                 <div className="mb-1">
                   <motion.p variants={drawerItem} className={sectionLabel}>Analisi</motion.p>
-                  {analisiNav.map((nav) => (
+                  {analysisNav.map((nav) => (
                     <motion.button
                       key={nav.href}
+                      type="button"
                       variants={drawerItem}
                       onClick={() => navigate(nav.href)}
                       className={navItemCn(isActive(nav.href))}
@@ -159,9 +133,10 @@ export function SecondaryMenuDrawer({ open, onOpenChange }: SecondaryMenuDrawerP
                   <motion.p variants={drawerItem} className={cn(sectionLabel, 'pt-2')}>
                     Pianificazione
                   </motion.p>
-                  {pianificazioneNav.map((nav) => (
+                  {planningNav.map((nav) => (
                     <motion.button
                       key={nav.href}
+                      type="button"
                       variants={drawerItem}
                       onClick={() => navigate(nav.href)}
                       className={navItemCn(isActive(nav.href))}
@@ -178,7 +153,6 @@ export function SecondaryMenuDrawer({ open, onOpenChange }: SecondaryMenuDrawerP
                     <AssistenteBanner onClick={() => onOpenChange(false)} />
                   </motion.div>
                 )}
-
               </motion.div>
 
               {/* Footer */}
@@ -217,27 +191,7 @@ export function SecondaryMenuDrawer({ open, onOpenChange }: SecondaryMenuDrawerP
                       </DropdownMenuLabel>
                       <div className="flex items-center justify-between px-2 py-1.5">
                         <span className="text-sm">Tema</span>
-                        <div className="flex items-center gap-0.5 rounded-md border bg-muted/50 p-0.5">
-                          {([
-                            { value: 'system', icon: Monitor, label: 'Sistema' },
-                            { value: 'light',  icon: Sun,     label: 'Chiaro'  },
-                            { value: 'dark',   icon: Moon,    label: 'Scuro'   },
-                          ] as const).map(({ value, icon: Icon, label }) => (
-                            <button
-                              key={value}
-                              onClick={(e) => applyThemeWithTransition(value, e, setTheme)}
-                              title={label}
-                              className={cn(
-                                'flex size-6 items-center justify-center rounded transition-colors',
-                                theme === value
-                                  ? 'bg-background text-foreground shadow-sm'
-                                  : 'text-muted-foreground hover:text-foreground'
-                              )}
-                            >
-                              <Icon className="size-3.5" />
-                            </button>
-                          ))}
-                        </div>
+                        <ThemePicker />
                       </div>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onSelect={() => setConfirmLogout(true)}>
