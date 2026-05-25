@@ -861,6 +861,41 @@ Remaining:
   components, tests, and comments; rerun the residual usage search before the
   next slice.
 
+## Slice Notes - 2026-05-25 Asset Admin Repository Compatibility Wrapper
+
+Changed:
+
+- Redirected `lib/server/assetAdminRepository.ts` away from Firebase Admin
+  runtime access.
+- Preserved the exported `getUserAssetsAdmin(userId)` helper as a legacy
+  compatibility wrapper while delegating reads to the existing Prisma-backed
+  `listLocalAssets()` service under `lib/server/assets/localAssetService.ts`.
+- Added `__tests__/assetAdminRepositoryMigration.test.ts` as a source-level and
+  delegation regression guard so the legacy helper cannot reintroduce Firebase
+  Admin imports.
+- Updated `docs/agent-memory.md` so durable project guidance no longer describes
+  this helper as a canonical Admin SDK repository.
+
+Verified:
+
+- Red test initially failed for the expected Firebase boundary: the legacy helper
+  still imported `@/lib/firebase/admin`, mentioned Firebase Admin SDK, and tried
+  to use `adminDb`; the delegation test timed out while reaching the old Admin
+  path.
+- `npm test -- --run __tests__/assetAdminRepositoryMigration.test.ts` passed: 1
+  file, 2 tests.
+- `npm test -- --run __tests__/assetAdminRepositoryMigration.test.ts __tests__/localAssetService.test.ts __tests__/localAssetsRoutes.test.ts __tests__/localAssetItemRoute.test.ts __tests__/localPerformanceYieldMetricsService.test.ts __tests__/localAutomatedSnapshotService.test.ts`
+  passed: 6 files, 19 tests.
+
+Remaining:
+
+- `lib/server/assetAdminRepository.ts` has no active app/lib/component/test
+  callers in the current search scope, so this is mostly a stale compatibility
+  boundary cleanup rather than an active-route migration.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

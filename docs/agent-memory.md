@@ -391,7 +391,7 @@ For pages that aggregate large collections (many snapshots + all expenses) on ev
 
 ### Server-Side Layer Separation (`lib/server/`)
 - `lib/server/` hosts server-only modules that sit between API routes and services: use cases, processors, and Admin SDK repositories
-- `lib/server/assetAdminRepository.ts` — canonical Admin SDK asset fetch (`getUserAssetsAdmin`). Import from here in all API routes that need server-side asset access; do not re-declare the function inline
+- `lib/server/assetAdminRepository.ts` — legacy compatibility helper (`getUserAssetsAdmin`) that delegates to the local Prisma-backed asset service. New server-side asset reads should prefer `lib/server/assets/localAssetService.ts` directly.
 - `lib/server/dividendUseCase.ts` — dividend creation orchestration (`createDividendWithOptionalExpense`). Contains coupon cleanup, costPerShare enrichment, and conditional expense creation. Route retains only auth, validation, asset fetch, and ownership check
 - `lib/server/dividendProcessor.ts` — 3 cron phases (`runDividendScraping`, `runExpenseCreation`, `runNextCouponScheduling`) with explicit typed result interfaces. Cron route delegates to these; do not add phase logic back into the route handler
 - Pattern rule: API route = auth → validate → fetch → ownership check → delegate to use case/processor → return response. No Firestore queries, business logic, or multi-step orchestration in the handler body itself

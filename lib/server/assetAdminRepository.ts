@@ -1,28 +1,13 @@
-import { adminDb } from '@/lib/firebase/admin';
-import { Asset } from '@/types/assets';
+import "server-only";
+
+import { listLocalAssets } from "@/lib/server/assets/localAssetService";
+import type { Asset } from "@/types/assets";
 
 /**
- * Fetch all assets for a user using Firebase Admin SDK (server-side only).
+ * Compatibility helper for legacy server callers.
  *
- * Required in API routes because assetService.ts uses the client SDK which
- * is not available in server contexts.
+ * Asset persistence now lives in the local Prisma-backed asset service.
  */
 export async function getUserAssetsAdmin(userId: string): Promise<Asset[]> {
-  try {
-    const querySnapshot = await adminDb
-      .collection('assets')
-      .where('userId', '==', userId)
-      .get();
-
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      lastPriceUpdate: doc.data().lastPriceUpdate?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Asset[];
-  } catch (error) {
-    console.error('[getUserAssetsAdmin] Error fetching assets:', error);
-    throw new Error('Failed to fetch assets');
-  }
+  return listLocalAssets(userId);
 }
