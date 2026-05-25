@@ -896,6 +896,45 @@ Remaining:
   components, tests, and comments; rerun the residual usage search before the
   next slice.
 
+## Slice Notes - 2026-05-25 Auth Helpers Firebase Runtime Boundary
+
+Changed:
+
+- Reworked `lib/utils/authHelpers.ts` from a Firebase client-auth helper into a
+  provider-neutral local session timing/retry utility.
+- Removed the direct `firebase/auth` runtime import and replaced the SDK-specific
+  user type with a small structural `RefreshableSessionUser` boundary.
+- Renamed the exported helpers from Firebase/Firestore-specific names to
+  `waitForSessionReady()` and `retryPermissionSensitiveOperation()`.
+- Updated `contexts/AuthContext.tsx` to call the neutral helper names while
+  preserving the existing registration flow.
+- Added `__tests__/authHelpersFirebaseBoundary.test.ts` as a source/import
+  boundary guard proving the helper no longer imports Firebase runtime modules
+  or exposes the old Firestore-named retry API.
+
+Verified:
+
+- Red test initially failed for the expected reasons: the helper file was absent
+  after the first over-narrow deletion attempt, and `contexts/AuthContext.tsx`
+  still imported the old helper names. Typecheck exposed the active caller, so
+  the slice was corrected to a neutral compatibility helper rather than deleting
+  the file.
+- `npm test -- --run __tests__/authHelpersFirebaseBoundary.test.ts` passed: 1
+  file, 2 tests.
+- `npm test -- --run __tests__/authHelpersFirebaseBoundary.test.ts __tests__/authFetchLocalSession.test.ts __tests__/localSessionAuth.test.ts __tests__/localAuthService.test.ts __tests__/localAuthRegisterRoute.test.ts`
+  passed: 5 files, 19 tests.
+
+Remaining:
+
+- `contexts/AuthContext.tsx` still contains broader Firebase Auth/Firestore
+  runtime code outside the original residual search scope and remains a future
+  auth-foundation migration target.
+- `lib/server/apiAuth.ts` still imports Firebase Admin auth and remains a future
+  local auth-foundation compatibility slice.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -917,8 +956,10 @@ High-value next targets:
 - `lib/helpers/priceUpdater.ts`
 - `lib/server/assistant/store.ts`
 - `lib/server/apiAuth.ts`
-- `lib/utils/authHelpers.ts`
-- shared types importing `firebase/firestore` `Timestamp`
+- `contexts/AuthContext.tsx` (outside the standard residual search scope but
+  still Firebase-backed until auth foundation is fully migrated)
+- shared type/date helper aliases and boundary-test patterns that still include
+  `Timestamp` in their names or regexes
 
 Some of these are legacy services no longer used by migrated route paths, but
 they still matter for final acceptance because normal app runtime should not

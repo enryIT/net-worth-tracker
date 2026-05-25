@@ -41,7 +41,7 @@ import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/config';
 import { User } from '@/types/assets';
 import { getDefaultTargets, setSettings } from '@/lib/services/assetAllocationService';
-import { waitForAuthTokenRefresh, retryFirestoreOperation } from '@/lib/utils/authHelpers';
+import { waitForSessionReady, retryPermissionSensitiveOperation } from '@/lib/utils/authHelpers';
 
 /**
  * Authentication context interface
@@ -166,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Step 3: Wait for Auth token refresh to ensure Firestore permissions are synchronized
     // This prevents PERMISSION_DENIED errors when creating user documents
     console.log('[AuthContext] Waiting for authentication token refresh...');
-    await waitForAuthTokenRefresh(firebaseUser);
+    await waitForSessionReady(firebaseUser);
 
     // Step 4: Update Firebase Auth profile with displayName if provided
     if (displayName) {
@@ -184,7 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Step 6: Set default asset allocation (60% equity, 40% bonds)
     // Wrapped in retry logic as additional safety net for permission synchronization
-    await retryFirestoreOperation(async () => {
+    await retryPermissionSensitiveOperation(async () => {
       await setSettings(firebaseUser.uid, {
         targets: getDefaultTargets(),
       });
@@ -252,7 +252,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Registration is allowed - wait for token refresh first
         console.log('[AuthContext] Google OAuth: Waiting for authentication token refresh...');
-        await waitForAuthTokenRefresh(result.user);
+        await waitForSessionReady(result.user);
 
         // Create Firestore document
         await setDoc(userRef, {
@@ -263,7 +263,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Set default asset allocation (60% equity, 40% bonds)
         // Wrapped in retry logic as additional safety net for permission synchronization
-        await retryFirestoreOperation(async () => {
+        await retryPermissionSensitiveOperation(async () => {
           await setSettings(result.user.uid, {
             targets: getDefaultTargets(),
           });
