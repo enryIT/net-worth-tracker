@@ -38,7 +38,7 @@ import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { toDate, type TimestampLike } from '@/lib/utils/dateHelpers';
+import { toDate, type ProviderDateLike } from '@/lib/utils/dateHelpers';
 import { tableShellSettle } from '@/lib/utils/motionVariants';
 import { cn } from '@/lib/utils';
 
@@ -107,7 +107,7 @@ export function DividendTable({
     );
   }, [dividends]);
 
-  const formatDate = (date: Date | string | TimestampLike): string => {
+  const formatDate = (date: Date | string | ProviderDateLike): string => {
     return format(toDate(date), 'dd/MM/yyyy', { locale: it });
   };
 

@@ -17,6 +17,25 @@ describe('dateHelpers module boundary', () => {
 
     expect(source).not.toMatch(/firebase\/firestore|lib\/firebase\/config/)
   })
+
+  it('uses neutral provider-independent date vocabulary in shared runtime files', () => {
+    const checkedFiles = [
+      'lib/utils/dateHelpers.ts',
+      'components/dividends/DividendTable.tsx',
+      'components/expenses/ExpenseCard.tsx',
+      'components/expenses/ExpenseTable.tsx',
+    ]
+
+    for (const file of checkedFiles) {
+      const source = readFileSync(file, 'utf8')
+      const oldProviderVocabulary = new RegExp([
+        'Time' + 'stampLike',
+        'Time' + 'stamp-like',
+        'Time' + 'stamp',
+      ].join('|'))
+      expect(source, file).not.toMatch(oldProviderVocabulary)
+    }
+  })
 })
 
 describe('toDate', () => {
@@ -26,7 +45,7 @@ describe('toDate', () => {
     expect(result).toBe(input)
   })
 
-  it('should handle Timestamp-like object with toDate()', () => {
+  it('should handle provider-like object with toDate()', () => {
     const mockDate = new Date(2025, 0, 1)
     const timestamp = { toDate: () => mockDate }
     // The function checks for 'toDate' method via duck typing
@@ -132,7 +151,7 @@ describe('formatItalianDate', () => {
     expect(result).toMatch(/15\/0?3\/2025/)
   })
 
-  it('should handle Timestamp-like objects', () => {
+  it('should handle provider-like objects', () => {
     const mockDate = new Date(2025, 0, 1)
     const timestamp = { toDate: () => mockDate }
     const result = formatItalianDate(timestamp as any)
@@ -159,7 +178,7 @@ describe('isDateOnOrAfter', () => {
     expect(isDateOnOrAfter(earlier, later)).toBe(false)
   })
 
-  it('should handle Timestamp-like objects', () => {
+  it('should handle provider-like objects', () => {
     const d1 = { toDate: () => new Date(2025, 6, 1) }
     const d2 = { toDate: () => new Date(2025, 5, 1) }
     expect(isDateOnOrAfter(d1 as any, d2 as any)).toBe(true)

@@ -935,6 +935,38 @@ Remaining:
   components, tests, and comments; rerun the residual usage search before the
   next slice.
 
+## Slice Notes - 2026-05-25 Shared Date Helper Provider Vocabulary Boundary
+
+Changed:
+
+- Renamed the remaining `TimestampLike` structural compatibility type in
+  `lib/utils/dateHelpers.ts` to the provider-neutral `ProviderDateLike`.
+- Updated active UI imports/usages in `components/dividends/DividendTable.tsx`,
+  `components/expenses/ExpenseCard.tsx`, and
+  `components/expenses/ExpenseTable.tsx` to use the neutral date helper type.
+- Updated date-helper comments and tests from provider-specific timestamp wording
+  to provider-neutral date-value wording while preserving duck-typed `toDate()`
+  support for legacy serialized values.
+- Extended `__tests__/dateHelpers.test.ts` with a source-level guard that checks
+  the shared date helper and active UI date-formatting imports do not reintroduce
+  the old provider-specific timestamp vocabulary.
+
+Verified:
+
+- Red test failed for the expected reason: `lib/utils/dateHelpers.ts` still
+  exported and used the old provider-specific date type name.
+- `npm test -- --run __tests__/dateHelpers.test.ts` passed: 1 file, 22 tests.
+- `npm test -- --run __tests__/dateHelpers.test.ts __tests__/dividendUiFirebaseBoundary.test.ts __tests__/expenseUiFirebaseBoundary.test.ts __tests__/localDividendsRoutes.test.ts __tests__/localExpenseService.test.ts __tests__/localExpensesRoutes.test.ts`
+  passed: 6 files, 54 tests.
+
+Remaining:
+
+- This slice only removes provider-specific date vocabulary from the shared date
+  helper and the active dividend/expense UI imports that consumed it.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

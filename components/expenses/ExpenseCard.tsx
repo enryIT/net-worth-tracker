@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { toDate, type TimestampLike } from '@/lib/utils/dateHelpers';
+import { toDate, type ProviderDateLike } from '@/lib/utils/dateHelpers';
 
 interface ExpenseCardProps {
   expense: Expense;
@@ -50,7 +50,7 @@ const formatCurrency = (amount: number): string => {
   }).format(Math.abs(amount));
 };
 
-const formatDate = (date: Date | string | TimestampLike): string => {
+const formatDate = (date: Date | string | ProviderDateLike): string => {
   const dateObj = toDate(date);
   return format(dateObj, 'dd/MM/yyyy', { locale: it });
 };

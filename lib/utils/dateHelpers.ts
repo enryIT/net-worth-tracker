@@ -3,14 +3,14 @@ import { toZonedTime } from 'date-fns-tz';
 // Target timezone for Italian investors
 export const ITALY_TIMEZONE = 'Europe/Rome';
 
-export type TimestampLike = {
+export type ProviderDateLike = {
   toDate: () => Date;
 };
 
-type DateInput = Date | TimestampLike | string | undefined | null;
+type DateInput = Date | ProviderDateLike | string | undefined | null;
 
 /**
- * Convert timestamp-like values or Date to Date object
+ * Convert provider-like values or Date to Date object
  * Handles edge cases and provides type safety
  */
 export function toDate(date: DateInput): Date {
@@ -78,7 +78,7 @@ export function formatDateInputValue(date: DateInput = new Date()): string {
 }
 
 /**
- * Format Date or timestamp-like values to Italian locale (DD/MM/YYYY)
+ * Format Date or provider-like values to Italian locale (DD/MM/YYYY)
  */
 export function formatItalianDate(date: Exclude<DateInput, undefined | null>): string {
   const dateObj = toDate(date);
@@ -89,7 +89,7 @@ export function formatItalianDate(date: Exclude<DateInput, undefined | null>): s
  * Compare two dates (ignoring time)
  * Returns true if date1 >= date2
  */
-export function isDateOnOrAfter(date1: Date | TimestampLike, date2: Date | TimestampLike): boolean {
+export function isDateOnOrAfter(date1: Date | ProviderDateLike, date2: Date | ProviderDateLike): boolean {
   const d1 = toDate(date1);
   const d2 = toDate(date2);
   d1.setHours(0, 0, 0, 0);

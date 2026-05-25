@@ -39,7 +39,7 @@ import {
 import { updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
 import { deleteInvestmentOperation } from '@/lib/services/investmentOperationService';
 import { queryKeys } from '@/lib/query/queryKeys';
-import { toDate, type TimestampLike } from '@/lib/utils/dateHelpers';
+import { toDate, type ProviderDateLike } from '@/lib/utils/dateHelpers';
 import {
   Table,
   TableBody,
@@ -76,7 +76,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
 
   // ========== Formatting Utilities ==========
 
-  const formatDate = (date: Date | string | TimestampLike): string => {
+  const formatDate = (date: Date | string | ProviderDateLike): string => {
     const dateObj = toDate(date);
     return format(dateObj, 'dd/MM/yyyy', { locale: it });
   };
