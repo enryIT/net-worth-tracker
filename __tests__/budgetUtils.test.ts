@@ -9,6 +9,8 @@
  * All returned totals are positive (Math.abs applied).
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getActualForItem,
@@ -19,6 +21,15 @@ import {
 import { createId } from '@/lib/utils/idHelpers';
 import type { Expense } from '@/types/expenses';
 import type { BudgetItem } from '@/types/budget';
+
+const source = readFileSync(join(process.cwd(), '__tests__/budgetUtils.test.ts'), 'utf8');
+const legacyProviderTypeImport = new RegExp("import\\('fire" + "base/fire" + "store'\\)\\.Time" + "stamp");
+
+describe('budgetUtils test fixtures provider boundary', () => {
+  it('uses provider-neutral date fixtures', () => {
+    expect(source).not.toMatch(legacyProviderTypeImport);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers — build minimal Expense fixtures
@@ -34,9 +45,9 @@ function makeExpense(overrides: Partial<Expense> & { amount: number; date: Date 
     ...overrides,
     amount: overrides.amount,
     currency: 'EUR',
-    date: overrides.date as unknown as import('firebase/firestore').Timestamp,
-    createdAt: overrides.date as unknown as import('firebase/firestore').Timestamp,
-    updatedAt: overrides.date as unknown as import('firebase/firestore').Timestamp,
+    date: overrides.date,
+    createdAt: overrides.date,
+    updatedAt: overrides.date,
   } as Expense;
 }
 

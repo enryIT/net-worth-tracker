@@ -967,6 +967,35 @@ Remaining:
   components, tests, and comments; rerun the residual usage search before the
   next slice.
 
+## Slice Notes - 2026-05-25 Budget Utility Test Provider Type Boundary
+
+Changed:
+
+- Removed the remaining `import('firebase/firestore').Timestamp` type casts from
+  `__tests__/budgetUtils.test.ts` expense fixtures.
+- Added a focused source-level boundary assertion to the same test file so the
+  pure budget utility regression tests keep using provider-neutral `Date` values.
+- Built the forbidden provider/type pattern from fragments so the guard itself
+  does not add false-positive residual search hits.
+
+Verified:
+
+- Red test failed for the expected reason: the new budget utility fixture
+  boundary detected the old Firebase provider `Timestamp` type casts.
+- `npm test -- --run __tests__/budgetUtils.test.ts` passed: 1 file, 19 tests.
+- `npm test -- --run __tests__/budgetUtils.test.ts __tests__/budgetTypesFirebaseBoundary.test.ts __tests__/budgetServiceClient.test.ts __tests__/localBudgetRoutes.test.ts __tests__/localBudgetService.test.ts`
+  passed: 5 files, 32 tests.
+- A focused residual search for `__tests__/budgetUtils.test.ts` found no remaining
+  `firebase/firestore` or `Timestamp` hits.
+
+Remaining:
+
+- This slice only removes Firebase provider type coupling from pure budget utility
+  fixtures; it does not migrate the larger Firebase-backed runtime services.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
