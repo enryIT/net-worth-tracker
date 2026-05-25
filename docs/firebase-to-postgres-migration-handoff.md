@@ -750,9 +750,9 @@ Verified:
 
 Remaining:
 
-- Firebase-backed Hall of Fame runtime services still remain in
-  `lib/services/hallOfFameService.ts` and `lib/services/hallOfFameService.server.ts`;
-  this slice only removed the shared type Firebase boundary.
+- Firebase-backed Hall of Fame runtime service still remains in
+  `lib/services/hallOfFameService.ts`; the server compatibility wrapper was
+  migrated in the 2026-05-25 slice below.
 - Many Firebase runtime hits remain in services, server code, utilities,
   components, and tests; rerun the residual usage search before the next slice.
 
@@ -825,6 +825,38 @@ Caveats:
   scope. `lib/services/dashboardOverviewInvalidation.server.ts` no longer
   appears; the only touched-file hit is the boundary regex in
   `__tests__/dashboardOverviewInvalidationServerMigration.test.ts`.
+- Many Firebase runtime hits remain in services, server code, utilities,
+  components, tests, and comments; rerun the residual usage search before the
+  next slice.
+
+## Slice Notes - 2026-05-25 Hall of Fame Server Compatibility Wrapper
+
+Changed:
+
+- Redirected `lib/services/hallOfFameService.server.ts` away from Firebase Admin
+  runtime access.
+- Preserved the exported `updateHallOfFame(userId)` server helper as a
+  compatibility wrapper while delegating persistence and ranking recalculation to
+  the existing Prisma-backed `updateLocalHallOfFame()` service under
+  `lib/server/hall-of-fame/localHallOfFameService.ts`.
+- Added `__tests__/hallOfFameServerCompatibilityMigration.test.ts` as a
+  source-level and delegation regression guard so the legacy helper cannot
+  reintroduce Firebase Admin imports.
+
+Verified:
+
+- Red test initially failed while importing the legacy helper because Firebase
+  runtime initialization reached `lib/firebase/config.ts` and threw
+  `FirebaseError: Firebase: Error (auth/invalid-api-key)`.
+- `npm test -- --run __tests__/hallOfFameServerCompatibilityMigration.test.ts`
+  passed: 1 file, 2 tests.
+- `npm test -- --run __tests__/hallOfFameServerCompatibilityMigration.test.ts __tests__/localHallOfFameService.test.ts __tests__/localHallOfFameRecalculateRoute.test.ts __tests__/localMonthlySnapshotCronService.test.ts __tests__/localManualSnapshotService.test.ts __tests__/hallOfFameTypesFirebaseBoundary.test.ts`
+  passed: 6 files, 13 tests.
+
+Remaining:
+
+- `lib/services/hallOfFameService.ts` still remains Firebase-backed on the client
+  wrapper path and should be migrated in a later slice.
 - Many Firebase runtime hits remain in services, server code, utilities,
   components, tests, and comments; rerun the residual usage search before the
   next slice.
