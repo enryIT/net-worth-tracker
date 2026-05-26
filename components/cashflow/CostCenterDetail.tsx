@@ -291,7 +291,7 @@ export function CostCenterDetail({
                       width={55}
                     />
                     <Tooltip
-                      formatter={(value: number) => [formatCurrency(value), 'Spesa']}
+                      formatter={(value) => [formatCurrency(value as number), 'Spesa']}
                       labelStyle={{ fontWeight: 600, color: '#111827' }}
                       cursor={{ fill: 'rgba(128, 128, 128, 0.1)' }}
                     />

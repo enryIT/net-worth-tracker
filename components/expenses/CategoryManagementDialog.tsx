@@ -33,7 +33,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
@@ -151,7 +151,7 @@ export function CategoryManagementDialog({
     handleSubmit,
     reset,
     setValue,
-    watch,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
@@ -161,7 +161,8 @@ export function CategoryManagementDialog({
     },
   });
 
-  const selectedColor = watch('color');
+  const selectedColor = useWatch({ control, name: 'color' });
+  const selectedType = useWatch({ control, name: 'type' });
 
   useEffect(() => {
     if (category) {
@@ -428,7 +429,7 @@ export function CategoryManagementDialog({
           <div className="space-y-2">
             <Label htmlFor="type">Tipo di Voce *</Label>
             <Select
-              value={watch('type')}
+              value={selectedType}
               onValueChange={(value) => setValue('type', value as ExpenseType)}
             >
               <SelectTrigger id="type">
@@ -446,13 +447,13 @@ export function CategoryManagementDialog({
               <p className="text-sm text-red-500">{errors.type.message}</p>
             )}
             {/* Warn when type changes on edit — sign flip for income ↔ expense crossing */}
-            {category && watch('type') !== category.type && (() => {
+            {category && selectedType !== category.type && (() => {
               const oldIsIncome = category.type === 'income';
-              const newIsIncome = watch('type') === 'income';
+              const newIsIncome = selectedType === 'income';
               const crossesBoundary = oldIsIncome !== newIsIncome;
               return crossesBoundary ? (
                 <p className="text-sm text-amber-600 dark:text-amber-400">
-                  Attenzione: tutte le transazioni cambieranno segno degli importi (da {EXPENSE_TYPE_LABELS[category.type]} a {EXPENSE_TYPE_LABELS[watch('type')]}).
+                  Attenzione: tutte le transazioni cambieranno segno degli importi (da {EXPENSE_TYPE_LABELS[category.type]} a {EXPENSE_TYPE_LABELS[selectedType as ExpenseType]}).
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">

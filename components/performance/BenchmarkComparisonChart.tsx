@@ -509,11 +509,12 @@ export function BenchmarkComparisonChart({
           <Tooltip
             contentStyle={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--card-foreground)' }}
             labelStyle={{ fontWeight: 600, color: '#111827' }}
-            formatter={(value: number, name: string) => {
+            formatter={(value, name) => {
+              const num = value as number;
               const label = name === 'portfolio'
                 ? 'Il Tuo Portafoglio'
-                : (activeBenchmarks.find(b => b.id === name)?.name ?? name);
-              return [`${value.toFixed(2)}`, label];
+                : (activeBenchmarks.find(b => b.id === String(name))?.name ?? name);
+              return [`${num.toFixed(2)}`, label];
             }}
           />
           <Legend

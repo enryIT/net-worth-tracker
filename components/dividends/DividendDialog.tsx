@@ -14,7 +14,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
@@ -26,6 +26,7 @@ import { Timestamp } from 'firebase/firestore';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -99,7 +100,6 @@ export function DividendDialog({ open, onClose, dividend, onSuccess }: DividendD
     handleSubmit,
     reset,
     setValue,
-    watch,
     control,
     formState: { errors, isSubmitting },
   } = useForm<DividendFormValues>({
@@ -115,10 +115,10 @@ export function DividendDialog({ open, onClose, dividend, onSuccess }: DividendD
     },
   });
 
-  const selectedAssetId = watch('assetId');
-  const grossAmountPerShare = watch('grossAmountPerShare') || 0;
-  const withholdingTax = watch('withholdingTax') || 0;
-  const sharesHeld = watch('sharesHeld') || 0;
+  const selectedAssetId = useWatch({ control, name: 'assetId' });
+  const grossAmountPerShare = useWatch({ control, name: 'grossAmountPerShare' }) || 0;
+  const withholdingTax = useWatch({ control, name: 'withholdingTax' }) || 0;
+  const sharesHeld = useWatch({ control, name: 'sharesHeld' }) || 0;
 
   // Calculated fields (read-only)
   const netAmountPerShare = grossAmountPerShare - withholdingTax;
@@ -293,6 +293,11 @@ export function DividendDialog({ open, onClose, dividend, onSuccess }: DividendD
           <DialogTitle>
             {dividend ? 'Modifica Dividendo' : 'Nuovo Dividendo'}
           </DialogTitle>
+          <DialogDescription>
+            {dividend
+              ? 'Modifica i dati del dividendo registrato.'
+              : 'Registra un nuovo dividendo o cedola ricevuta.'}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">

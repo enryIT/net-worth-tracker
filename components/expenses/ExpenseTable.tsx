@@ -255,18 +255,21 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
     return EXPENSE_TYPE_LABELS[type];
   };
 
+  // Badge colors keyed by expense type — theme-aware via CSS variable references.
+  // chart-1: income (green-toned in most themes), chart-2: fixed, chart-4: variable, chart-3: debt.
+  // color-mix() at 12% for background, 35% for border; text uses the raw chart var directly.
   const getTypeBadgeColor = (type: ExpenseType): string => {
     switch (type) {
       case 'income':
-        return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-400 dark:border-green-800';
+        return 'bg-[color-mix(in_oklch,var(--chart-1)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-1)_35%,transparent)] text-[var(--chart-1)]';
       case 'fixed':
-        return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800';
+        return 'bg-[color-mix(in_oklch,var(--chart-2)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-2)_35%,transparent)] text-[var(--chart-2)]';
       case 'variable':
-        return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800';
+        return 'bg-[color-mix(in_oklch,var(--chart-4)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-4)_35%,transparent)] text-[var(--chart-4)]';
       case 'debt':
-        return 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800';
+        return 'bg-[color-mix(in_oklch,var(--chart-3)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-3)_35%,transparent)] text-[var(--chart-3)]';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700';
+        return 'bg-muted border-border text-muted-foreground';
     }
   };
 
@@ -451,7 +454,9 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
               <TableCell className="text-right font-medium">
                 <div
                   className={`flex items-center justify-end gap-1 ${
-                    expense.type === 'income' ? 'text-green-600' : 'text-red-600'
+                    expense.type === 'income'
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-red-600 dark:text-red-400'
                   }`}
                 >
                   {expense.type === 'income' ? (
@@ -486,7 +491,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                     href={expense.link}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center text-blue-600 hover:text-blue-800"
+                    className="inline-flex items-center justify-center text-primary hover:text-primary/70 transition-colors"
                     title="Apri link"
                   >
                     <ExternalLink className="h-4 w-4" />

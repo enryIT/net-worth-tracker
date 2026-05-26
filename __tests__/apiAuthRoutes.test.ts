@@ -166,6 +166,13 @@ vi.mock('@/lib/services/assetService', () => ({
   calculateLiquidNetWorth: vi.fn(() => 700),
   calculateIlliquidNetWorth: vi.fn(() => 300),
   calculateFIRENetWorth: vi.fn(() => 900),
+  calculateNetTotal: vi.fn(() => 950),
+  calculateTotalUnrealizedGains: vi.fn(() => 50),
+  calculateTotalEstimatedTaxes: vi.fn(() => 50),
+  calculateLiquidEstimatedTaxes: vi.fn(() => 20),
+  calculatePortfolioWeightedTER: vi.fn(() => 0.12),
+  calculateAnnualPortfolioCost: vi.fn(() => 1.2),
+  calculateStampDuty: vi.fn(() => 0),
 }));
 
 vi.mock('@/lib/services/performanceService', () => ({
@@ -352,10 +359,13 @@ describe('Private API route auth', () => {
             totalValue: 1234,
             liquidNetWorth: 800,
             illiquidNetWorth: 434,
+            cashNetWorth: 300,
+            liquidInvestmentsNetWorth: 500,
             netTotal: 1200,
             liquidNetTotal: 780,
             unrealizedGains: 50,
             estimatedTaxes: 20,
+            liquidEstimatedTaxes: 20,
             portfolioTER: 0.25,
             annualPortfolioCost: 12,
             annualStampDuty: 3,
@@ -380,7 +390,7 @@ describe('Private API route auth', () => {
         },
         updatedAt: new Date(),
         computedAt: new Date(),
-        sourceVersion: 1,
+        sourceVersion: 3,
         invalidatedAt: null,
       }),
     });
@@ -400,7 +410,7 @@ describe('Private API route auth', () => {
       },
       freshness: {
         source: 'materialized_summary',
-        sourceVersion: 1,
+        sourceVersion: 3,
         stale: false,
       },
     });

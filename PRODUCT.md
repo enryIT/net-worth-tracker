@@ -1,0 +1,63 @@
+# Impeccable Design Context — Net Worth Tracker
+
+## Design Context
+
+### Users
+Investitori italiani attenti e autonomi che gestiscono in proprio il loro patrimonio — azioni, ETF, BTP, crypto, immobili, conti correnti. Usano l'app regolarmente (almeno mensile) per monitorare performance, dividendi e progresso verso FIRE. Non sono trader: sono accumulatori di lungo periodo, metodici, che vogliono dati affidabili e leggibili senza perdere tempo.
+
+**Job to be done**: "Capire in pochi secondi com'è messa la mia situazione finanziaria, confrontarla col passato, e sentire che sto andando nella giusta direzione."
+
+### Brand Personality
+**Elegante · Sofisticato · Personale**
+
+L'app non è uno strumento impersonale: è un cruscotto privato, quasi un diario finanziario di qualità. Come un wealth manager digitale su misura — non parla a tutti, parla a te. La sofisticazione si esprime nella cura per i dettagli, non nella complessità.
+
+### Aesthetic Direction
+
+**Riferimento primario — Linear / Vercel**: tipografia forte, dark mode eccellente, geometria pulita, microinterazioni fluide, nessun decoro superfluo. La struttura, il ritmo, la pulizia.
+
+**Riferimento primario — Trade Republic**: gerarchia numerica estrema. Il dato primario occupa il massimo spazio fisico e visivo disponibile. Layout verticale netto: numero dominante → variazione chip inline → metadati in label piccole. Liste flat con `divide-y` invece di card-dentro-card. Nessun progress bar decorativo. Nessuna box-within-box. Il chrome visivo è ridotto al minimo strutturale — solo ciò che separa, mai ciò che decora.
+
+I due riferimenti sono complementari: condividono dark mode premium, tipografia come struttura, zero decorazione, rispetto per il dato come protagonista assoluto.
+
+**Visual tone**: Ultra-clean con personalità. Spazio intenzionale. Gerarchia tipografica netta. Dati che respirano. Animazioni che informano, non intrattengono.
+
+**Layout vocabulary**: La pagina Panoramica definisce il vocabolario di layout per tutte le pagine:
+- **Hero asimmetrico** `desktop:grid-cols-[2fr_1fr]` in cima: numero dominante a sinistra, card di contesto (breakdown patrimoniale) a destra. L'asimmetria 2:1 comunica gerarchia attraverso lo spazio, non solo la tipografia.
+- **KPI Chip Grid** full-width: sotto l'hero, una sezione a larghezza piena con `grid grid-cols-2 desktop:grid-cols-4 gap-3` di sub-tile `bg-muted/40 rounded-xl`. Quattro metriche di pari peso (Entrate / Spese / Risparmio / Rapporto) con sub-hero value `text-[22px]` + delta annotation `text-[12px] font-mono`. Seguita da category bar breakdown.
+- **Card Sticky Footer**: l'hero card usa `flex flex-col h-full` + `mt-auto` per ancorare il blocco TER/Costo al fondo della card, visivamente allineato col bordo inferiore della companion card.
+- **Responsive duplication**: i blocchi TER/Costo compaiono sia nel footer dell'hero card (desktop, `hidden desktop:grid`) sia come standalone `grid-cols-2` sotto l'hero (mobile, `desktop:hidden`). Lo stesso dato, due posizioni diverse — preferibile alla logica condizionale convoluta.
+- **Sezioni secondarie** collassabili (Radix Collapsible + Framer Motion height:auto) per non sovraccaricare la fold.
+- **Separatori** `border-t border-border/40` tra capitoli. I grafici sono deferiti via `requestIdleCallback` fino al completamento dell'animazione hero, per non competere sul frame budget.
+
+**Direzione**: Overdrive — implementazioni tecnicamente ambiziose che fanno alzare il sopracciglio. Fisica spring su dialog, scroll-driven reveals, counter animati, sparkline edge-to-edge con gradiente, donut SVG animato con `motion.circle`, transizioni che sembrano impossibili per una web app.
+
+**Anti-riferimenti**: Bloomberg terminal (troppo freddo/denso), consumer fintech colorato alla Revolut (troppo leggero per dati seri), Material Design (troppo generico).
+
+**Tema**: Dark mode come esperienza primaria. Light mode pienamente supportata.
+
+### Design Principles
+
+1. **Dati prima, chrome mai** — ogni elemento visivo guadagna il suo spazio comunicando un'informazione. Se togliendolo la pagina è più chiara, va tolto. Box decorative, progress bar estetiche, divisori ridondanti: fuori. Il donut SVG animato nella Liquid card è stato sostituito da un semplice breakdown flat a 3 righe — tre valori espliciti comunicano più di una forma geometrica animata.
+
+2. **Il numero comanda** — il dato primario di ogni schermata occupa il massimo spazio fisico e visivo disponibile. Gerarchia Trade Republic: valore in `text-[44px] desktop:text-[54px] font-bold font-mono` per hero di pagina, `text-[36px]` per hero di sezione, `text-[22px]` per valori secondari accoppiati. Eyebrow label `text-[10px] uppercase tracking-[0.1em]` sopra il numero. Variazione come chip `text-[15px] font-semibold font-mono rounded-[9px] px-[13px] py-[6px]` sotto il numero. L'utente capisce il numero più importante in meno di 2 secondi, senza cercare.
+
+3. **Sezioni che respirano** — la densità è una feature, ma solo se leggibile. Padding generoso tra sezioni. Separatori `divide-y` invece di nested card. Liste piatte invece di griglie di box. Lo spazio bianco è strutturale, non decorativo.
+
+4. **Mobile-first, desktop-elevated** — il layout base è progettato per 390px. Il desktop aggiunge colonne, tabelle e sidebar — non è una versione semplificata di un layout desktop. Il breakpoint primario è `desktop:` (1440px). Mai `lg:` per layout wide-screen (iPad Mini in landscape = 1024px, trattato come mobile per design).
+
+5. **Movimento con intenzione** — le animazioni rivelano struttura e relazioni, non distraggono. Fisica spring come standard (stiffness 400, damping 35). Rispetta sempre `prefers-reduced-motion` via `useReducedMotion()`. Le animazioni di montaggio (count-up, ring chart, donut) si eseguono **una volta sola** alla prima visualizzazione — non si riavviano su ogni re-render del padre. Grafici pesanti vengono deferiti via `requestIdleCallback` per non competere con l'animazione hero.
+
+6. **Fiducia attraverso la precisione** — font monospaziato per valori (`font-mono` + `tnum`), allineamento decimale, consistenza nei formati. Il dato deve sembrare assolutamente affidabile.
+
+7. **Personalità nei dettagli** — i momenti di piacere vengono dai dettagli: counter animati, sparkline per-asset, stati vuoti che raccontano qualcosa. Non chiassosi, ma memorabili.
+
+---
+
+## Tech Stack Design Notes
+- Tailwind v4 + shadcn/ui (stile "new-york"), base color neutral, OKLCH color space
+- Breakpoint custom `desktop:` a 1440px (non usare `lg:`)
+- Geist Sans (UI) + Geist Mono (valori numerici)
+- Framer Motion già integrato — usare per animazioni avanzate
+- Recharts (grafici) + @nivo/sankey
+- Dark/light/system theme con CSS variables semantiche

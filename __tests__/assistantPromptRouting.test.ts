@@ -100,12 +100,12 @@ describe('resolveAssistantWebSearchPolicy', () => {
       ).toBe(true);
     });
 
-    it('uses includeMacroContext as an always-on web search toggle in chat', () => {
+    it('ignores includeMacroContext preference — chat uses prompt-based detection only', () => {
       const macroPrefs = { ...defaultPrefs, includeMacroContext: true };
-      // With the macro toggle enabled, chat uses web search even for plain prompts.
+      // Without a macro keyword, web search stays off in chat regardless of preference
       expect(
         resolveAssistantWebSearchPolicy('chat', 'Come sto performando?', macroPrefs)
-      ).toBe(true);
+      ).toBe(false);
     });
   });
 });

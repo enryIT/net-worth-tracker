@@ -40,6 +40,7 @@ import { HouseholdScopeSelect } from '@/components/household/HouseholdScopeSelec
 import { useChartColors } from '@/lib/hooks/useChartColors';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
 import {
+  calculateAssetValue,
   calculateLiquidEstimatedTaxes,
   calculateLiquidNetWorth,
   calculateNetTotal,
@@ -69,6 +70,32 @@ function summarizeScopedExpenses(expenses: Expense[]) {
     expenses: calculateTotalExpenses(expenses),
     net: calculateNetBalance(expenses),
   };
+}
+
+function buildScopedTopCategories(
+  expenses: Expense[],
+  type: 'income' | 'expense',
+  total: number
+) {
+  const categoryTotals = new Map<string, number>();
+
+  for (const expense of expenses) {
+    const isIncome = expense.type === 'income';
+    if ((type === 'income') !== isIncome) continue;
+
+    const category = expense.categoryName ?? 'Altro';
+    const amount = isIncome ? expense.amount : Math.abs(expense.amount);
+    categoryTotals.set(category, (categoryTotals.get(category) ?? 0) + amount);
+  }
+
+  return [...categoryTotals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([category, amount]) => ({
+      category,
+      amount,
+      percentage: total > 0 ? (amount / total) * 100 : 0,
+    }));
 }
 
 function buildScopedExpenseStats(
@@ -103,6 +130,16 @@ function buildScopedExpenseStats(
         ? ((currentMonth.net - previousMonth.net) / Math.abs(previousMonth.net)) * 100
         : 0,
     },
+    topExpenseCategories: buildScopedTopCategories(
+      expensesForPeriod(currentMonthReference),
+      'expense',
+      currentMonth.expenses
+    ),
+    topIncomeCategories: buildScopedTopCategories(
+      expensesForPeriod(currentMonthReference),
+      'income',
+      currentMonth.income
+    ),
   };
 }
 
@@ -238,6 +275,10 @@ export default function DashboardPage() {
     const liquidNetWorth = calculateLiquidNetWorth(scopedAssets);
     const illiquidNetWorth = calculateIlliquidNetWorth(scopedAssets);
     const liquidEstimatedTaxes = calculateLiquidEstimatedTaxes(scopedAssets);
+    const cashNetWorth = scopedAssets
+      .filter((asset) => asset.quantity > 0 && asset.assetClass === 'cash')
+      .reduce((sum, asset) => sum + calculateAssetValue(asset), 0);
+    const liquidInvestmentsNetWorth = liquidNetWorth - cashNetWorth;
     const currentSnapshot = scopedSnapshots.find(
       (snapshot) => snapshot.year === currentMonthReference.year && snapshot.month === currentMonthReference.month
     ) ?? null;
@@ -261,10 +302,13 @@ export default function DashboardPage() {
         totalValue,
         liquidNetWorth,
         illiquidNetWorth,
+        cashNetWorth,
+        liquidInvestmentsNetWorth,
         netTotal: calculateNetTotal(scopedAssets),
         liquidNetTotal: liquidNetWorth - liquidEstimatedTaxes,
         unrealizedGains: calculateTotalUnrealizedGains(scopedAssets),
         estimatedTaxes: calculateTotalEstimatedTaxes(scopedAssets),
+        liquidEstimatedTaxes,
         portfolioTER: calculatePortfolioWeightedTER(scopedAssets),
         annualPortfolioCost: calculateAnnualPortfolioCost(scopedAssets),
         annualStampDuty: rawOverview.metrics.annualStampDuty,
@@ -927,7 +971,7 @@ export default function DashboardPage() {
       {/* Confirm Dialog */}
       <Dialog
         open={showConfirmDialog}
-        onOpenChange={(nextOpen) => {
+        onOpenChange={(nextOpen: boolean) => {
           if (!nextOpen) {
             setSnapshotDialogStyle(undefined);
           }
