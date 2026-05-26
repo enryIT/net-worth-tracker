@@ -126,6 +126,11 @@ export function AssetCard({
           {asset.ticker && (
             <p className="text-sm text-muted-foreground mt-0.5 truncate">{asset.ticker}</p>
           )}
+          {asset.ownershipProfileName && (
+            <span className="mt-1 inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              Proprietà: {asset.ownershipProfileName}
+            </span>
+          )}
           {asset.quantity === 0 && (
             <Badge variant="outline" className="mt-1 text-xs bg-muted text-muted-foreground border-border">
               Azzerato

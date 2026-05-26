@@ -539,6 +539,7 @@ export function AssetManagementTab({ assets, allAssets, loading, onRefresh, snap
                       <SortHead column="name" sortState={sortState} onSort={handleSort}>Nome</SortHead>
                       <TableHead>Ticker</TableHead>
                       <SortHead column="class" sortState={sortState} onSort={handleSort}>Classe</SortHead>
+                      <TableHead>Proprietà</TableHead>
                       <TableHead className="text-right">Quantità</TableHead>
                       <TableHead className="text-right">Prezzo</TableHead>
                       <TableHead className="text-right">PMC</TableHead>
@@ -592,6 +593,15 @@ export function AssetManagementTab({ assets, allAssets, loading, onRefresh, snap
                               >
                                 {formatAssetClassName(asset.assetClass)}
                               </span>
+                            </TableCell>
+                            <TableCell>
+                              {asset.ownershipProfileName ? (
+                                <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                                  {asset.ownershipProfileName}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">{formatNumber(asset.quantity, 2)}</TableCell>
                             <TableCell className="text-right tabular-nums">{formatCurrency(asset.currentPrice, asset.currency, 4)}</TableCell>
@@ -744,7 +754,7 @@ export function AssetManagementTab({ assets, allAssets, loading, onRefresh, snap
                               className="bg-muted/40 hover:bg-muted/60 cursor-pointer select-none"
                               onClick={() => toggleGroupCollapsed(cls)}
                             >
-                              <TableCell colSpan={14}>
+                              <TableCell colSpan={15}>
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <Chevron className="h-3.5 w-3.5 text-muted-foreground" />

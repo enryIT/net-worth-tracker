@@ -46,6 +46,7 @@ import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
 import { formatCurrency } from '@/lib/services/chartService';
 import { calculateAssetValue, calculateUnrealizedGains } from '@/lib/services/assetService';
 import { filterAssetsByOwnershipScope } from '@/lib/utils/householdUtils';
+import { HouseholdScopeSelect } from '@/components/household/HouseholdScopeSelect';
 import { formatNumber } from '@/lib/services/chartService';
 import {
   staggerContainer,
@@ -332,8 +333,21 @@ export default function AssetsPage() {
       {/* ── PAGE HEADER ── */}
       <div className="border-b border-border pb-4">
         <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Portfolio</p>
-        <h1 className="mt-1 text-2xl font-bold text-foreground sm:text-3xl">Patrimonio</h1>
-        <p className="mt-2 text-muted-foreground">Gestisci e monitora il tuo patrimonio</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="mt-1 text-2xl font-bold text-foreground sm:text-3xl">Patrimonio</h1>
+            <p className="mt-2 text-muted-foreground">Gestisci e monitora il tuo patrimonio</p>
+          </div>
+          {householdEnabled && (
+            <HouseholdScopeSelect
+              value={selectedScopeKey}
+              onValueChange={setSelectedScopeKey}
+              options={householdScopeOptions}
+              label="Vista patrimonio"
+              className="sm:w-[240px]"
+            />
+          )}
+        </div>
       </div>
 
       {/* ── HERO + LIQUID — same as Panoramica, data from shared RQ cache ── */}
