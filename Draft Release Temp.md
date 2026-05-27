@@ -14,6 +14,11 @@
 
 ## 🔧 Improvements
 
+- **Expense type descriptions reworded** — the creation dialog now frames Fixed and Variable expenses as a complementary pair: Fixed expenses are described as "things you can't do without"; Variable expenses as "extras you could do without". The contrast makes it immediately clear how to categorize a new transaction
+- **Allocation columns now stay aligned across cards** — the Corrente / Target / Differenza / Azione columns previously shifted horizontally depending on the longest subcategory name in each card (e.g. "ETF Obbligazionari a Breve Termine" widened the first column, pushing the others). All tables now lock to the same column proportions regardless of content length
+- **Asset class names cleaned up** — the Allocation page no longer shows English terms in parentheses (e.g. "Azioni (Equity)" → "Azioni", "Obbligazioni (Bonds)" → "Obbligazioni"). The page is fully in Italian now
+- **FIRE runway target label clarified** — the label for the dashed target line in the FIRE historical runway chart now reads "Obiettivo patrimonio (anni di spese, linea tratteggiata)" instead of showing the raw formula `(100 ÷ SWR X%)`. The numeric value displayed next to it (e.g. "25,0 anni") already communicates the answer
+
 - **AI assistant now knows your allocation targets** — the assistant receives your configured target allocation (from Settings → Allocation) in every analysis. When you use the new "Allocazione vs target" suggested prompt chip, it compares your current portfolio allocation against your targets class by class and sub-category by sub-category, calculates the gap in percentage points, and suggests which areas to prioritize for your next purchase to get back on track
 - **Year-over-year variation chart is now always visible** in the History page — it was previously hidden inside a collapsed "Appendix" section that required an extra click to open. It now appears directly in the Growth Drivers section alongside the savings and work/investment charts
 - **Monthly snapshot log removed from History** — the grid showing the last 6 raw snapshots was redundant; the same data (with notes) is accessible through the snapshot search dialog already present in the page header

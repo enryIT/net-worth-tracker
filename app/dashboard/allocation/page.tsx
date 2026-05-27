@@ -214,12 +214,12 @@ export default function AllocationPage() {
   };
 
   const assetClassLabels: Record<string, string> = {
-    equity: 'Azioni (Equity)',
-    bonds: 'Obbligazioni (Bonds)',
-    crypto: 'Criptovalute (Crypto)',
-    realestate: 'Immobili (Real Estate)',
-    cash: 'Liquidità (Cash)',
-    commodity: 'Materie Prime (Commodity)',
+    equity: 'Azioni',
+    bonds: 'Obbligazioni',
+    crypto: 'Criptovalute',
+    realestate: 'Immobili',
+    cash: 'Liquidità',
+    commodity: 'Materie Prime',
   };
 
   // Group sub-categories by asset class
@@ -556,14 +556,14 @@ export default function AllocationPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[30%]">Nome Asset</TableHead>
-                      <TableHead className="text-right">Corrente</TableHead>
-                      <TableHead className="text-right text-muted-foreground/70">Target</TableHead>
-                      <TableHead className="text-right">Differenza</TableHead>
-                      <TableHead className="text-center">
+                      <TableHead className="w-[35%]">Nome Asset</TableHead>
+                      <TableHead className="w-[18%] text-right">Corrente</TableHead>
+                      <TableHead className="w-[16%] text-right text-muted-foreground/70">Target</TableHead>
+                      <TableHead className="w-[18%] text-right">Differenza</TableHead>
+                      <TableHead className="w-[13%] text-center">
                         <span className="block">Azione</span>
                         <span className="block text-[10px] font-normal text-muted-foreground">±2% soglia</span>
                       </TableHead>
@@ -744,14 +744,14 @@ export default function AllocationPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <Table>
+                  <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[30%]">Classe Asset</TableHead>
-                        <TableHead className="text-right">Corrente</TableHead>
-                        <TableHead className="text-right text-muted-foreground/70">Target</TableHead>
-                        <TableHead className="text-right">Differenza</TableHead>
-                        <TableHead className="text-center">
+                        <TableHead className="w-[35%]">Classe Asset</TableHead>
+                        <TableHead className="w-[18%] text-right">Corrente</TableHead>
+                        <TableHead className="w-[16%] text-right text-muted-foreground/70">Target</TableHead>
+                        <TableHead className="w-[18%] text-right">Differenza</TableHead>
+                        <TableHead className="w-[13%] text-center">
                           <span className="block">Azione</span>
                           <span className="block text-[10px] font-normal text-muted-foreground">±2% soglia</span>
                         </TableHead>
@@ -825,14 +825,14 @@ export default function AllocationPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
-                    <Table>
+                    <Table className="table-fixed">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[30%]">Sottocategoria</TableHead>
-                          <TableHead className="text-right">Corrente</TableHead>
-                          <TableHead className="text-right text-muted-foreground/70">Target</TableHead>
-                          <TableHead className="text-right">Differenza</TableHead>
-                          <TableHead className="text-center">
+                          <TableHead className="w-[35%]">Sottocategoria</TableHead>
+                          <TableHead className="w-[18%] text-right">Corrente</TableHead>
+                          <TableHead className="w-[16%] text-right text-muted-foreground/70">Target</TableHead>
+                          <TableHead className="w-[18%] text-right">Differenza</TableHead>
+                          <TableHead className="w-[13%] text-center">
                             <span className="block">Azione</span>
                             <span className="block text-[10px] font-normal text-muted-foreground">±2% soglia</span>
                           </TableHead>
