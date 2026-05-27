@@ -14,6 +14,9 @@
 
 ## 🔧 Improvements
 
+- **Year-over-year variation chart is now always visible** in the History page — it was previously hidden inside a collapsed "Appendix" section that required an extra click to open. It now appears directly in the Growth Drivers section alongside the savings and work/investment charts
+- **Monthly snapshot log removed from History** — the grid showing the last 6 raw snapshots was redundant; the same data (with notes) is accessible through the snapshot search dialog already present in the page header
+- **History "Work & Investments" chart now respects your color theme** — the three trend lines (income earned, saved from work, investment growth) previously used fixed colors that didn't change when switching themes. They now follow the active theme palette like all other charts in the app
 - **Navigation reorganized** — the sidebar group is now called "Statistiche" and contains the read-only analytical pages (Analisi, Rendimenti, Storico, Hall of Fame, Assistente AI). The Allocation page has moved to the "Pianificazione" group alongside FIRE & Simulations, since it drives buy/sell/hold decisions rather than being a passive view
 - **Goal-based allocation targets** (Settings → Preferences → "Allocazione da Obiettivi") now correctly reflect investment priorities: each goal is weighted by its outstanding gap multiplied by its priority level (Alta 3×, Media 2×, Bassa 1×). Goals that are already fully funded are excluded from the calculation. Previously, only the target amount was used as weight, which made the priority setting have no meaningful effect
 - The Allocation page banner and the Goals tab now explain how the priority weighting affects allocation targets, so the logic is transparent and actionable

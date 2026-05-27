@@ -46,11 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
+
 import { Asset, MonthlySnapshot, AssetAllocationTarget, DoublingMode, AssetAllocationSettings } from '@/types/assets';
 import { DoublingTimeSummaryCards } from '@/components/history/DoublingTimeSummaryCards';
 import { DoublingMilestoneTimeline } from '@/components/history/DoublingMilestoneTimeline';
@@ -65,7 +61,6 @@ import {
   PiggyBank,
   TrendingUp,
   TrendingDown,
-  ChevronDown,
   Settings,
 } from 'lucide-react';
 import { getItalyYear } from '@/lib/utils/dateHelpers';
@@ -108,7 +103,7 @@ import {
  * - No side-stripe borders: removed border-l-4 from evolution card
  * - No hardcoded hex in chart series: all colors via useChartColors()
  * - Segmented pills for Annuale/Mensile and Geometrico/Traguardi toggles
- * - YoY + snapshot grid in collapsible appendice (default closed)
+ * - YoY variation chart in Driver section (visible, no collapsible)
  */
 
 // Module-level constants for segmented pill controls — stable reference for React Compiler
@@ -159,8 +154,6 @@ export default function HistoryPage() {
   // 'all' shows all years as a continuous monthly timeline; a number filters to that year
   const [savingsSelectedYear, setSavingsSelectedYear] = useState<number | 'all'>('all');
   const [visibleChapters, setVisibleChapters] = useState<HistoryChapterId[]>([]);
-  // Appendice collapsible — default closed so it doesn't overwhelm the page on first load
-  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
   const prefersReducedMotion = useReducedMotion();
 
   const chartColors = useChartColors();
@@ -1316,156 +1309,76 @@ export default function HistoryPage() {
               </Card>
             )}
           </motion.div>
-        </div>
-      </motion.section>
 
-      {/* ── APPENDICE (collapsible, default chiusa) ───────────────────── */}
-      {/* Contains YoY variation chart + raw snapshot grid */}
-      <div className="pt-6 border-t border-border/40">
-        <Collapsible open={snapshotsOpen} onOpenChange={setSnapshotsOpen}>
-          <CollapsibleTrigger asChild>
-            <div className="group flex cursor-pointer select-none items-center justify-between pb-2">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Appendice</p>
-                <h2 className="mt-1 text-lg font-semibold text-foreground">Storico YoY e dati grezzi</h2>
-              </div>
-              <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none group-data-[state=open]:rotate-180" />
-            </div>
-          </CollapsibleTrigger>
-
-          <CollapsibleContent>
-            <div className="space-y-4 mt-4">
-              {/* YoY Variation Chart */}
-              <Card>
-                <CardHeader>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <CardTitle className="text-lg sm:text-xl">Variazione Anno su Anno</CardTitle>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowYoYPercentage(!showYoYPercentage)}
-                      className="w-full sm:w-auto text-xs sm:text-sm"
-                    >
-                      {showYoYPercentage ? '€ Valori Assoluti' : '% Percentuali'}
-                    </Button>
+          {/* YoY Variation Chart — net worth change year over year; bars use active theme palette */}
+          <motion.div variants={cardItem} initial="hidden" animate="visible" transition={{ duration: 0.4, ease: [0.25, 1, 0.5, 1], delay: 0.2 }}>
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="text-lg sm:text-xl">Variazione Anno su Anno</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowYoYPercentage(!showYoYPercentage)}
+                    className="w-full sm:w-auto text-xs sm:text-sm"
+                  >
+                    {showYoYPercentage ? '€ Valori Assoluti' : '% Percentuali'}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {yoyVariationData.length === 0 ? (
+                  <div className="flex h-64 items-center justify-center text-muted-foreground text-sm">
+                    Nessuno storico disponibile.
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {yoyVariationData.length === 0 ? (
-                    <div className="flex h-64 items-center justify-center text-muted-foreground text-sm">
-                      Nessuno storico disponibile.
-                    </div>
-                  ) : (
-                    <AnimatePresence mode="wait" initial={false}>
-                      <motion.div
-                        key={showYoYPercentage ? 'yoy-pct' : 'yoy-abs'}
-                        variants={tabPanelSwitch}
-                        initial="hidden"
-                        animate="visible"
-                        exit="hidden"
-                      >
-                        <ResponsiveContainer width="100%" height={getChartHeight()} id="chart-yoy-variation">
-                          <BarChart data={yoyVariationData} margin={getChartMargins()}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.6} />
-                            <XAxis dataKey="year" />
-                            <YAxis
-                              width={getYAxisWidth()}
-                              tickFormatter={(v) => showYoYPercentage ? `${v.toFixed(0)}%` : formatCurrencyCompact(v)}
-                            />
-                            <Tooltip
-                              formatter={(v, name) => {
-                                const num = v as number;
-                                if (name === 'Variazione') return showYoYPercentage ? `${num.toFixed(2)}%` : formatCurrency(num);
-                                return formatCurrency(num);
-                              }}
-                              {...tooltipStyle}
-                              cursor={{ fill: 'rgba(128,128,128,0.1)' }}
-                            />
-                            <Bar
-                              dataKey={showYoYPercentage ? 'variationPercentage' : 'variation'}
-                              name="Variazione"
-                              fill={chartColors[0]}
-                              animationDuration={600}
-                              animationEasing="ease-out"
-                            >
-                              {yoyVariationData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.variation >= 0 ? '#10B981' : '#EF4444'} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </motion.div>
-                    </AnimatePresence>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Raw Snapshot Grid */}
-              {snapshots.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Snapshot Mensili</CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                ) : (
+                  <AnimatePresence mode="wait" initial={false}>
                     <motion.div
-                      variants={staggerContainer}
+                      key={showYoYPercentage ? 'yoy-pct' : 'yoy-abs'}
+                      variants={tabPanelSwitch}
                       initial="hidden"
                       animate="visible"
-                      className={cn(
-                        'grid gap-4',
-                        isLandscape ? 'grid-cols-2' : 'grid-cols-1',
-                        'desktop:grid-cols-3'
-                      )}
+                      exit="hidden"
                     >
-                      {snapshots.slice(-6).reverse().map((snapshot) => (
-                        <motion.div
-                          key={`${snapshot.year}-${snapshot.month}`}
-                          variants={cardItem}
-                          className="rounded-lg border p-4"
-                        >
-                          <div>
-                            <div className="text-base font-semibold text-foreground">
-                              {MONTH_NAMES[snapshot.month - 1]} {snapshot.year}
-                            </div>
-                            <div className="text-xs text-muted-foreground mt-1">
-                              Creato il:{' '}
-                              {snapshot.createdAt.toLocaleString('it-IT', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </div>
-                          </div>
-                          <div className="mt-3">
-                            <div className="text-lg font-bold font-mono tabular-nums text-foreground">
-                              {formatCurrency(snapshot.totalNetWorth)}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              Liquido: {formatCurrency(snapshot.liquidNetWorth)}
-                            </div>
-                          </div>
-                          {snapshot.note && (
-                            <div className="mt-3 pt-3 border-t">
-                              <div className="text-xs text-amber-600 dark:text-amber-400 font-medium mb-1 flex items-center gap-1">
-                                <MessageSquare className="h-3 w-3" />
-                                Nota:
-                              </div>
-                              <div className="text-sm text-muted-foreground whitespace-pre-line">
-                                {snapshot.note.length > 100 ? snapshot.note.substring(0, 100) + '...' : snapshot.note}
-                              </div>
-                            </div>
-                          )}
-                        </motion.div>
-                      ))}
+                      <ResponsiveContainer width="100%" height={getChartHeight()} id="chart-yoy-variation">
+                        <BarChart data={yoyVariationData} margin={getChartMargins()}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.6} />
+                          <XAxis dataKey="year" />
+                          <YAxis
+                            width={getYAxisWidth()}
+                            tickFormatter={(v) => showYoYPercentage ? `${v.toFixed(0)}%` : formatCurrencyCompact(v)}
+                          />
+                          <Tooltip
+                            formatter={(v, name) => {
+                              const num = v as number;
+                              if (name === 'Variazione') return showYoYPercentage ? `${num.toFixed(2)}%` : formatCurrency(num);
+                              return formatCurrency(num);
+                            }}
+                            {...tooltipStyle}
+                            cursor={{ fill: 'rgba(128,128,128,0.1)' }}
+                          />
+                          <Bar
+                            dataKey={showYoYPercentage ? 'variationPercentage' : 'variation'}
+                            name="Variazione"
+                            fill={chartColors[0]}
+                            animationDuration={600}
+                            animationEasing="ease-out"
+                          >
+                            {/* chartColors[0] = anni positivi, chartColors[3] = anni negativi */}
+                            {yoyVariationData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.variation >= 0 ? chartColors[0] : chartColors[3]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </motion.div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </div>
+                  </AnimatePresence>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </motion.section>
 
       <CreateManualSnapshotModal
         open={showManualSnapshotModal}
