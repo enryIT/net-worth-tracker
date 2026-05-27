@@ -6,6 +6,14 @@ import { BanknoteArrowDown, BanknoteArrowUp, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -71,6 +79,7 @@ export function InvestmentOperationsTab() {
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | undefined>();
   const [editingId, setEditingId] = useState<string | undefined>();
+  const [operationDialogOpen, setOperationDialogOpen] = useState(false);
 
   const selectedAsset = investmentAssets.find(asset => asset.id === assetId);
   const grossAmount = Number(quantity) * Number(pricePerUnit);
@@ -99,6 +108,11 @@ export function InvestmentOperationsTab() {
     setFees('');
     setTaxes('');
     setNotes('');
+  };
+
+  const openOperationDialog = () => {
+    resetForm();
+    setOperationDialogOpen(true);
   };
 
   const handleSubmit = async () => {
@@ -147,6 +161,7 @@ export function InvestmentOperationsTab() {
       }
       await invalidate();
       resetForm();
+      setOperationDialogOpen(false);
       toast.success(editingId ? 'Operazione investimento aggiornata' : 'Operazione investimento registrata');
     } catch (error) {
       console.error('Error creating investment operation:', error);
@@ -170,6 +185,7 @@ export function InvestmentOperationsTab() {
     setTaxes(operation.taxes ? String(operation.taxes) : '');
     setDate(formatDateInputValue(toDate(operation.date)));
     setNotes(operation.notes || '');
+    setOperationDialogOpen(true);
   };
 
   const handleDelete = async (operationId: string) => {
@@ -206,97 +222,117 @@ export function InvestmentOperationsTab() {
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            {type === 'sell' ? <BanknoteArrowUp className="h-5 w-5" /> : <BanknoteArrowDown className="h-5 w-5" />}
-            {editingId ? 'Modifica operazione' : 'Nuova operazione'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 desktop:grid-cols-6 desktop:items-end">
-          <div className="space-y-2 desktop:col-span-2">
-            <Label>Asset</Label>
-            <Select value={assetId} onValueChange={setAssetId} disabled={!!editingId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleziona asset" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Seleziona asset</SelectItem>
-                {investmentAssets.map(asset => (
-                  <SelectItem key={asset.id} value={asset.id}>
-                    {asset.name} ({asset.ticker})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="flex justify-end">
+        <Button type="button" onClick={() => openOperationDialog()} disabled={investmentAssets.length === 0}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuova operazione
+        </Button>
+      </div>
+
+      <Dialog
+        open={operationDialogOpen}
+        onOpenChange={(open) => {
+          setOperationDialogOpen(open);
+          if (!open) resetForm();
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {type === 'sell' ? <BanknoteArrowUp className="h-5 w-5" /> : <BanknoteArrowDown className="h-5 w-5" />}
+              {editingId ? 'Modifica operazione' : 'Nuova operazione'}
+            </DialogTitle>
+            <DialogDescription>
+              Registra acquisti e vendite mantenendo il flusso separato da entrate, spese e debiti.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 desktop:grid-cols-6 desktop:items-end">
+            <div className="space-y-2 desktop:col-span-2">
+              <Label>Asset</Label>
+              <Select value={assetId} onValueChange={setAssetId} disabled={!!editingId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleziona asset" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Seleziona asset</SelectItem>
+                  {investmentAssets.map(asset => (
+                    <SelectItem key={asset.id} value={asset.id}>
+                      {asset.name} ({asset.ticker})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select value={type} onValueChange={(value) => setType(value as InvestmentOperationType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FORM_OPERATION_TYPES.map(operationType => (
+                    <SelectItem key={operationType} value={operationType}>{OPERATION_LABELS[operationType]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Quote</Label>
+              <Input type="number" min="0" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Prezzo unitario</Label>
+              <Input type="number" min="0" step="0.0001" value={pricePerUnit} onChange={(event) => setPricePerUnit(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </div>
+            <div className="space-y-2 desktop:col-span-2">
+              <Label>Conto cash collegato</Label>
+              <Select value={cashAssetId} onValueChange={setCashAssetId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Nessun conto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nessun conto</SelectItem>
+                  {cashAssets.map(asset => (
+                    <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Commissioni</Label>
+              <Input type="number" min="0" step="0.01" value={fees} onChange={(event) => setFees(event.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Tasse</Label>
+              <Input type="number" min="0" step="0.01" value={taxes} onChange={(event) => setTaxes(event.target.value)} />
+            </div>
+            <div className="space-y-2 desktop:col-span-2">
+              <Label>Note</Label>
+              <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
+            </div>
+            {Number.isFinite(grossAmount) && grossAmount > 0 && (
+              <p className="text-sm text-muted-foreground desktop:col-span-6">
+                Controvalore lordo: {formatCurrency(grossAmount)}
+              </p>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label>Tipo</Label>
-            <Select value={type} onValueChange={(value) => setType(value as InvestmentOperationType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FORM_OPERATION_TYPES.map(operationType => (
-                  <SelectItem key={operationType} value={operationType}>{OPERATION_LABELS[operationType]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Quote</Label>
-            <Input type="number" min="0" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Prezzo unitario</Label>
-            <Input type="number" min="0" step="0.0001" value={pricePerUnit} onChange={(event) => setPricePerUnit(event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Data</Label>
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          </div>
-          <div className="space-y-2 desktop:col-span-2">
-            <Label>Conto cash collegato</Label>
-            <Select value={cashAssetId} onValueChange={setCashAssetId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Nessun conto" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Nessun conto</SelectItem>
-                {cashAssets.map(asset => (
-                  <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Commissioni</Label>
-            <Input type="number" min="0" step="0.01" value={fees} onChange={(event) => setFees(event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Tasse</Label>
-            <Input type="number" min="0" step="0.01" value={taxes} onChange={(event) => setTaxes(event.target.value)} />
-          </div>
-          <div className="space-y-2 desktop:col-span-2">
-            <Label>Note</Label>
-            <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
-          </div>
-          <Button onClick={handleSubmit} disabled={isSaving || investmentAssets.length === 0} className="desktop:col-span-1">
-            <Plus className="mr-2 h-4 w-4" />
-            {editingId ? 'Aggiorna' : 'Registra'}
-          </Button>
-          {editingId && (
-            <Button type="button" variant="outline" onClick={resetForm} className="desktop:col-span-1">
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOperationDialogOpen(false)} disabled={isSaving}>
               Annulla
             </Button>
-          )}
-          {Number.isFinite(grossAmount) && grossAmount > 0 && (
-            <p className="text-sm text-muted-foreground desktop:col-span-5">
-              Controvalore lordo: {formatCurrency(grossAmount)}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            <Button type="button" onClick={handleSubmit} disabled={isSaving || investmentAssets.length === 0}>
+              <Plus className="mr-2 h-4 w-4" />
+              {editingId ? 'Aggiorna' : 'Registra'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>

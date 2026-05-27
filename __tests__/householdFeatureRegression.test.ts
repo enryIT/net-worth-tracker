@@ -47,4 +47,31 @@ describe('household feature regression guards', () => {
       "expense.attributionProfileId || (expense.type === 'income' ? defaultIncomeAttributionProfileId : defaultExpenseAttributionProfileId)"
     );
   });
+
+  it('keeps the expense dialog ownership selector reachable in the cashflow form', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toContain("const watchedAttributionProfileId = useWatch({ control, name: 'attributionProfileId' });");
+    expect(source).toContain('Label htmlFor="attributionProfileId"');
+    expect(source).toContain('value={watchedAttributionProfileId || DEFAULT_PROFILE_SELF_ID}');
+    expect(source).toContain('householdProfiles.map((profile) => (');
+  });
+
+  it('uses an overlay dialog, not an always-visible inline card, for investment buy/sell operations', () => {
+    const source = readRepoFile('components/cashflow/InvestmentOperationsTab.tsx');
+
+    expect(source).toContain('operationDialogOpen');
+    expect(source).toContain('open={operationDialogOpen}');
+    expect(source).toContain("onClick={() => openOperationDialog()}");
+  });
+
+  it('derives Patrimonio hero cards from scoped assets when Vista patrimonio is filtered', () => {
+    const source = readRepoFile('app/dashboard/assets/page.tsx');
+
+    expect(source).toContain('const scopedPortfolioMetrics = useMemo(');
+    expect(source).toContain('const totalValue = scopedPortfolioMetrics.totalValue;');
+    expect(source).toContain('const liquidNetTotal = scopedPortfolioMetrics.liquidNetTotal;');
+    expect(source).not.toContain('const totalValue = overview?.metrics.totalValue ?? 0;');
+    expect(source).not.toContain('const liquidNetTotal = overview?.metrics.liquidNetTotal ?? 0;');
+  });
 });

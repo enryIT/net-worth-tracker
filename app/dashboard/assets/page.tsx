@@ -44,7 +44,15 @@ import { OverviewAnimatedCurrency } from '@/components/dashboard/OverviewAnimate
 import { NetWorthSparkline } from '@/components/dashboard/NetWorthSparkline';
 import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
 import { formatCurrency } from '@/lib/services/chartService';
-import { calculateAssetValue, calculateUnrealizedGains } from '@/lib/services/assetService';
+import {
+  calculateAssetValue,
+  calculateLiquidNetWorth,
+  calculateIlliquidNetWorth,
+  calculateLiquidEstimatedTaxes,
+  calculateNetTotal,
+  calculateTotalEstimatedTaxes,
+  calculateUnrealizedGains,
+} from '@/lib/services/assetService';
 import { filterAssetsByOwnershipScope } from '@/lib/utils/householdUtils';
 import { HouseholdScopeSelect } from '@/components/household/HouseholdScopeSelect';
 import { formatNumber } from '@/lib/services/chartService';
@@ -199,6 +207,7 @@ export default function AssetsPage() {
     selectedScopeKey,
     setSelectedScopeKey,
     scope,
+    isScoped,
   } = useHouseholdScopeFilter(user?.uid);
 
   const { data: assets = [], isLoading: loading, refetch: refetchAssets } = useAssets(user?.uid);
@@ -215,27 +224,53 @@ export default function AssetsPage() {
   const [cashPendingDeleteId, setCashPendingDeleteId] = useState<string | undefined>();
   const cashPendingDeleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const scopedAssets = useMemo(
+    () => filterAssetsByOwnershipScope(assets, householdConfig, scope),
+    [assets, householdConfig, scope]
+  );
+
   // ─── Derived metrics for hero cards ──────────────────────────────────────────
-  const totalValue = overview?.metrics.totalValue ?? 0;
-  const liquidNetTotal = overview?.metrics.liquidNetTotal ?? 0;
+  const scopedPortfolioMetrics = useMemo(() => {
+    const totalValue = scopedAssets.reduce((sum, asset) => sum + calculateAssetValue(asset), 0);
+    const cashNetWorth = scopedAssets
+      .filter((asset) => asset.assetClass === 'cash')
+      .reduce((sum, asset) => sum + calculateAssetValue(asset), 0);
+    const liquidGross = calculateLiquidNetWorth(scopedAssets);
+    const illiquidNetWorth = calculateIlliquidNetWorth(scopedAssets);
+    const unrealizedGains = scopedAssets.reduce((sum, asset) => sum + calculateUnrealizedGains(asset), 0);
+    const estimatedTaxes = calculateTotalEstimatedTaxes(scopedAssets);
+    const liquidNetTotal = Math.max(0, liquidGross - calculateLiquidEstimatedTaxes(scopedAssets));
+    const netTotal = calculateNetTotal(scopedAssets);
+
+    return {
+      totalValue,
+      cashNetWorth,
+      liquidInvestmentsNetWorth: Math.max(0, liquidGross - cashNetWorth),
+      illiquidNetWorth,
+      unrealizedGains,
+      estimatedTaxes,
+      liquidNetTotal,
+      netTotal,
+      hasCostBasisTracking: scopedAssets.some((asset) => (asset.averageCost ?? 0) > 0),
+      assetCount: scopedAssets.filter((asset) => asset.quantity > 0).length,
+    };
+  }, [scopedAssets]);
+
+  const totalValue = scopedPortfolioMetrics.totalValue;
+  const liquidNetTotal = scopedPortfolioMetrics.liquidNetTotal;
   const sparkline12m = useMemo(() => {
     if (!overview?.sparklineData) return [];
     return overview.sparklineData.slice(-13);
   }, [overview]);
 
-  // Total unrealized G/P across all assets with cost basis.
+  // Total unrealized G/P across all scoped assets with cost basis.
   const { totalGainLoss, totalGainPct } = useMemo(() => {
-    const withCost = assets.filter((a) => a.averageCost && a.averageCost > 0);
+    const withCost = scopedAssets.filter((a) => a.averageCost && a.averageCost > 0);
     if (withCost.length === 0) return { totalGainLoss: 0, totalGainPct: 0 };
     const gainLoss = withCost.reduce((sum, a) => sum + calculateUnrealizedGains(a), 0);
     const costBasis = withCost.reduce((sum, a) => sum + a.quantity * a.averageCost!, 0);
     return { totalGainLoss: gainLoss, totalGainPct: costBasis > 0 ? (gainLoss / costBasis) * 100 : 0 };
-  }, [assets]);
-
-  const scopedAssets = useMemo(
-    () => filterAssetsByOwnershipScope(assets, householdConfig, scope),
-    [assets, householdConfig, scope]
-  );
+  }, [scopedAssets]);
 
   const handleRefresh = async () => {
     await Promise.all([refetchAssets(), refetchSnapshots()]);
@@ -376,7 +411,7 @@ export default function AssetsPage() {
 
                 {/* Variation chips */}
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {overview?.variations.monthly && (
+                  {!isScoped && overview?.variations.monthly && (
                     <span className={cn(
                       'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
                       'text-[15px] font-semibold font-mono tracking-[-0.01em]',
@@ -394,7 +429,7 @@ export default function AssetsPage() {
                       {overview.variations.monthly.percentage.toFixed(2)}%) questo mese
                     </span>
                   )}
-                  {overview?.variations.yearly && (
+                  {!isScoped && overview?.variations.yearly && (
                     <span className={cn(
                       'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
                       'text-[15px] font-semibold font-mono tracking-[-0.01em]',
@@ -431,7 +466,7 @@ export default function AssetsPage() {
                 )}
 
                 {/* Area sparkline — last 12 months, edge-to-edge via -mx-[22px] */}
-                {sparkline12m.length >= 2 && (
+                {!isScoped && sparkline12m.length >= 2 && (
                   <>
                     <div className="-mx-[22px] mt-3" style={{ height: 68 }}>
                       <NetWorthSparkline
@@ -449,9 +484,9 @@ export default function AssetsPage() {
                 )}
 
                 <p className="text-[11px] text-muted-foreground mt-2.5">
-                  {(overview?.flags.assetCount ?? 0) === 0
+                  {scopedPortfolioMetrics.assetCount === 0
                     ? 'Aggiungi asset per iniziare'
-                    : `${overview?.flags.assetCount ?? 0} asset in portafoglio`}
+                    : `${scopedPortfolioMetrics.assetCount} asset in portafoglio`}
                 </p>
               </CardContent>
             </Card>
@@ -478,18 +513,18 @@ export default function AssetsPage() {
                   {[
                     {
                       label: 'Liquidità',
-                      value: overview?.metrics.cashNetWorth ?? 0,
-                      pct: totalValue > 0 ? ((overview?.metrics.cashNetWorth ?? 0) / totalValue) * 100 : 0,
+                      value: scopedPortfolioMetrics.cashNetWorth,
+                      pct: totalValue > 0 ? (scopedPortfolioMetrics.cashNetWorth / totalValue) * 100 : 0,
                     },
                     {
                       label: 'Investimenti Liquidabili',
-                      value: overview?.metrics.liquidInvestmentsNetWorth ?? 0,
-                      pct: totalValue > 0 ? ((overview?.metrics.liquidInvestmentsNetWorth ?? 0) / totalValue) * 100 : 0,
+                      value: scopedPortfolioMetrics.liquidInvestmentsNetWorth,
+                      pct: totalValue > 0 ? (scopedPortfolioMetrics.liquidInvestmentsNetWorth / totalValue) * 100 : 0,
                     },
                     {
                       label: 'Investimenti Illiquidi',
-                      value: overview?.metrics.illiquidNetWorth ?? 0,
-                      pct: totalValue > 0 ? ((overview?.metrics.illiquidNetWorth ?? 0) / totalValue) * 100 : 0,
+                      value: scopedPortfolioMetrics.illiquidNetWorth,
+                      pct: totalValue > 0 ? (scopedPortfolioMetrics.illiquidNetWorth / totalValue) * 100 : 0,
                     },
                   ].map((row) => (
                     <div key={row.label} className="flex items-center justify-between py-[7px]">
@@ -520,7 +555,7 @@ export default function AssetsPage() {
                 </div>
 
                 {/* ── Fiscal rows — shown only when cost basis tracking is enabled ── */}
-                {overview?.flags.hasCostBasisTracking && overview.metrics && (
+                {scopedPortfolioMetrics.hasCostBasisTracking && (
                   <div className="mt-3 pt-3 border-t border-border divide-y divide-border">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground pb-2">
                       Impatto Fiscale
@@ -528,33 +563,33 @@ export default function AssetsPage() {
                     {[
                       {
                         label: 'Plusvalenze Non Realizzate',
-                        value: overview.metrics.unrealizedGains,
-                        className: overview.metrics.unrealizedGains >= 0
+                        value: scopedPortfolioMetrics.unrealizedGains,
+                        className: scopedPortfolioMetrics.unrealizedGains >= 0
                           ? 'text-green-500 dark:text-green-400'
                           : 'text-red-500 dark:text-red-400',
-                        prefix: overview.metrics.unrealizedGains >= 0 ? '+' : '',
+                        prefix: scopedPortfolioMetrics.unrealizedGains >= 0 ? '+' : '',
                       },
                       {
                         label: 'Tasse Stimate',
-                        value: overview.metrics.estimatedTaxes,
+                        value: scopedPortfolioMetrics.estimatedTaxes,
                         className: 'text-amber-500 dark:text-amber-400',
                         prefix: '',
                       },
                       {
                         label: 'Patrimonio Liquidabile Netto',
-                        value: overview.metrics.liquidNetTotal,
+                        value: scopedPortfolioMetrics.liquidNetTotal,
                         className: 'text-foreground',
                         prefix: '',
                       },
                       {
                         label: 'Patrimonio Illiquido Netto',
-                        value: overview.metrics.netTotal - overview.metrics.liquidNetTotal,
+                        value: scopedPortfolioMetrics.netTotal - scopedPortfolioMetrics.liquidNetTotal,
                         className: 'text-foreground',
                         prefix: '',
                       },
                       {
                         label: 'Pat. Netto Totale',
-                        value: overview.metrics.netTotal,
+                        value: scopedPortfolioMetrics.netTotal,
                         className: 'text-foreground',
                         prefix: '',
                       },

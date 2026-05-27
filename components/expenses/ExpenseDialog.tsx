@@ -39,20 +39,19 @@ import {
   ExpenseType,
   EXPENSE_TYPE_LABELS,
   ExpenseCategory,
-  LinkedInvestmentOperationType
 } from '@/types/expenses';
 import { CostCenter } from '@/types/costCenters';
 import { getCostCenters } from '@/lib/services/costCenterService';
 import { Asset } from '@/types/assets';
 import { createExpense, updateExpense } from '@/lib/services/expenseService';
-import { getAllAssets, updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
+import { getAllAssets, updateCashAssetBalance } from '@/lib/services/assetService';
 import {
   createInvestmentOperation,
   deleteInvestmentOperation,
 } from '@/lib/services/investmentOperationService';
 import { getSettings } from '@/lib/services/assetAllocationService';
 import { useHouseholdConfig } from '@/lib/hooks/useHousehold';
-import { getAssignableOwnershipProfiles, getDefaultProfile, isHouseholdEnabled, profileToAssignment, resolveExpenseAttribution } from '@/lib/utils/householdUtils';
+import { getAssignableOwnershipProfiles, getDefaultProfile, isHouseholdEnabled, profileToAssignment } from '@/lib/utils/householdUtils';
 import { DEFAULT_PROFILE_SELF_ID } from '@/types/household';
 import { getAllCategories, addSubCategory } from '@/lib/services/expenseCategoryService';
 import { queryKeys } from '@/lib/query/queryKeys';
@@ -298,6 +297,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
   const investmentOperationPricePerUnit = useWatch({ control, name: 'investmentOperationPricePerUnit' });
   const investmentOperationFees = useWatch({ control, name: 'investmentOperationFees' });
   const investmentOperationTaxes = useWatch({ control, name: 'investmentOperationTaxes' });
+  const watchedAttributionProfileId = useWatch({ control, name: 'attributionProfileId' });
 
   const isEdit = !!expense;
 
@@ -438,6 +438,23 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
       }
     }
   }, [defaultDebitCashAssetId, defaultCreditCashAssetId, selectedType, expense, open, setValue]);
+
+  useEffect(() => {
+    if (!open || expense || !householdEnabled || hasManualAttribution) return;
+    setValue(
+      'attributionProfileId',
+      selectedType === 'income' ? defaultIncomeAttributionProfileId : defaultExpenseAttributionProfileId
+    );
+  }, [
+    defaultExpenseAttributionProfileId,
+    defaultIncomeAttributionProfileId,
+    expense,
+    hasManualAttribution,
+    householdEnabled,
+    open,
+    selectedType,
+    setValue,
+  ]);
 
   // Auto-set recurring day from selected date (new debt expenses only)
   useEffect(() => {
@@ -1110,6 +1127,34 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
                         </Select>
                         <p className="text-xs text-muted-foreground">
                           Il saldo viene aggiornato automaticamente al salvataggio.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* ---- Attribuzione household ---- */}
+                    {householdEnabled && householdProfiles.length > 0 && (
+                      <div className="space-y-2">
+                        <Label htmlFor="attributionProfileId">Proprietà / attribuzione</Label>
+                        <Select
+                          value={watchedAttributionProfileId || DEFAULT_PROFILE_SELF_ID}
+                          onValueChange={(value) => {
+                            setHasManualAttribution(true);
+                            setValue('attributionProfileId', value);
+                          }}
+                        >
+                          <SelectTrigger id="attributionProfileId">
+                            <SelectValue placeholder="Seleziona attribuzione" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {householdProfiles.map((profile) => (
+                              <SelectItem key={profile.id} value={profile.id}>
+                                {profile.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Decide se la voce è in carico a una persona, condivisa 50/50 o ripartita con un altro profilo.
                         </p>
                       </div>
                     )}
