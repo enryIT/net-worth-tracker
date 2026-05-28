@@ -39,15 +39,15 @@ describe('cashflow UI regression guards', () => {
 
   it('resets hidden recurrence and installment flags when editing a cashflow entry', () => {
     const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
-    const editResetMatch = source.match(/if \(expense\) \{\s*reset\(\{([\s\S]*?)\}\);/);
+    const editResetMatch = source.match(/if \(expense\) \{[\s\S]*?reset\(\{([\s\S]*?)\}\);/);
 
     expect(editResetMatch?.[1]).toContain('isRecurring: expense.isRecurring || false');
     expect(editResetMatch?.[1]).toContain('isInstallment: expense.isInstallment || false');
     expect(editResetMatch?.[1]).toContain("installmentMode: 'auto'");
     expect(editResetMatch?.[1]).toContain('installmentCount: expense.installmentTotal || 2');
     expect(editResetMatch?.[1]).toContain('installmentTotalAmount: expense.installmentTotalAmount || Math.abs(expense.amount)');
-    expect(editResetMatch?.[1]).toContain('linkedInvestmentAssetName: expense.linkedInvestmentAssetName');
-    expect(editResetMatch?.[1]).toContain('investmentOperationPricePerUnit: expense.investmentOperationPricePerUnit');
+    expect(editResetMatch?.[1]).toContain("linkedInvestmentAssetName: typeof expense.linkedInvestmentAssetName === 'string'");
+    expect(editResetMatch?.[1]).toContain('investmentOperationPricePerUnit: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationPricePerUnit)');
   });
 
   it('guards edit reset to run once per open target and clears the guard on close', () => {
@@ -80,6 +80,24 @@ describe('cashflow UI regression guards', () => {
     expect(source).toContain('type="button"');
     expect(source).toContain('onClick={handleSubmit(onSubmit, onInvalidSubmit)}');
     expect(source).not.toContain('type="submit" form="expense-form"');
+  });
+
+  it('normalizes nullable linked-investment numeric values in edit reset before they reach RHF state', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toContain('const normalizeOptionalLinkedInvestmentNumber = (value: unknown): number | undefined => {');
+    expect(source).toContain('investmentOperationPricePerUnit: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationPricePerUnit)');
+    expect(source).toContain('investmentOperationFees: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationFees)');
+    expect(source).toContain('investmentOperationTaxes: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationTaxes)');
+    expect(source).toContain('linkedInvestmentQuantityDelta: normalizeOptionalLinkedInvestmentQuantityDelta');
+  });
+
+  it('maps generic invalid-submit messages to explicit Italian feedback', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toContain("const fallbackInvalidSubmitMessage = 'Controlla i campi obbligatori prima di salvare';");
+    expect(source).toContain("if (!errorMessage || errorMessage.trim().length === 0 || errorMessage === 'Invalid input') {");
+    expect(source).toContain("return invalidFieldMessages[fieldName] ?? fallbackInvalidSubmitMessage;");
   });
 
   it('keeps cashflow analysis tabs reachable and special operations inside tracking', () => {
