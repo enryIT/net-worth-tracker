@@ -51,8 +51,7 @@ next-env.d.ts
 # Impeccable: critiques are run-specific, design.json is a committed design artifact
 .impeccable/critique/
 
-# Local tool directories (Claude Code, Antigravity CLI)
-.agents/
+# Local tool directories
 .antigravitycli/
 skills-lock.json
 
