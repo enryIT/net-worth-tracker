@@ -290,6 +290,13 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
   const watchedInstallmentAmounts = useWatch({ control, name: 'installmentAmounts' });
   const watchedLinkedCashAssetId = useWatch({ control, name: 'linkedCashAssetId' });
   const watchedSubCategoryId = useWatch({ control, name: 'subCategoryId' });
+  const watchedLinkedInvestmentAssetId = useWatch({ control, name: 'linkedInvestmentAssetId' });
+  const watchedLinkedInvestmentAssetName = useWatch({ control, name: 'linkedInvestmentAssetName' });
+  const watchedLinkedInvestmentQuantityDelta = useWatch({ control, name: 'linkedInvestmentQuantityDelta' });
+  const watchedInvestmentOperationType = useWatch({ control, name: 'investmentOperationType' });
+  const watchedInvestmentOperationPricePerUnit = useWatch({ control, name: 'investmentOperationPricePerUnit' });
+  const watchedInvestmentOperationFees = useWatch({ control, name: 'investmentOperationFees' });
+  const watchedInvestmentOperationTaxes = useWatch({ control, name: 'investmentOperationTaxes' });
   const watchedAttributionProfileId = useWatch({ control, name: 'attributionProfileId' });
 
   const isEdit = !!expense;
@@ -390,7 +397,9 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         installmentStartDate: expense.date instanceof Date ? expense.date : (expense.date as Timestamp).toDate(),
         linkedCashAssetId: expense.linkedCashAssetId || '__none__',
         linkedInvestmentAssetId: expense.linkedInvestmentAssetId || '__none__',
+        linkedInvestmentAssetName: expense.linkedInvestmentAssetName,
         investmentOperationType: expense.investmentOperationType || (expense.linkedInvestmentQuantityDelta && expense.linkedInvestmentQuantityDelta < 0 ? 'sell' : 'buy'),
+        investmentOperationPricePerUnit: expense.investmentOperationPricePerUnit,
         investmentOperationFees: expense.investmentOperationFees,
         investmentOperationTaxes: expense.investmentOperationTaxes,
         linkedInvestmentQuantityDelta: expense.linkedInvestmentQuantityDelta
@@ -417,7 +426,9 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         recurringMonths: 12,
         linkedCashAssetId: '__none__',
         linkedInvestmentAssetId: '__none__',
+        linkedInvestmentAssetName: undefined,
         investmentOperationType: 'buy',
+        investmentOperationPricePerUnit: undefined,
         investmentOperationFees: undefined,
         investmentOperationTaxes: undefined,
         linkedInvestmentQuantityDelta: undefined,
@@ -527,22 +538,22 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
     // Resolve sentinel '__none__' to undefined
     const linkedCashAssetId = data.linkedCashAssetId !== '__none__' ? data.linkedCashAssetId : undefined;
-    const linkedInvestmentAssetId = data.linkedInvestmentAssetId !== '__none__' ? data.linkedInvestmentAssetId : undefined;
-    const linkedInvestmentAssetName = linkedInvestmentAssetId ? data.linkedInvestmentAssetName : undefined;
+    const linkedInvestmentAssetId = watchedLinkedInvestmentAssetId !== '__none__' ? watchedLinkedInvestmentAssetId : undefined;
+    const linkedInvestmentAssetName = linkedInvestmentAssetId ? watchedLinkedInvestmentAssetName : undefined;
     const linkedInvestmentQuantityDelta =
-      linkedInvestmentAssetId && Number.isFinite(data.linkedInvestmentQuantityDelta)
-        ? data.linkedInvestmentQuantityDelta
+      linkedInvestmentAssetId && Number.isFinite(watchedLinkedInvestmentQuantityDelta)
+        ? watchedLinkedInvestmentQuantityDelta
         : undefined;
-    const investmentOperationType = linkedInvestmentAssetId ? data.investmentOperationType : undefined;
+    const investmentOperationType = linkedInvestmentAssetId ? watchedInvestmentOperationType : undefined;
     const investmentOperationPricePerUnit =
-      linkedInvestmentAssetId && Number.isFinite(data.investmentOperationPricePerUnit)
-        ? data.investmentOperationPricePerUnit
+      linkedInvestmentAssetId && Number.isFinite(watchedInvestmentOperationPricePerUnit)
+        ? watchedInvestmentOperationPricePerUnit
         : undefined;
-    const investmentOperationFees = Number.isFinite(data.investmentOperationFees)
-      ? data.investmentOperationFees
+    const investmentOperationFees = Number.isFinite(watchedInvestmentOperationFees)
+      ? watchedInvestmentOperationFees
       : undefined;
-    const investmentOperationTaxes = Number.isFinite(data.investmentOperationTaxes)
-      ? data.investmentOperationTaxes
+    const investmentOperationTaxes = Number.isFinite(watchedInvestmentOperationTaxes)
+      ? watchedInvestmentOperationTaxes
       : undefined;
     const resolvedCostCenterId = selectedCostCenterId !== '__none__' ? selectedCostCenterId : undefined;
     const resolvedCostCenterName = resolvedCostCenterId

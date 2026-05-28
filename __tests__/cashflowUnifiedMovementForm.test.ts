@@ -45,8 +45,17 @@ describe('cashflow unified movement form', () => {
 
     expect(source).toContain('updateInvestmentOperation');
     expect(source).toContain('updateInternalTransfer');
-    expect(source).toContain("editingMovement?.kind === 'investment'");
-    expect(source).toContain("editingMovement?.kind === 'transfer'");
+    expect(source).toContain("await handleSaveInvestment(editingMovement?.kind === 'investment' ? editingMovement.source.id : undefined)");
+    expect(source).toContain("await handleSaveTransfer(editingMovement?.kind === 'transfer' ? editingMovement.source.id : undefined)");
+    expect(source).toContain('await updateInvestmentOperation(editingId, payload);');
+    expect(source).toContain('await updateInternalTransfer(editingId, payload);');
+  });
+
+  it('awaits movement refresh before closing the dialog after save', () => {
+    const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+    const submitBlock = source.match(/const handleSubmit = async \(\) => \{([\s\S]*?)\n  \};/);
+
+    expect(submitBlock?.[1]).toMatch(/await onSaved\(\);[\s\S]*closeDialog\(\);/);
   });
 
   it('keeps cashflow selection inside the unified movement dialog step flow', () => {

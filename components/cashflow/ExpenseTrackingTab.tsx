@@ -288,7 +288,7 @@ function UnifiedMovementDialog({
     onCreateCashflow();
   };
 
-  const handleSaveInvestment = async (): Promise<boolean> => {
+  const handleSaveInvestment = async (editingId?: string): Promise<boolean> => {
     if (!user) return false;
     const parsedQuantity = Number(quantity);
     const parsedPrice = Number(pricePerUnit);
@@ -325,15 +325,15 @@ function UnifiedMovementDialog({
       notes: notes.trim() || undefined,
     };
 
-    if (editingInvestmentId) {
-      await updateInvestmentOperation(editingInvestmentId, payload);
+    if (editingId) {
+      await updateInvestmentOperation(editingId, payload);
     } else {
       await createInvestmentOperation(user.uid, payload);
     }
     return true;
   };
 
-  const handleSaveTransfer = async (): Promise<boolean> => {
+  const handleSaveTransfer = async (editingId?: string): Promise<boolean> => {
     if (!user) return false;
     const parsedAmount = Number(transferAmount);
     const parsedFees = transferFees ? Number(transferFees) : 0;
@@ -365,8 +365,8 @@ function UnifiedMovementDialog({
       notes: notes.trim() || undefined,
     };
 
-    if (editingTransferId) {
-      await updateInternalTransfer(editingTransferId, payload);
+    if (editingId) {
+      await updateInternalTransfer(editingId, payload);
     } else {
       await createInternalTransfer(user.uid, payload);
     }
@@ -379,8 +379,8 @@ function UnifiedMovementDialog({
     try {
       setIsSaving(true);
       const saved = movementKind === 'investment'
-        ? await handleSaveInvestment()
-        : await handleSaveTransfer();
+        ? await handleSaveInvestment(editingMovement?.kind === 'investment' ? editingMovement.source.id : undefined)
+        : await handleSaveTransfer(editingMovement?.kind === 'transfer' ? editingMovement.source.id : undefined);
       if (!saved) return;
       await onSaved();
       toast.success(editingMovement ? 'Movimento aggiornato' : 'Movimento registrato');
