@@ -21,4 +21,16 @@ describe('cashflow tracking unification', () => {
     expect(trackingSource).not.toContain('<InvestmentOperationsTab embedded />');
     expect(trackingSource).not.toContain('<InternalTransfersTab embedded />');
   });
+
+  it('uses a roomy sectioned layout for investment and transfer movement forms', () => {
+    const trackingSource = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+    const roomyCards = trackingSource.match(/rounded-xl border bg-background p-4 desktop:p-5/g) ?? [];
+
+    expect(trackingSource).not.toContain('grid gap-4 desktop:grid-cols-6 desktop:items-end');
+    expect(trackingSource).toContain('space-y-6 rounded-xl border bg-muted/20 p-4 desktop:p-6');
+    expect(trackingSource).toContain('Dettagli operazione');
+    expect(trackingSource).toContain('Dettagli trasferimento');
+    expect(trackingSource).toContain('grid gap-4 desktop:grid-cols-2');
+    expect(roomyCards.length).toBeGreaterThanOrEqual(4);
+  });
 });

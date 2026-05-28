@@ -88,6 +88,6 @@ describe('cashflow unified movement form', () => {
   it('uses the wider dialog width standard for unified investment and transfer edits', () => {
     const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
 
-    expect(source).toContain('DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto"');
+    expect(source).toContain('DialogContent className="max-w-3xl desktop:max-w-4xl max-h-[90vh] overflow-y-auto"');
   });
 });
