@@ -26,7 +26,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useForm, Controller, useWatch } from 'react-hook-form';
+import { useForm, Controller, useWatch, type SubmitErrorHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useQueryClient } from '@tanstack/react-query';
@@ -782,6 +782,36 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
     }
   };
 
+  const onInvalidSubmit: SubmitErrorHandler<ExpenseFormValues> = (formErrors) => {
+    const findFirstErrorMessage = (value: unknown): string | undefined => {
+      if (!value) return undefined;
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          const message = findFirstErrorMessage(item);
+          if (message) return message;
+        }
+        return undefined;
+      }
+
+      if (typeof value === 'object') {
+        const maybeFieldError = value as { message?: unknown };
+        if (typeof maybeFieldError.message === 'string' && maybeFieldError.message.trim().length > 0) {
+          return maybeFieldError.message;
+        }
+
+        for (const nestedValue of Object.values(value as Record<string, unknown>)) {
+          const message = findFirstErrorMessage(nestedValue);
+          if (message) return message;
+        }
+      }
+
+      return undefined;
+    };
+
+    toast.error(findFirstErrorMessage(formErrors) ?? 'Controlla i campi obbligatori prima di salvare');
+  };
+
   // ---------------------------------------------------------------------------
   // Derived values
   // ---------------------------------------------------------------------------
@@ -950,7 +980,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
                 className="px-6 py-4"
               >
                 {/* form id ties the submit button in the footer (rendered outside this scroll area) */}
-                <form id="expense-form" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <form id="expense-form" onSubmit={handleSubmit(onSubmit, onInvalidSubmit)} noValidate className="space-y-5">
 
                     {/* ---- Categoria ---- */}
                     <div className="space-y-2">
@@ -1517,7 +1547,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Annulla
             </Button>
-            <Button type="submit" form="expense-form" disabled={isSubmitting}>
+            <Button type="button" onClick={handleSubmit(onSubmit, onInvalidSubmit)} disabled={isSubmitting}>
               {isSubmitting
                 ? 'Salvataggio...'
                 : expense
