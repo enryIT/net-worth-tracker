@@ -45,11 +45,14 @@ File: app/dashboard/layout.tsx,
       app/dashboard/template.tsx
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
-- Token: `bg-gray-50`/`dark:bg-gray-950` nel <main> → devono essere CSS vars
-- Breakpoint: `md:p-6` → deve essere `desktop:p-6`; verifica padding bottom per bottom nav
-  (`max-desktop:portrait:[padding-bottom:calc(env(safe-area-inset-bottom,0px)+88px)]`)
-- Demo banner (AssistenteBanner): token compliance, nessun colore hardcoded
+- Token: `<main>` usa `bg-background` e `desktop:p-6` — verifica che non siano
+  scivolati `bg-gray-*` hardcoded o breakpoint `md:` invece di `desktop:`
+- Demo banner: token compliance (`--warning-*` vars), nessun colore hardcoded
 - Landscape mobile header (SidebarTrigger bar): altezza, padding, token
+- `PageContainer`: tutte le pagine lo usano come wrapper — max-w-[1600px], mx-auto,
+  `space-y-4 desktop:space-y-6`, `max-desktop:portrait:pb-20` presente
+- `PageHeader`: mobile sticky bar (h-14, backdrop-blur-sm, bg-background/95) non
+  sovrappone il contenuto; desktop full header con border-b corretto
 - Page transitions in template.tsx: `useReducedMotion()` rispettato, nessun layout thrash
 - Altro: pattern anomali o violazioni non elencate sopra
 
@@ -70,7 +73,12 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Voce attiva: colore e contrasto corretto su tutti i temi (inclusi cyberpunk, retro-arcade)
 - Gerarchia visiva: sezioni, separatori, icone — font weight e size coerenti con il resto
 - Breakpoint: visibile solo su `desktop:` (≥ 1440px), nascosta correttamente su portrait
-- ARIA: `nav`, `aria-label`, voce attiva con `aria-current="page"`
+- ARIA: `SidebarContent` con `role="navigation"` + `aria-label`, voce attiva con
+  `aria-current="page"` su `<Link>` dentro `SidebarMenuButton`
+- Modalità collassata (`collapsible="icon"`): toggle visibile solo su desktop
+  (`hidden desktop:flex`); logo+nome nascosti (`group-data-[state=collapsed]:hidden`);
+  `AssistenteBanner` sostituito dall'icona Bot viola (`group-data-[state=collapsed]:flex`);
+  `SidebarMenuButton size="lg"` nel footer collassa automaticamente a sola avatar
 - Dark mode: contrasto voce attiva e hover su sfondo `--sidebar-background`
 - Altro: pattern anomali o violazioni non elencate sopra
 
@@ -90,11 +98,18 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Token: usa `--sidebar-*` CSS vars per il theme sync — verifica su tutti e 6 i temi
   (default, solar-dusk, elegant-luxury, midnight-bloom, cyberpunk, retro-arcade)
 - Voce attiva: colore/icona leggibile su tutti i temi in dark e light mode
-- Safe area: `padding-bottom: env(safe-area-inset-bottom)` per iPhone con notch
+- Safe area: `bottom: calc(env(safe-area-inset-bottom, 0px) + 12px)` corretto
 - Touch targets: ogni voce ≥ 44×44px
-- Visibilità: solo `max-desktop:portrait:flex` — nascosta in landscape e desktop
-- ARIA: `role="navigation"`, `aria-label`, `aria-current="page"` sulla voce attiva
-- Motion: tab switch animation rispetta `useReducedMotion()`
+- Visibilità: container esterno `max-desktop:portrait:flex` — nascosta in landscape e desktop
+- ARIA: `motion.nav` con `aria-label="Navigazione principale"`, `aria-current="page"`
+  sulle voci attive (sia Link primari che button "Altro"), `aria-haspopup="dialog"` e
+  `aria-expanded` sul button "Altro"
+- Motion: `useReducedMotion()` applicato — `pillTransition` è `{ duration: 0 }` se
+  ridotta, spring 400/35 altrimenti; verifica che si applichi a `motion.nav layout`
+  e agli `motion.div layoutId="bottom-nav-active-pill"`
+- FAB cashflow: pulsante `+` appare/scompare solo su rotta `/dashboard/cashflow` via
+  `AnimatePresence mode="popLayout"`; sposta la pill via `motion.nav layout`; invia
+  `cashflow:add-expense` custom event (non naviga); animazione scale 0.6→1 spring 400/28
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:

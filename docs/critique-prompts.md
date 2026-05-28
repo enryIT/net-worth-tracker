@@ -580,10 +580,11 @@ Componenti: components/layout/Sidebar.tsx,
 
 Questi file definiscono la struttura permanente dell'app: layout wrapper (main padding,
 demo banner, landscape header bar con SidebarTrigger), page transitions (template.tsx),
-sidebar desktop con nav items e voce attiva, bottom navigation mobile portrait con
-theme sync via --sidebar-* CSS vars, secondary menu drawer per voci overflow su mobile.
-Nota: layout.tsx ha già due problemi noti — bg-gray-50/dark:bg-gray-950 hardcoded nel
-<main> e md:p-6 invece di desktop:p-6.
+sidebar desktop collassabile (icon mode, toggle desktop-only, AssistenteBanner → Bot icon
+in collapsed), bottom navigation mobile portrait con FAB cashflow animato via AnimatePresence
+e theme sync via --sidebar-* CSS vars, secondary menu drawer per voci overflow su mobile.
+Nuovi componenti condivisi: PageContainer, PageHeader (sticky mobile bar), PageTabs/PageTabBar
+(underline tab indicator), ThemePicker, lib/constants/navigation.ts (nav arrays centralizzati).
 Confronta con: nessuna pagina specifica — il benchmark è la coerenza interna tra
 sidebar desktop, bottom nav mobile e secondary drawer.
 Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,

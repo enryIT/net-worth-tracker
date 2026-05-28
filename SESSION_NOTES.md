@@ -2,6 +2,65 @@
 
 ---
 
+## 2026-05-28 — Merge PR #137 (feature/improve-structure) in fix/ui-audit
+
+### Cosa
+
+Merge del branch `feature/improve-structure` (Marco La Gala) in `fix/ui-audit` con risoluzione manuale di 5 file in conflitto e fix post-merge sulla navigazione.
+
+**Nuovi componenti condivisi:**
+- `components/layout/PageContainer.tsx` — wrapper con `max-w-[1600px] mx-auto`, `space-y-4 desktop:space-y-6`, `max-desktop:portrait:pb-20`
+- `components/layout/PageHeader.tsx` — header dual-mode: mobile sticky bar (h-14, `backdrop-blur-sm bg-background/95`) + desktop full header con border-b; prop `separator={false}` quando segue un `PageTabs`
+- `components/layout/PageTabBar.tsx` + `PageTabs.tsx` — tab bar unificata con underline scorrevole (`layoutId` spring 400/35) che sostituisce le implementazioni custom in Cashflow, FIRE, Settings
+- `components/layout/ThemePicker.tsx` — estratto come componente condiviso tra Sidebar e SecondaryMenuDrawer
+- `lib/constants/navigation.ts` — array di navigazione centralizzati (`primaryNav`, `analysisNav`, `planningNav`, `secondaryHrefs`); eliminata la duplicazione tra Sidebar, BottomNavigation e SecondaryMenuDrawer
+
+**Sidebar collassabile:**
+- `collapsible="offcanvas"` → `collapsible="icon"`: desktop ora ha un toggle `PanelLeftClose`/`PanelLeftOpen` nell'header (solo `desktop:flex`)
+- Logo+nome nascosti in icon mode via `group-data-[state=collapsed]:hidden`
+- `AssistenteBanner` spostato da footer a content area; sostituito da icona Bot viola (`group-data-[state=collapsed]:flex`) in icon mode
+- `SidebarMenuButton size="lg"` nel footer: collassa automaticamente a sola avatar in icon mode
+
+**BottomNavigation — FAB cashflow:**
+- Struttura cambiata da pill centrata a container full-width (`left-0 right-0`) con `motion.nav layout` che si sposta quando appare il FAB
+- Pulsante `+` aggiunto via `AnimatePresence mode="popLayout"` — appare solo su `/dashboard/cashflow`, invia `cashflow:add-expense` custom event
+- `ExpenseTrackingTab` ascolta l'evento via `addEventListener` e apre il dialog; il vecchio FAB fisso (`bottom-24 right-4`) è rimosso
+
+**Refactor pagine:**
+- Tutte le pagine dashboard ora usano `PageContainer` + `PageHeader` (Panoramica, Patrimonio, Storico, Rendimenti, Allocazione, HoF, Cashflow, FIRE, Settings)
+- Tab (Cashflow, FIRE, Settings) usano `PageTabs` al posto dei pill custom
+
+**Conflitti risolti:**
+- `layout.tsx`: tenuto HEAD (senza `desktop:pb-6` ridondante)
+- `page.tsx`: mantenuto chart skeleton aggiunto in fix/ui-audit + chiuso con `</PageContainer>`
+- `BottomNavigation.tsx`: struttura nuova di Marco + `useReducedMotion`, `aria-current` di fix/ui-audit
+- `SecondaryMenuDrawer.tsx`: `ref={panelRef}` + focus trap di fix/ui-audit, label "Analisi" + nav array importati da navigation.ts, `<ul>/<li>/<Link>` con `aria-current`
+- `Sidebar.tsx`: `SidebarMenuButton size="lg"` di Marco; fix token email `text-muted-foreground` → `text-sidebar-foreground/50`
+
+**Fix post-merge su `navigation.ts`:**
+- La PR aveva rimosso `/dashboard/analisi` dalla navigazione (la pagina non era più raggiungibile) — ripristinata in `analysisNav`
+- `Allocazione` era stata spostata in `analysisNav` — rimessa in `planningNav` (è un action tool, non read-only)
+
+### Perché
+
+Il branch di Marco era divergente da `develop` (3 commit di refactor strutturale antecedenti al grosso lavoro di UI/a11y di `fix/ui-audit`). Il merge diretto in `develop` avrebbe perso tutte le fix a11y. Mergiare in `fix/ui-audit` porta entrambi i contributi sullo stesso branch senza perdere nulla.
+
+Il refactor di Marco risolve un problema reale: la duplicazione dei nav array (ogni file aveva la propria copia locale di `primaryNav`/`analysisNav`/`planningNav`) e delle implementazioni custom dei tab. `PageContainer`/`PageHeader`/`PageTabs` sono astrazioni giuste — consolidano pattern che erano già uniformi ma scritti inline in ogni pagina.
+
+### Nota
+
+- **`PageHeader` mobile sticky bar è nuova**: su mobile compare una barra h-14 con il titolo della pagina che rimane visibile durante lo scroll. È `desktop:hidden` — il desktop non cambia. Se in futuro si aggiunge un'azione nella sticky bar, usare il prop `actions` che gestisce già il posizionamento.
+
+- **Tab bar: da pill a underline**: tutte le pagine con tab (Cashflow, FIRE, Settings) hanno l'animatore del tab cambiato da pill rotondo (`bg-card shadow-sm`) a underline scorrevole (`h-0.5 bg-foreground`). La differenza è visibile ma sottile su desktop; più evidente su mobile dove le tab sono più strette.
+
+- **`cashflow:add-expense` è un custom event, non un ref/callback**: il FAB nel BottomNavigation non ha accesso al componente tab figlio. La comunicazione avviene via `window.dispatchEvent` → `window.addEventListener` in `ExpenseTrackingTab`. Pattern corretto per componenti lontani nella gerarchia senza prop drilling.
+
+- **Sidebar icon mode è opt-in per l'utente**: lo stato collapsed/expanded è gestito da `useSidebar()` di shadcn e persiste in localStorage automaticamente. Non è necessario gestire stato custom.
+
+- **File toccati**: `components/layout/PageContainer.tsx` (NEW), `components/layout/PageHeader.tsx` (NEW), `components/layout/PageTabBar.tsx` (NEW), `components/layout/PageTabs.tsx` (NEW), `components/layout/ThemePicker.tsx` (NEW), `lib/constants/navigation.ts` (NEW), `components/layout/Sidebar.tsx`, `components/layout/BottomNavigation.tsx`, `components/layout/SecondaryMenuDrawer.tsx`, `app/dashboard/layout.tsx`, `app/dashboard/page.tsx`, e tutte le pagine dashboard (refactor PageContainer/PageHeader).
+
+---
+
 ## 2026-05-27 — Dashboard shell audit & fix (layout.tsx, template.tsx, globals.css)
 
 ### Cosa
