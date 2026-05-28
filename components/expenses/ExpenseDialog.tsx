@@ -301,6 +301,12 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
   const isEdit = !!expense;
   const resetGuardRef = useRef<string | null>(null);
+  const normalizeOptionalLinkedInvestmentNumber = (value: unknown): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    return undefined;
+  };
 
   // Reset step when dialog opens/closes
   useEffect(() => {
@@ -387,6 +393,11 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
     }
 
     if (expense) {
+      const normalizeOptionalLinkedInvestmentQuantityDelta = (() => {
+        const quantityDelta = normalizeOptionalLinkedInvestmentNumber(expense.linkedInvestmentQuantityDelta);
+        return quantityDelta !== undefined ? Math.abs(quantityDelta) : undefined;
+      })();
+
       reset({
         type: expense.type,
         categoryId: expense.categoryId,
@@ -407,14 +418,14 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         installmentStartDate: expense.date instanceof Date ? expense.date : (expense.date as Timestamp).toDate(),
         linkedCashAssetId: expense.linkedCashAssetId || '__none__',
         linkedInvestmentAssetId: expense.linkedInvestmentAssetId || '__none__',
-        linkedInvestmentAssetName: expense.linkedInvestmentAssetName,
-        investmentOperationType: expense.investmentOperationType || (expense.linkedInvestmentQuantityDelta && expense.linkedInvestmentQuantityDelta < 0 ? 'sell' : 'buy'),
-        investmentOperationPricePerUnit: expense.investmentOperationPricePerUnit,
-        investmentOperationFees: expense.investmentOperationFees,
-        investmentOperationTaxes: expense.investmentOperationTaxes,
-        linkedInvestmentQuantityDelta: expense.linkedInvestmentQuantityDelta
-          ? Math.abs(expense.linkedInvestmentQuantityDelta)
+        linkedInvestmentAssetName: typeof expense.linkedInvestmentAssetName === 'string'
+          ? expense.linkedInvestmentAssetName
           : undefined,
+        investmentOperationType: expense.investmentOperationType || (expense.linkedInvestmentQuantityDelta && expense.linkedInvestmentQuantityDelta < 0 ? 'sell' : 'buy'),
+        investmentOperationPricePerUnit: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationPricePerUnit),
+        investmentOperationFees: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationFees),
+        investmentOperationTaxes: normalizeOptionalLinkedInvestmentNumber(expense.investmentOperationTaxes),
+        linkedInvestmentQuantityDelta: normalizeOptionalLinkedInvestmentQuantityDelta,
         attributionProfileId: householdEnabled
           ? expense.attributionProfileId || (expense.type === 'income' ? defaultIncomeAttributionProfileId : defaultExpenseAttributionProfileId)
           : DEFAULT_PROFILE_SELF_ID,
@@ -783,33 +794,52 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
   };
 
   const onInvalidSubmit: SubmitErrorHandler<ExpenseFormValues> = (formErrors) => {
-    const findFirstErrorMessage = (value: unknown): string | undefined => {
-      if (!value) return undefined;
+    const fallbackInvalidSubmitMessage = 'Controlla i campi obbligatori prima di salvare';
+    const invalidFieldMessages: Record<string, string> = {
+      linkedInvestmentAssetName: "Verifica l'investimento collegato prima di salvare",
+      linkedInvestmentQuantityDelta: "Inserisci una quantità valida per l'investimento collegato",
+      investmentOperationPricePerUnit: "Inserisci un prezzo unitario valido per l'investimento collegato",
+      investmentOperationFees: "Inserisci commissioni valide per l'investimento collegato",
+      investmentOperationTaxes: "Inserisci imposte valide per l'investimento collegato",
+    };
+
+    const findFirstError = (value: unknown, fieldName?: string): { fieldName?: string; errorMessage?: string } => {
+      if (!value) return {};
 
       if (Array.isArray(value)) {
         for (const item of value) {
-          const message = findFirstErrorMessage(item);
-          if (message) return message;
+          const foundError = findFirstError(item, fieldName);
+          if (foundError?.errorMessage) return foundError;
         }
-        return undefined;
+        return {};
       }
 
       if (typeof value === 'object') {
         const maybeFieldError = value as { message?: unknown };
         if (typeof maybeFieldError.message === 'string' && maybeFieldError.message.trim().length > 0) {
-          return maybeFieldError.message;
+          return { fieldName, errorMessage: maybeFieldError.message };
         }
 
-        for (const nestedValue of Object.values(value as Record<string, unknown>)) {
-          const message = findFirstErrorMessage(nestedValue);
-          if (message) return message;
+        for (const [nestedFieldName, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+          const foundError = findFirstError(nestedValue, nestedFieldName);
+          if (foundError?.errorMessage) return foundError;
         }
       }
 
-      return undefined;
+      return {};
     };
 
-    toast.error(findFirstErrorMessage(formErrors) ?? 'Controlla i campi obbligatori prima di salvare');
+    const firstError = findFirstError(formErrors);
+    const fieldName = firstError.fieldName ?? '';
+    const errorMessage = firstError.errorMessage;
+    const resolvedErrorMessage = (() => {
+      if (!errorMessage || errorMessage.trim().length === 0 || errorMessage === 'Invalid input') {
+        return invalidFieldMessages[fieldName] ?? fallbackInvalidSubmitMessage;
+      }
+      return errorMessage;
+    })();
+
+    toast.error(resolvedErrorMessage);
   };
 
   // ---------------------------------------------------------------------------
