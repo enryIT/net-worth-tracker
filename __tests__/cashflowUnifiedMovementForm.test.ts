@@ -39,4 +39,28 @@ describe('cashflow unified movement form', () => {
     expect(source).not.toContain('Storico operazioni');
     expect(source).not.toContain('Storico trasferimenti');
   });
+
+  it('keeps update wiring for investment and transfer edit flows', () => {
+    const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+
+    expect(source).toContain('updateInvestmentOperation');
+    expect(source).toContain('updateInternalTransfer');
+    expect(source).toContain("editingMovement?.kind === 'investment'");
+    expect(source).toContain("editingMovement?.kind === 'transfer'");
+  });
+
+  it('keeps cashflow selection inside the unified movement dialog step flow', () => {
+    const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+    const selectKindBlock = source.match(/const handleSelectKind = \(kind: MovementKind\) => \{([\s\S]*?)\n  \};/);
+
+    expect(selectKindBlock?.[1]).not.toContain('onCreateCashflow()');
+    expect(source).toContain("movementKind === 'expense'");
+    expect(source).toContain('Cambia tipo');
+  });
+
+  it('uses the wider dialog width standard for unified investment and transfer edits', () => {
+    const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+
+    expect(source).toContain('DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto"');
+  });
 });

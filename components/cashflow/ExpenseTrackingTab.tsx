@@ -218,7 +218,8 @@ function UnifiedMovementDialog({
   const [isSaving, setIsSaving] = useState(false);
 
   const selectedInvestmentAsset = investmentAssets.find(asset => asset.id === assetId);
-  const editingId = editingMovement?.kind === movementKind ? editingMovement.source.id : undefined;
+  const editingInvestmentId = editingMovement?.kind === 'investment' ? editingMovement.source.id : undefined;
+  const editingTransferId = editingMovement?.kind === 'transfer' ? editingMovement.source.id : undefined;
   const grossAmount = Number(quantity) * Number(pricePerUnit);
 
   const resetSpecialFields = useCallback(() => {
@@ -279,13 +280,12 @@ function UnifiedMovementDialog({
   };
 
   const handleSelectKind = (kind: MovementKind) => {
-    if (kind === 'expense') {
-      closeDialog();
-      onCreateCashflow();
-      return;
-    }
-
     setMovementKind(kind);
+  };
+
+  const handleOpenCashflowForm = () => {
+    closeDialog();
+    onCreateCashflow();
   };
 
   const handleSaveInvestment = async (): Promise<boolean> => {
@@ -325,8 +325,8 @@ function UnifiedMovementDialog({
       notes: notes.trim() || undefined,
     };
 
-    if (editingId) {
-      await updateInvestmentOperation(editingId, payload);
+    if (editingInvestmentId) {
+      await updateInvestmentOperation(editingInvestmentId, payload);
     } else {
       await createInvestmentOperation(user.uid, payload);
     }
@@ -365,8 +365,8 @@ function UnifiedMovementDialog({
       notes: notes.trim() || undefined,
     };
 
-    if (editingId) {
-      await updateInternalTransfer(editingId, payload);
+    if (editingTransferId) {
+      await updateInternalTransfer(editingTransferId, payload);
     } else {
       await createInternalTransfer(user.uid, payload);
     }
@@ -383,7 +383,7 @@ function UnifiedMovementDialog({
         : await handleSaveTransfer();
       if (!saved) return;
       await onSaved();
-      toast.success(editingId ? 'Movimento aggiornato' : 'Movimento registrato');
+      toast.success(editingMovement ? 'Movimento aggiornato' : 'Movimento registrato');
       closeDialog();
     } catch (error) {
       console.error('Error saving movement:', error);
@@ -395,7 +395,7 @@ function UnifiedMovementDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? onOpenChange(true) : closeDialog())}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingMovement ? 'Modifica movimento' : 'Nuovo movimento'}</DialogTitle>
           <DialogDescription>
@@ -421,11 +421,20 @@ function UnifiedMovementDialog({
               );
             })}
           </div>
+        ) : movementKind === 'expense' ? (
+          <div className="space-y-4 rounded-xl border border-dashed p-4">
+            <p className="text-sm text-muted-foreground">
+              Il movimento Cashflow usa il modulo completo con categorie, attribuzione e campi avanzati.
+            </p>
+            <Button type="button" onClick={handleOpenCashflowForm}>
+              Apri modulo Cashflow
+            </Button>
+          </div>
         ) : movementKind === 'investment' ? (
           <div className="grid gap-4 desktop:grid-cols-6 desktop:items-end">
             <div className="space-y-2 desktop:col-span-2">
               <Label>Asset</Label>
-              <Select value={assetId} onValueChange={setAssetId} disabled={!!editingId}>
+              <Select value={assetId} onValueChange={setAssetId} disabled={Boolean(editingInvestmentId)}>
                 <SelectTrigger><SelectValue placeholder="Seleziona asset" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Seleziona asset</SelectItem>
@@ -562,7 +571,7 @@ function UnifiedMovementDialog({
               disabled={isSaving || (movementKind === 'investment' && investmentAssets.length === 0) || (movementKind === 'transfer' && cashAssets.length < 2)}
             >
               <Plus className="mr-2 h-4 w-4" />
-              {editingId ? 'Aggiorna' : 'Registra'}
+              {editingMovement ? 'Aggiorna' : 'Registra'}
             </Button>
           )}
         </DialogFooter>
@@ -841,11 +850,6 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     setEditingExpense(null);
   };
 
-  const handleSuccess = async () => {
-    // Trigger parent refresh (re-fetch all data)
-    await onRefresh();
-  };
-
   const refreshMovementData = async () => {
     if (user) {
       await Promise.all([
@@ -857,6 +861,10 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
       ]);
     }
     await onRefresh();
+  };
+
+  const handleSuccess = async () => {
+    await refreshMovementData();
   };
 
   const handleEditMovement = (movement: UnifiedMovement) => {

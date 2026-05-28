@@ -24,6 +24,16 @@ describe('household feature regression guards', () => {
     expect(source).toContain('const metrics = isScoped ? scopedMetrics : baseMetrics');
   });
 
+  it('keeps the performance household selector reachable when scoped metrics are missing', () => {
+    const source = readRepoFile('app/dashboard/performance/page.tsx');
+    const missingMetricsBranch = source
+      .split('if (!performanceData || !metrics) {')[1]
+      ?.split('if (metrics.hasInsufficientData) {')[0] ?? '';
+
+    expect(missingMetricsBranch).toContain('HouseholdScopeSelect');
+    expect(missingMetricsBranch).toContain('Vista rendimenti');
+  });
+
   it('applies household scope to the History page datasets', () => {
     const source = readRepoFile('app/dashboard/history/page.tsx');
 

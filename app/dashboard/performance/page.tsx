@@ -676,14 +676,37 @@ export default function PerformancePage() {
 
   if (!performanceData || !metrics) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <Info className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <h2 className="text-xl font-semibold mb-2">Dati insufficienti</h2>
-          <p className="text-muted-foreground max-w-md">
-            Servono almeno 2 snapshot mensili per calcolare le metriche di performance.
-          </p>
+      <div className="space-y-6 p-3 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-1">Portafoglio</p>
+            <h1 className="text-3xl font-bold tracking-tight">Rendimenti del Portafoglio</h1>
+            <p className="text-muted-foreground mt-1">
+              Analisi dei rendimenti e metriche di rischio-rendimento
+            </p>
+          </div>
+          {householdEnabled && (
+            <HouseholdScopeSelect
+              value={selectedScopeKey}
+              onValueChange={setSelectedScopeKey}
+              options={householdScopeOptions}
+              label="Vista rendimenti"
+              className="w-full sm:w-[240px]"
+            />
+          )}
         </div>
+
+        <Card className="mt-6">
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <Info className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-semibold mb-2">Dati insufficienti</h3>
+              <p className="text-muted-foreground">
+                Servono almeno 2 snapshot mensili per calcolare le metriche di performance.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

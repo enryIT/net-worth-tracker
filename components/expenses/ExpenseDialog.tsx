@@ -207,7 +207,7 @@ interface ExpenseDialogProps {
   open: boolean;
   onClose: () => void;
   expense?: Expense | null;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,13 +290,6 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
   const watchedInstallmentAmounts = useWatch({ control, name: 'installmentAmounts' });
   const watchedLinkedCashAssetId = useWatch({ control, name: 'linkedCashAssetId' });
   const watchedSubCategoryId = useWatch({ control, name: 'subCategoryId' });
-  const linkedInvestmentAssetId = useWatch({ control, name: 'linkedInvestmentAssetId' });
-  const linkedInvestmentAssetName = useWatch({ control, name: 'linkedInvestmentAssetName' });
-  const linkedInvestmentQuantityDelta = useWatch({ control, name: 'linkedInvestmentQuantityDelta' });
-  const investmentOperationType = useWatch({ control, name: 'investmentOperationType' });
-  const investmentOperationPricePerUnit = useWatch({ control, name: 'investmentOperationPricePerUnit' });
-  const investmentOperationFees = useWatch({ control, name: 'investmentOperationFees' });
-  const investmentOperationTaxes = useWatch({ control, name: 'investmentOperationTaxes' });
   const watchedAttributionProfileId = useWatch({ control, name: 'attributionProfileId' });
 
   const isEdit = !!expense;
@@ -534,6 +527,23 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
     // Resolve sentinel '__none__' to undefined
     const linkedCashAssetId = data.linkedCashAssetId !== '__none__' ? data.linkedCashAssetId : undefined;
+    const linkedInvestmentAssetId = data.linkedInvestmentAssetId !== '__none__' ? data.linkedInvestmentAssetId : undefined;
+    const linkedInvestmentAssetName = linkedInvestmentAssetId ? data.linkedInvestmentAssetName : undefined;
+    const linkedInvestmentQuantityDelta =
+      linkedInvestmentAssetId && Number.isFinite(data.linkedInvestmentQuantityDelta)
+        ? data.linkedInvestmentQuantityDelta
+        : undefined;
+    const investmentOperationType = linkedInvestmentAssetId ? data.investmentOperationType : undefined;
+    const investmentOperationPricePerUnit =
+      linkedInvestmentAssetId && Number.isFinite(data.investmentOperationPricePerUnit)
+        ? data.investmentOperationPricePerUnit
+        : undefined;
+    const investmentOperationFees = Number.isFinite(data.investmentOperationFees)
+      ? data.investmentOperationFees
+      : undefined;
+    const investmentOperationTaxes = Number.isFinite(data.investmentOperationTaxes)
+      ? data.investmentOperationTaxes
+      : undefined;
     const resolvedCostCenterId = selectedCostCenterId !== '__none__' ? selectedCostCenterId : undefined;
     const resolvedCostCenterName = resolvedCostCenterId
       ? costCenters.find(c => c.id === resolvedCostCenterId)?.name
@@ -590,7 +600,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
           linkedInvestmentAssetName: linkedInvestmentAssetName ?? null,
           linkedInvestmentQuantityDelta: linkedInvestmentQuantityDelta ?? null,
           investmentOperationId: null,
-          investmentOperationType: linkedInvestmentAssetId ? investmentOperationType : null,
+          investmentOperationType: investmentOperationType ?? null,
           investmentOperationPricePerUnit: investmentOperationPricePerUnit ?? null,
           investmentOperationFees: investmentOperationFees ?? null,
           investmentOperationTaxes: investmentOperationTaxes ?? null,
@@ -741,7 +751,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
         }
       }
 
-      onSuccess?.();
+      await onSuccess?.();
       onClose();
     } catch (error) {
       console.error('Error saving expense:', error);
