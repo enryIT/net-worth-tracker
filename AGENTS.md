@@ -455,6 +455,19 @@ For pages that aggregate large collections (many snapshots + all expenses) on ev
 - **Fix**: remove `sticky bottom-0` from `<tfoot>`. The total appears naturally at the end of the table after scrolling — correct UX for a long scrollable list.
 - Applied in `CashflowSankeyChart.tsx` and `AnalisiTab.tsx` (ExpenseList).
 
+### Sticky `thead` transparent background causes header/row overlap on scroll
+- **Symptom**: column headers visually merge with table rows when scrolling inside a `max-h-[...] overflow-y-auto` container — header text and cell content overlap.
+- **Root cause**: `bg-muted/50` (50% opacity) on `<thead className="sticky top-0">` is semi-transparent. Inside an overflow scroll wrapper, rows scroll under the sticky header and are visible through the transparent background.
+- **Fix**: use a fully opaque token — `bg-card` for tables inside `<Card>`, `bg-background` for tables on plain page backgrounds. Never use alpha-transparent backgrounds on sticky headers.
+- Applied in `CashflowSankeyChart.tsx` (Sankey transaction table) and `AnalisiTab.tsx` (ExpenseList drill-down).
+
+### Recharts `<Legend content=>` must receive a module-level component for stable reference
+- **Symptom**: Recharts Legend re-renders on every state change unrelated to chart data (drill-down navigation, filter changes) — noticeable flicker or unnecessary reconciliation.
+- **Root cause**: `content={() => renderLegendItems(...)}` creates a new function reference every render. Recharts treats a changed `content` reference as a reason to re-render the Legend subtree.
+- **Fix**: extract the legend renderer to a module-level component (e.g. `LegendItems`) and use `content={() => <LegendItems items={...} />}`. The component reference itself is stable; only the props change when data changes.
+- **Bonus**: module-level component enables proper semantic HTML — clickable legend items can be `<button type="button">` instead of `<div onClick>` (WCAG 2.1.1 compliance).
+- Applied in `AnalisiTab.tsx`: `LegendItems` replaces `renderLegendItems`.
+
 ### `@nivo/sankey` + `useChartColors()` → react-spring arity crash
 - **Symptom**: `createStringInterpolator2: The arity of each output value must be equal` on page load after making Sankey node colors theme-aware.
 - **Root cause**: `@nivo/sankey` v0.99 uses `@react-spring/web` internally. `useChartColors()` starts with hex values (CHART_COLORS), then after a `requestAnimationFrame` resolves CSS vars returning `oklch(...)` strings (Tailwind v4 format). When `sankeyData` recomputes with oklch values, react-spring tries to interpolate from hex → oklch — doesn't recognize oklch as a color format, parses it as a generic string with different numeric arity → crash.
