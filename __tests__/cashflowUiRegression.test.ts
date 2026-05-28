@@ -69,6 +69,19 @@ describe('cashflow UI regression guards', () => {
     expect(source).toContain('await onSuccess?.();');
   });
 
+  it('keeps expense edit submit path non-silent when validation fails', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toMatch(/const onInvalidSubmit(?:\s*:\s*[^=]+)?\s*=/);
+    expect(source).toContain('toast.error(');
+    expect(source).toContain('id="expense-form"');
+    expect(source).toContain('noValidate');
+    expect(source).toContain('onSubmit={handleSubmit(onSubmit, onInvalidSubmit)}');
+    expect(source).toContain('type="button"');
+    expect(source).toContain('onClick={handleSubmit(onSubmit, onInvalidSubmit)}');
+    expect(source).not.toContain('type="submit" form="expense-form"');
+  });
+
   it('keeps cashflow analysis tabs reachable and special operations inside tracking', () => {
     const pageSource = readRepoFile('app/dashboard/cashflow/page.tsx');
     const trackingSource = readRepoFile('components/cashflow/ExpenseTrackingTab.tsx');
