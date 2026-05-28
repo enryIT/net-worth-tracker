@@ -18,6 +18,7 @@ describe('cashflow unified movement form', () => {
     const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
 
     expect(source).toContain('movementKind');
+    expect(source).toContain('parseMovementDate');
     expect(source).toContain('assetId');
     expect(source).toContain('quantity');
     expect(source).toContain('pricePerUnit');
@@ -26,6 +27,16 @@ describe('cashflow unified movement form', () => {
     expect(source).toContain('purpose');
     expect(source).toContain('createInvestmentOperation');
     expect(source).toContain('createInternalTransfer');
+  });
+
+  it('validates positive values and strict date parsing for investment and transfer saves', () => {
+    const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+
+    expect(source).toContain("toast.error('Inserisci un prezzo unitario maggiore di zero');");
+    expect(source).toContain("toast.error('Inserisci una data valida');");
+    expect(source).toContain('date: parsedDate,');
+    expect(source).toContain('min="0.0001"');
+    expect(source).toContain('min="0.01"');
   });
 
   it('unifies edit and delete actions for cashflow, investment, and transfer movements in one list', () => {
@@ -38,6 +49,13 @@ describe('cashflow unified movement form', () => {
     expect(source).toContain("kind: 'expense'");
     expect(source).not.toContain('Storico operazioni');
     expect(source).not.toContain('Storico trasferimenti');
+  });
+
+  it('blocks edit for investment rows when asset quantity changed after the operation', () => {
+    const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
+
+    expect(source).toContain('Math.abs(currentQuantity - movement.source.resultingQuantity) > 0.000001');
+    expect(source).toContain("toast.error(\"Puoi modificare solo l'operazione più recente per questo asset\")");
   });
 
   it('keeps update wiring for investment and transfer edit flows', () => {

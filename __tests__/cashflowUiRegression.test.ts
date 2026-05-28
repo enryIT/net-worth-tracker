@@ -50,6 +50,15 @@ describe('cashflow UI regression guards', () => {
     expect(editResetMatch?.[1]).toContain('investmentOperationPricePerUnit: expense.investmentOperationPricePerUnit');
   });
 
+  it('guards edit reset to run once per open target and clears the guard on close', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toContain('const resetGuardRef = useRef<string | null>(null);');
+    expect(source).toContain("const resetKey = expense ? `edit:${expense.id}` : 'create';");
+    expect(source).toContain('if (resetGuardRef.current === resetKey) {');
+    expect(source).toContain('resetGuardRef.current = null;');
+  });
+
   it('keeps linked investment fields watched and submitted from form state in cashflow edits', () => {
     const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
 

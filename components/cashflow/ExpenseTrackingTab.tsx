@@ -219,8 +219,20 @@ function UnifiedMovementDialog({
 
   const selectedInvestmentAsset = investmentAssets.find(asset => asset.id === assetId);
   const editingInvestmentId = editingMovement?.kind === 'investment' ? editingMovement.source.id : undefined;
-  const editingTransferId = editingMovement?.kind === 'transfer' ? editingMovement.source.id : undefined;
   const grossAmount = Number(quantity) * Number(pricePerUnit);
+  const parseMovementDate = useCallback((value: string): Date | null => {
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return null;
+    }
+
+    const [year, month, day] = value.split('-').map(Number);
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isFinite(parsed.getTime())) {
+      return null;
+    }
+
+    return formatDateInputValue(parsed) === value ? parsed : null;
+  }, []);
 
   const resetSpecialFields = useCallback(() => {
     setMovementKind(null);
@@ -294,6 +306,7 @@ function UnifiedMovementDialog({
     const parsedPrice = Number(pricePerUnit);
     const parsedFees = investmentFees ? Number(investmentFees) : 0;
     const parsedTaxes = taxes ? Number(taxes) : 0;
+    const parsedDate = parseMovementDate(date);
 
     if (assetId === '__none__') {
       toast.error('Seleziona un asset investimento');
@@ -303,19 +316,23 @@ function UnifiedMovementDialog({
       toast.error('Inserisci una quantità valida');
       return false;
     }
-    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
-      toast.error('Inserisci un prezzo unitario valido');
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      toast.error('Inserisci un prezzo unitario maggiore di zero');
       return false;
     }
     if (!Number.isFinite(parsedFees) || parsedFees < 0 || !Number.isFinite(parsedTaxes) || parsedTaxes < 0) {
       toast.error('Commissioni e tasse devono essere positive o pari a zero');
       return false;
     }
+    if (!parsedDate) {
+      toast.error('Inserisci una data valida');
+      return false;
+    }
 
     const payload = {
       assetId,
       type: investmentType,
-      date: new Date(`${date}T00:00:00`),
+      date: parsedDate,
       quantity: parsedQuantity,
       pricePerUnit: parsedPrice,
       fees: parsedFees,
@@ -337,6 +354,7 @@ function UnifiedMovementDialog({
     if (!user) return false;
     const parsedAmount = Number(transferAmount);
     const parsedFees = transferFees ? Number(transferFees) : 0;
+    const parsedDate = parseMovementDate(date);
 
     if (fromCashAssetId === '__none__' || toCashAssetId === '__none__') {
       toast.error('Seleziona conto di partenza e conto di arrivo');
@@ -354,6 +372,10 @@ function UnifiedMovementDialog({
       toast.error('Inserisci commissioni valide');
       return false;
     }
+    if (!parsedDate) {
+      toast.error('Inserisci una data valida');
+      return false;
+    }
 
     const payload = {
       fromCashAssetId,
@@ -361,7 +383,7 @@ function UnifiedMovementDialog({
       amount: parsedAmount,
       fees: parsedFees,
       purpose: householdEnabled ? purpose : 'neutral_transfer',
-      date: new Date(`${date}T00:00:00`),
+      date: parsedDate,
       notes: notes.trim() || undefined,
     };
 
@@ -457,11 +479,11 @@ function UnifiedMovementDialog({
             </div>
             <div className="space-y-2">
               <Label>Quote</Label>
-              <Input type="number" min="0" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+              <Input type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Prezzo unitario</Label>
-              <Input type="number" min="0" step="0.0001" value={pricePerUnit} onChange={(event) => setPricePerUnit(event.target.value)} />
+              <Input type="number" min="0.0001" step="0.0001" value={pricePerUnit} onChange={(event) => setPricePerUnit(event.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Data</Label>
@@ -525,7 +547,7 @@ function UnifiedMovementDialog({
             </div>
             <div className="space-y-2">
               <Label>Importo</Label>
-              <Input type="number" min="0" step="0.01" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} />
+              <Input type="number" min="0.01" step="0.01" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Data</Label>
@@ -861,6 +883,15 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     if (movement.kind === 'expense') {
       handleEditExpense(movement.source);
       return;
+    }
+
+    if (movement.kind === 'investment') {
+      const linkedAsset = assets.find(asset => asset.id === movement.source.assetId);
+      const currentQuantity = linkedAsset?.quantity ?? 0;
+      if (!linkedAsset || Math.abs(currentQuantity - movement.source.resultingQuantity) > 0.000001) {
+        toast.error("Puoi modificare solo l'operazione più recente per questo asset");
+        return;
+      }
     }
 
     setEditingMovement(movement);

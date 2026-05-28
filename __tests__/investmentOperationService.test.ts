@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   calculateInternalTransferEffect,
@@ -73,5 +74,17 @@ describe('calculateInternalTransferEffect', () => {
       fromCashDelta: -1002.5,
       toCashDelta: 1000,
     });
+  });
+});
+
+describe('investment operation service regression guards', () => {
+  it('does not pre-validate create operations with a synthetic zero previous quantity', () => {
+    const source = readFileSync('lib/services/investmentOperationService.ts', 'utf8');
+    const createBlock = source.match(
+      /export async function createInvestmentOperation[\s\S]*?const fees = input\.fees \?\? 0;/
+    );
+
+    expect(createBlock?.[0]).toBeDefined();
+    expect(createBlock?.[0]).not.toContain('previousQuantity: 0');
   });
 });

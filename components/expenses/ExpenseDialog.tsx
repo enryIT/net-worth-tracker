@@ -25,7 +25,7 @@
  * @param onSuccess - Optional callback after successful save
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -300,6 +300,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
   const watchedAttributionProfileId = useWatch({ control, name: 'attributionProfileId' });
 
   const isEdit = !!expense;
+  const resetGuardRef = useRef<string | null>(null);
 
   // Reset step when dialog opens/closes
   useEffect(() => {
@@ -375,7 +376,16 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
 
   // Populate form when editing an expense, or reset for new expenses
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      resetGuardRef.current = null;
+      return;
+    }
+
+    const resetKey = expense ? `edit:${expense.id}` : 'create';
+    if (resetGuardRef.current === resetKey) {
+      return;
+    }
+
     if (expense) {
       reset({
         type: expense.type,
@@ -411,6 +421,7 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
       });
       setSelectedCostCenterId(expense.costCenterId || '__none__');
       setHasManualAttribution(false);
+      resetGuardRef.current = resetKey;
     } else {
       reset({
         type: 'variable',
@@ -436,8 +447,9 @@ export function ExpenseDialog({ open, onClose, expense, onSuccess }: ExpenseDial
       });
       setSelectedCostCenterId('__none__');
       setHasManualAttribution(false);
+      resetGuardRef.current = resetKey;
     }
-  }, [expense, defaultExpenseAttributionProfileId, defaultIncomeAttributionProfileId, householdEnabled, householdConfig, reset, open]);
+  }, [expense, defaultExpenseAttributionProfileId, defaultIncomeAttributionProfileId, householdEnabled, reset, open]);
 
   // Apply default cash account when type changes (new expense only)
   useEffect(() => {
