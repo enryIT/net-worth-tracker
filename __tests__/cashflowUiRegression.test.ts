@@ -48,6 +48,13 @@ describe('cashflow UI regression guards', () => {
     expect(editResetMatch?.[1]).toContain('installmentTotalAmount: expense.installmentTotalAmount || Math.abs(expense.amount)');
   });
 
+  it('normalizes investment sentinel values and awaits refresh callbacks on cashflow updates', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toContain("const linkedInvestmentAssetId = data.linkedInvestmentAssetId !== '__none__' ? data.linkedInvestmentAssetId : undefined;");
+    expect(source).toContain('await onSuccess?.();');
+  });
+
   it('keeps cashflow analysis tabs reachable and special operations inside tracking', () => {
     const pageSource = readRepoFile('app/dashboard/cashflow/page.tsx');
     const trackingSource = readRepoFile('components/cashflow/ExpenseTrackingTab.tsx');
