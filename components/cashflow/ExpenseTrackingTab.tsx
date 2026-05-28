@@ -417,7 +417,7 @@ function UnifiedMovementDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? onOpenChange(true) : closeDialog())}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl desktop:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingMovement ? 'Modifica movimento' : 'Nuovo movimento'}</DialogTitle>
           <DialogDescription>
@@ -453,126 +453,154 @@ function UnifiedMovementDialog({
             </Button>
           </div>
         ) : movementKind === 'investment' ? (
-          <div className="grid gap-4 desktop:grid-cols-6 desktop:items-end">
-            <div className="space-y-2 desktop:col-span-2">
-              <Label>Asset</Label>
-              <Select value={assetId} onValueChange={setAssetId} disabled={Boolean(editingInvestmentId)}>
-                <SelectTrigger><SelectValue placeholder="Seleziona asset" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Seleziona asset</SelectItem>
-                  {investmentAssets.map(asset => (
-                    <SelectItem key={asset.id} value={asset.id}>{asset.name} ({asset.ticker})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-6 rounded-xl border bg-muted/20 p-4 desktop:p-6">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Dettagli operazione</p>
+              <p className="text-xs text-muted-foreground">Compila i campi principali e poi eventuali costi aggiuntivi.</p>
             </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={investmentType} onValueChange={(value) => setInvestmentType(value as InvestmentOperationType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {FORM_INVESTMENT_OPERATION_TYPES.map(operationType => (
-                    <SelectItem key={operationType} value={operationType}>{INVESTMENT_OPERATION_LABELS[operationType]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+            <div className="rounded-xl border bg-background p-4 desktop:p-5">
+              <div className="grid gap-4 desktop:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Asset</Label>
+                  <Select value={assetId} onValueChange={setAssetId} disabled={Boolean(editingInvestmentId)}>
+                    <SelectTrigger><SelectValue placeholder="Seleziona asset" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Seleziona asset</SelectItem>
+                      {investmentAssets.map(asset => (
+                        <SelectItem key={asset.id} value={asset.id}>{asset.name} ({asset.ticker})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <Select value={investmentType} onValueChange={(value) => setInvestmentType(value as InvestmentOperationType)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {FORM_INVESTMENT_OPERATION_TYPES.map(operationType => (
+                        <SelectItem key={operationType} value={operationType}>{INVESTMENT_OPERATION_LABELS[operationType]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Quote</Label>
+                  <Input type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Prezzo unitario</Label>
+                  <Input type="number" min="0.0001" step="0.0001" value={pricePerUnit} onChange={(event) => setPricePerUnit(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data</Label>
+                  <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Conto cash collegato</Label>
+                  <Select value={cashAssetId} onValueChange={setCashAssetId}>
+                    <SelectTrigger><SelectValue placeholder="Nessun conto" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nessun conto</SelectItem>
+                      {cashAssets.map(asset => (
+                        <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Quote</Label>
-              <Input type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+
+            <div className="rounded-xl border bg-background p-4 desktop:p-5">
+              <div className="grid gap-4 desktop:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Commissioni</Label>
+                  <Input type="number" min="0" step="0.01" value={investmentFees} onChange={(event) => setInvestmentFees(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tasse</Label>
+                  <Input type="number" min="0" step="0.01" value={taxes} onChange={(event) => setTaxes(event.target.value)} />
+                </div>
+                <div className="space-y-2 desktop:col-span-2">
+                  <Label>Note</Label>
+                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
+                </div>
+              </div>
+              {Number.isFinite(grossAmount) && grossAmount > 0 && (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  Controvalore lordo: {formatCurrency(grossAmount)}
+                </p>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Prezzo unitario</Label>
-              <Input type="number" min="0.0001" step="0.0001" value={pricePerUnit} onChange={(event) => setPricePerUnit(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Data</Label>
-              <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-            </div>
-            <div className="space-y-2 desktop:col-span-2">
-              <Label>Conto cash collegato</Label>
-              <Select value={cashAssetId} onValueChange={setCashAssetId}>
-                <SelectTrigger><SelectValue placeholder="Nessun conto" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nessun conto</SelectItem>
-                  {cashAssets.map(asset => (
-                    <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Commissioni</Label>
-              <Input type="number" min="0" step="0.01" value={investmentFees} onChange={(event) => setInvestmentFees(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Tasse</Label>
-              <Input type="number" min="0" step="0.01" value={taxes} onChange={(event) => setTaxes(event.target.value)} />
-            </div>
-            <div className="space-y-2 desktop:col-span-2">
-              <Label>Note</Label>
-              <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
-            </div>
-            {Number.isFinite(grossAmount) && grossAmount > 0 && (
-              <p className="text-sm text-muted-foreground desktop:col-span-6">
-                Controvalore lordo: {formatCurrency(grossAmount)}
-              </p>
-            )}
           </div>
         ) : (
-          <div className="grid gap-4 desktop:grid-cols-6 desktop:items-end">
-            <div className="space-y-2 desktop:col-span-2">
-              <Label>Da conto</Label>
-              <Select value={fromCashAssetId} onValueChange={setFromCashAssetId}>
-                <SelectTrigger><SelectValue placeholder="Seleziona conto" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Seleziona conto</SelectItem>
-                  {cashAssets.map(asset => (
-                    <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-6 rounded-xl border bg-muted/20 p-4 desktop:p-6">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Dettagli trasferimento</p>
+              <p className="text-xs text-muted-foreground">Seleziona i conti e completa i dettagli del movimento.</p>
             </div>
-            <div className="space-y-2 desktop:col-span-2">
-              <Label>A conto</Label>
-              <Select value={toCashAssetId} onValueChange={setToCashAssetId}>
-                <SelectTrigger><SelectValue placeholder="Seleziona conto" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Seleziona conto</SelectItem>
-                  {cashAssets.map(asset => (
-                    <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Importo</Label>
-              <Input type="number" min="0.01" step="0.01" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Data</Label>
-              <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Commissioni</Label>
-              <Input type="number" min="0" step="0.01" value={transferFees} onChange={(event) => setTransferFees(event.target.value)} />
-            </div>
-            {householdEnabled && (
-              <div className="space-y-2 desktop:col-span-2">
-                <Label>Tipo trasferimento</Label>
-                <Select value={purpose} onValueChange={(value) => setPurpose(value as InternalTransferPurpose)}>
-                  <SelectTrigger><SelectValue placeholder="Tipo trasferimento" /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(INTERNAL_TRANSFER_PURPOSE_LABELS).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+            <div className="rounded-xl border bg-background p-4 desktop:p-5">
+              <div className="grid gap-4 desktop:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Da conto</Label>
+                  <Select value={fromCashAssetId} onValueChange={setFromCashAssetId}>
+                    <SelectTrigger><SelectValue placeholder="Seleziona conto" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Seleziona conto</SelectItem>
+                      {cashAssets.map(asset => (
+                        <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>A conto</Label>
+                  <Select value={toCashAssetId} onValueChange={setToCashAssetId}>
+                    <SelectTrigger><SelectValue placeholder="Seleziona conto" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Seleziona conto</SelectItem>
+                      {cashAssets.map(asset => (
+                        <SelectItem key={asset.id} value={asset.id}>{asset.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Importo</Label>
+                  <Input type="number" min="0.01" step="0.01" value={transferAmount} onChange={(event) => setTransferAmount(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data</Label>
+                  <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+                </div>
               </div>
-            )}
-            <div className="space-y-2 desktop:col-span-4">
-              <Label>Note</Label>
-              <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
+            </div>
+
+            <div className="rounded-xl border bg-background p-4 desktop:p-5">
+              <div className="grid gap-4 desktop:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Commissioni</Label>
+                  <Input type="number" min="0" step="0.01" value={transferFees} onChange={(event) => setTransferFees(event.target.value)} />
+                </div>
+                {householdEnabled && (
+                  <div className="space-y-2">
+                    <Label>Tipo trasferimento</Label>
+                    <Select value={purpose} onValueChange={(value) => setPurpose(value as InternalTransferPurpose)}>
+                      <SelectTrigger><SelectValue placeholder="Tipo trasferimento" /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(INTERNAL_TRANSFER_PURPOSE_LABELS).map(([value, label]) => (
+                          <SelectItem key={value} value={value}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-2 desktop:col-span-2">
+                  <Label>Note</Label>
+                  <Input value={notes} onChange={(event) => setNotes(event.target.value)} />
+                </div>
+              </div>
             </div>
           </div>
         )}
