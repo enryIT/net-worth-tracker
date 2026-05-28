@@ -56,3 +56,85 @@
 ## 📚 Documentation
 
 - Updated SETUP.md, VERCEL_SETUP.md, and DOCKER.md with Resend configuration notes.
+
+---
+
+## 📌 Additional Upstream Main Details
+
+## ✨ New Features
+
+- **New dedicated Analisi page** — cashflow analysis now lives at its own URL (`/dashboard/analisi`) instead of being buried as a tab inside Cashflow. Navigate directly to it from the sidebar or bottom navigation. The page includes the full period selector (current year / specific year / full history), the Sankey diagram, pie chart drill-downs, top expenses block, and all analytical sections described below
+- **Spending anomaly detection** — a new block at the top of the Analisi page automatically flags categories where this month's spending is unusually high compared to the rolling 6-month average (threshold: +25% and +€50). Tap any flagged category chip to jump directly to the relevant section of the Sankey chart
+- **Year-over-year comparison charts** — a new "Confronto Annuale" section shows whether you're spending more or less than the same period last year, split either by month (grouped bar chart) or by category (horizontal bar chart). In full-history mode it shows a multi-year bar chart across all available years
+- **Savings rate trend** — a new 24-month line chart shows how your savings rate has evolved over time, with a 20% reference line and a red shaded area below the target so you can see at a glance when you fell short
+- **Per-category spending sparklines** — a new grid shows a mini area chart for every expense category with at least 3 months of data, ordered by total spend. Tap any card to expand it into a full bar chart for that category's month-by-month history
+- Added a **total summary row** to all expense drill-down views in the Cashflow Analisi tab. When drilling into any Sankey node or pie chart category, a "Totale (N voci)" row now appears at the bottom of the transaction list showing the aggregated sum — so you can see the full amount at a glance without scrolling through every entry. Available on both desktop (table footer row) and mobile (summary block below the card list)
+- **Collapsible sidebar**: the desktop sidebar can now be collapsed to icon-only mode with a toggle button in the sidebar header; state persists across sessions
+- **Cashflow FAB**: a `+` button appears in the bottom navigation bar when you're on the Cashflow page — tap it to open the new expense dialog without scrolling to the top
+
+## 🐛 Bug Fixes
+
+- Fixed: column headers in the Analisi page transaction details (Sankey drill-down and pie chart drill-down) no longer overlap with row content when scrolling — the header background was semi-transparent, causing rows scrolling underneath to bleed through
+- Fixed the "Auto-calculate Equity/Bonds" toggle in Settings not persisting after a page refresh — disabling it would revert to enabled on reload because the setting was never saved explicitly
+- Fixed a color regression in the Cashflow Sankey chart: after drilling into a spending category (e.g. "Rifiuti") and pressing "Indietro", the panel header reverted to the subcategory's derived gray color instead of the parent type's original color (e.g. blue for "Spese Fisse"). Navigation now correctly restores the original type color at every level
+- Fixed: Overview composition charts were stuck on "Preparazione grafico..." for empty portfolios
+- Fixed: the overview loading spinner was remounting on every parent re-render, causing a flicker during the count-up animation
+- Fixed: loading skeleton on the Overview page now includes the charts section, preventing a layout shift when data loads
+- Fixed: password mismatch error on Register now stays visible inline under the confirmation field (not just a disappearing toast)
+
+## 🔧 Improvements
+
+- **Dividends — delete confirmation is now inline**: deleting a dividend record no longer opens a browser confirmation dialog. Click "Delete" once to arm (the button turns red and shows "Conferma"), then click again within 3 seconds to confirm. Click anywhere else or wait 3 seconds to cancel. Consistent with the delete pattern used in Cashflow and Portfolio
+- **Dividends — "Download All" confirmation is now an in-app dialog**: the "Scarica Tutti (Manuale)" button now opens a styled confirmation dialog instead of a native browser alert, showing the number of assets that will be scraped before proceeding
+- **Dividends — calendar cells announce date and payment count to screen readers**: the dividend calendar grid now has full ARIA structure (`role="grid"`, `role="row"`, `role="gridcell"`) so screen readers can navigate it as a table. Each day cell announces its full date (e.g. "15 Maggio 2026 — 2 pagamenti") instead of just the day number
+- **Dividends — today's date marker respects the active color theme**: the ring around today's date in the dividend calendar now uses the app's primary color instead of a fixed blue, so it stays consistent across all six themes
+- **Dividends — bar and line charts follow the active theme**: the "Dividendi per Anno" bar chart and "Reddito Mensile" line chart now use theme-aware colors instead of hardcoded greens, reds, and blues that clashed with non-default themes (especially Cyberpunk and Solar Dusk)
+- **Dividends — type badges display correctly in dark mode**: dividend type badges (Ordinario, Cedola, Straordinario, etc.) in the calendar date popup now show correctly in dark mode — the background and text were previously near-white in dark themes due to missing dark-mode Tailwind variants
+
+- **Expense type descriptions reworded** — the creation dialog now frames Fixed and Variable expenses as a complementary pair: Fixed expenses are described as "things you can't do without"; Variable expenses as "extras you could do without". The contrast makes it immediately clear how to categorize a new transaction
+- **Allocation columns now stay aligned across cards** — the Corrente / Target / Differenza / Azione columns previously shifted horizontally depending on the longest subcategory name in each card (e.g. "ETF Obbligazionari a Breve Termine" widened the first column, pushing the others). All tables now lock to the same column proportions regardless of content length
+- **Asset class names cleaned up** — the Allocation page no longer shows English terms in parentheses (e.g. "Azioni (Equity)" → "Azioni", "Obbligazioni (Bonds)" → "Obbligazioni"). The page is fully in Italian now
+- **FIRE runway target label clarified** — the label for the dashed target line in the FIRE historical runway chart now reads "Obiettivo patrimonio (anni di spese, linea tratteggiata)" instead of showing the raw formula `(100 ÷ SWR X%)`. The numeric value displayed next to it (e.g. "25,0 anni") already communicates the answer
+
+- **AI assistant now knows your allocation targets** — the assistant receives your configured target allocation (from Settings → Allocation) in every analysis. When you use the new "Allocazione vs target" suggested prompt chip, it compares your current portfolio allocation against your targets class by class and sub-category by sub-category, calculates the gap in percentage points, and suggests which areas to prioritize for your next purchase to get back on track
+- **Year-over-year variation chart is now always visible** in the History page — it was previously hidden inside a collapsed "Appendix" section that required an extra click to open. It now appears directly in the Growth Drivers section alongside the savings and work/investment charts
+- **Monthly snapshot log removed from History** — the grid showing the last 6 raw snapshots was redundant; the same data (with notes) is accessible through the snapshot search dialog already present in the page header
+- **History "Work & Investments" chart now respects your color theme** — the three trend lines (income earned, saved from work, investment growth) previously used fixed colors that didn't change when switching themes. They now follow the active theme palette like all other charts in the app
+- **Navigation reorganized** — the sidebar group for analytical pages is called "Statistiche" and contains the read-only views (Analisi, Rendimenti, Storico, Hall of Fame, Assistente AI). The Allocation page has moved to the "Pianificazione" group alongside FIRE & Simulations, since it drives buy/sell/hold decisions rather than being a passive view
+- **Goal-based allocation targets** (Settings → Preferences → "Allocazione da Obiettivi") now correctly reflect investment priorities: each goal is weighted by its outstanding gap multiplied by its priority level (Alta 3×, Media 2×, Bassa 1×). Goals that are already fully funded are excluded from the calculation. Previously, only the target amount was used as weight, which made the priority setting have no meaningful effect
+- The Allocation page banner and the Goals tab now explain how the priority weighting affects allocation targets, so the logic is transparent and actionable
+- The **Overview "Sintesi Patrimoniale" card** no longer shows a redundant large number at the top. The card now reads as a clean financial statement — asset breakdown flows naturally into the fiscal impact section, with "Pat. Netto Totale" as the clear bottom-line conclusion
+- Transaction list amounts in the Cashflow Sankey drill-down now use design system color tokens instead of hardcoded hex values — positive amounts in green, negative in red, both correctly adapted to all six color themes and dark mode
+- Links in the Sankey transaction detail now use the `primary` color token instead of a hardcoded blue, staying consistent with the rest of the app
+- **"Since start" performance column** (Δ Inizio) in the Assets table now uses your actual purchase price as the baseline instead of the first monthly snapshot price. The first snapshot is often taken days or weeks after you bought an asset, meaning part of the return was invisible. The column now shows the true return from day one — consistent with the G/P% displayed in the same row
+- **Total unrealized G/P** in the Assets hero now correctly excludes cash accounts from its calculation. Including cash in the cost-basis denominator would artificially lower the percentage — cash doesn't generate investment returns
+- **CAGR tooltips clarified**: the History page chip now explains that its figure includes both investment gains and new contributions (raw wealth growth rate). The Rendimenti page tooltip now explains that contributions are counted as invested capital in the denominator, which is why that figure is typically lower — the two metrics measure different things intentionally
+- **Tab bar style**: Cashflow, FIRE & Simulations, and Settings tabs use an underline sliding indicator instead of a rounded pill
+- **Theme-aware background**: the dashboard main content area now correctly uses theme colors (was fixed gray regardless of selected theme)
+- **Landing page feature grid**: six feature cards now use a unified connected grid with shared hairline separators instead of identical individual card borders
+- **Accessibility — navigation**: skip-to-content link added to the landing page; sidebar, bottom nav, and secondary drawer are now named landmarks for screen reader navigation; active route announced via `aria-current` on all nav items
+- **Accessibility — loading states**: loading spinner on the landing page and the demo button now announce state to screen readers
+- **Accessibility — motion**: bottom nav pill, landing hero, login/register animations now respect the system Reduce Motion preference; all loading spinners stop spinning when Reduce Motion is active
+- **Accessibility — touch targets**: password toggle buttons on login/register enlarged from 28px to 44px
+- **Accessibility — form autofill**: login and register fields now have correct `autoComplete` hints so browsers and password managers fill them correctly
+- **Sidebar accent contrast**: fixed in Retro Arcade (light and dark) and Solar Dusk (light) — active sidebar items now meet WCAG AA contrast in all six themes
+- Improved: Cashflow Tracking tab — income and expense KPI amounts (Entrate, Spese, Risparmio) now use theme-aware color tokens instead of fixed green/red, so they adapt correctly to all six color themes including Cyberpunk and Solar Dusk
+- Improved: Filter panel in the Cashflow Tracking tab is now fully keyboard-accessible — Tab navigates to it and Enter/Space opens or closes it (previously only reachable by mouse)
+- Improved: Expense creation dialog now announces its type picker as a radio group to screen readers, so users relying on assistive technology hear "Tipo di voce da registrare, radiogroup" and can navigate the four options correctly
+- Improved: Expense creation and edit dialog now provides a contextual description to screen readers when it opens ("Seleziona il tipo di voce da registrare", "Inserisci i dettagli della nuova voce", or "Modifica i dettagli della voce selezionata" depending on the current step)
+- Improved: Budget tab progress bars now announce their value to screen readers — assistive technology reads "Avanzamento budget, X%" for each category row instead of skipping the bar entirely (WCAG 4.1.2)
+- Improved: Budget tab section headers, category rows, and subtotal rows are now keyboard-accessible — Tab navigates to them and Enter or Space expands/collapses or opens the historical drill-down (WCAG 2.1.1)
+- Improved: Budget tab percentage values now render in a monospaced font, keeping numbers visually aligned across rows
+- Improved: Budget tab loading state now shows a structural skeleton matching the page layout instead of a plain text message
+- Improved: Budget tab item detail dialog (mobile) now announces the category name and context to screen readers when it opens
+- Improved: Budget tab reorder and delete buttons in edit mode now announce their target category to screen readers
+- Improved: Budget tab over-budget progress bars now follow the active color theme's destructive color instead of a fixed red — adapts correctly across all six themes including Cyberpunk and Solar Dusk
+- Improved: Budget tab delta percentages and table text adapt correctly to all six color themes — no more fixed gray or green values that clashed with non-default themes
+- Fixed: Cost Centers monthly chart tooltip now displays correctly in all dark themes (Cyberpunk, Midnight Bloom, Elegant Luxury, Solar Dusk) — value text was invisible against the dark background
+- Improved: Cost Centers list cards are now fully keyboard-navigable — Tab focuses each center, Enter or Space opens the detail view
+- Improved: Cost Centers color picker now announces color names to screen readers ("Blu", "Verde smeraldo", etc.) instead of raw hex values; the selected color is also announced
+- Improved: Cost Centers "Create / Edit" dialog now provides a contextual description to screen readers when it opens
+- Improved: Cost Centers detail view now shows a structural loading skeleton instead of a plain text message — the skeleton anticipates the KPI grid and chart layout
+- Improved: Allocation page asset class cards and sub-category rows are now fully keyboard-navigable — Tab focuses each drillable item, Enter or Space opens the detail view or sub-category drill-down (WCAG 2.1.1)
+- Improved: Allocation page buy/sell/hold chips (COMPRA, VENDI, OK) now follow the active color theme — COMPRA uses the warning palette and VENDI uses the destructive palette across all six themes instead of fixed orange and red
+- Improved: Allocation page loading skeleton now matches the page container dimensions precisely, eliminating a brief layout shift on the horizontal margins when portfolio data loads
