@@ -83,15 +83,6 @@ export async function createInvestmentOperation(
   userId: string,
   input: InvestmentOperationFormData
 ): Promise<string> {
-  calculateInvestmentOperationEffect({
-    type: input.type,
-    previousQuantity: 0,
-    quantity: input.quantity,
-    pricePerUnit: input.pricePerUnit,
-    fees: input.fees,
-    taxes: input.taxes,
-  });
-
   const fees = input.fees ?? 0;
   const taxes = input.taxes ?? 0;
 

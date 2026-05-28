@@ -46,12 +46,26 @@ describe('cashflow UI regression guards', () => {
     expect(editResetMatch?.[1]).toContain("installmentMode: 'auto'");
     expect(editResetMatch?.[1]).toContain('installmentCount: expense.installmentTotal || 2');
     expect(editResetMatch?.[1]).toContain('installmentTotalAmount: expense.installmentTotalAmount || Math.abs(expense.amount)');
+    expect(editResetMatch?.[1]).toContain('linkedInvestmentAssetName: expense.linkedInvestmentAssetName');
+    expect(editResetMatch?.[1]).toContain('investmentOperationPricePerUnit: expense.investmentOperationPricePerUnit');
   });
 
-  it('normalizes investment sentinel values and awaits refresh callbacks on cashflow updates', () => {
+  it('guards edit reset to run once per open target and clears the guard on close', () => {
     const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
 
-    expect(source).toContain("const linkedInvestmentAssetId = data.linkedInvestmentAssetId !== '__none__' ? data.linkedInvestmentAssetId : undefined;");
+    expect(source).toContain('const resetGuardRef = useRef<string | null>(null);');
+    expect(source).toContain("const resetKey = expense ? `edit:${expense.id}` : 'create';");
+    expect(source).toContain('if (resetGuardRef.current === resetKey) {');
+    expect(source).toContain('resetGuardRef.current = null;');
+  });
+
+  it('keeps linked investment fields watched and submitted from form state in cashflow edits', () => {
+    const source = readRepoFile('components/expenses/ExpenseDialog.tsx');
+
+    expect(source).toContain("const watchedLinkedInvestmentAssetId = useWatch({ control, name: 'linkedInvestmentAssetId' });");
+    expect(source).toContain("const watchedLinkedInvestmentAssetName = useWatch({ control, name: 'linkedInvestmentAssetName' });");
+    expect(source).toContain("const watchedInvestmentOperationPricePerUnit = useWatch({ control, name: 'investmentOperationPricePerUnit' });");
+    expect(source).toContain("const linkedInvestmentAssetId = watchedLinkedInvestmentAssetId !== '__none__' ? watchedLinkedInvestmentAssetId : undefined;");
     expect(source).toContain('await onSuccess?.();');
   });
 
