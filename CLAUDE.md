@@ -49,4 +49,6 @@ areas live in `app/dashboard/*`, `app/api/*`, `components/*`, `lib/services/*`,
 Read [docs/project-status.md](docs/project-status.md) for active features and
 recent architecture notes, including the dashboard shell/navigation refactor,
 standalone Analisi page, assistant target-allocation context, household scoped
-views, unified cashflow movements, and benchmark comparison workflows.
+views, unified cashflow movements, investment/transfer edit persistence,
+validation feedback, roomy investment/transfer dialogs, and benchmark
+comparison workflows.

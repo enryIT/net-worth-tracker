@@ -105,6 +105,13 @@ architecture and current product status, see
 - **Feature toggle placement**: all feature toggles (`costCentersEnabled`, `goalBasedInvestingEnabled`, `stampDutyEnabled`, etc.) live in `AssetAllocationSettings` (`types/assets.ts` + `assetAllocationService.ts`). Do NOT add them to `UserPreferences` / `userPreferencesService.ts`. The 3-place rule applies here too.
 - **Cashflow settings fallback semantics**: `cashflowHistoryStartYear` may bootstrap from a hardcoded default, but that value is only a non-fatal fallback; preserve the saved settings value whenever `getSettings()` succeeds and log fallback activation explicitly.
 
+### Unified Cashflow Movements
+- `components/cashflow/ExpenseTrackingTab.tsx` owns the unified `Tracciamento` movement list and dialog for ordinary cashflow, investment operations, and internal transfers. Keep type-specific create/edit logic inside the unified dialog instead of reintroducing separate always-visible investment/transfer forms.
+- Investment edit safety: only allow editing the most recent operation for an asset when the current asset quantity still matches the recorded post-operation quantity. If the asset changed later, force delete/recreate rather than silently recalculating from a stale base.
+- Movement save UX must not close the dialog before the relevant refresh/invalidation completes. After investment/transfer mutations, invalidate assets, operations, realized gains, transfers, and dashboard overview queries so cash balances and KPIs do not show stale values.
+- Invalid movement submissions must surface explicit Italian feedback through `onInvalidSubmit` / toast paths. Do not rely on silent `react-hook-form` validation failures, especially for hidden/null linked-investment numeric fields reset during edit.
+- The `Nuovo movimento` / `Modifica movimento` type picker should stay compact, but investment and transfer forms should remain roomy after type selection: `desktop:max-w-4xl`, section/card grouping, and two-column desktop grids. Do not collapse them back to `desktop:grid-cols-6 desktop:items-end`.
+
 ### Settings UX Layer (Overdrive)
 - Unsaved preview in Settings is local-only: use a baseline snapshot key captured on load/save and compare against current state (`hasUnsaved*`) without introducing autosave behavior
 - If you add a new Settings field that participates in unsaved preview, update both baseline and current snapshot builders; missing fields create false clean/dirty states
@@ -440,6 +447,7 @@ For pages that aggregate large collections (many snapshots + all expenses) on ev
 - Keep test fixtures aligned with current required types, especially `BudgetItem.order`
 - For private route auth tests, prefer route-handler unit tests with mocked `adminAuth.verifyIdToken` and Admin SDK service calls over heavier browser/E2E coverage
 - For Cashflow/Budget UX changes, run `npx tsc --noEmit` plus `npx vitest run __tests__/budgetUtils.test.ts` before manual validation
+- For unified cashflow movement changes, run `npx tsc --noEmit` plus `npx vitest run __tests__/cashflowUnifiedMovementForm.test.ts __tests__/cashflowTrackingUnification.test.ts __tests__/cashflowUiRegression.test.ts`; add `__tests__/investmentOperationService.test.ts` when changing investment/transfer persistence math or service guards.
 - For asset creation / bond dialog changes, run `npx tsc --noEmit` plus `npx vitest run __tests__/assetDialogHelpers.test.ts __tests__/couponUtils.test.ts` before manual validation of the create-bond-with-ISIN flow
 - For snapshot route changes, run `npx tsc --noEmit` plus `npx vitest run __tests__/snapshotHelpers.test.ts` before manual validation
 - If a test imports a service that transitively pulls in `lib/firebase/config.ts`, mock `@/lib/firebase/config` at the test boundary; otherwise Firebase client init runs during import and fails on missing/invalid test env vars.

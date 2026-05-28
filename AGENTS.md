@@ -47,9 +47,15 @@ as workflow playbooks: when a task matches one of these areas, read the matching
 `SKILL.md` before changing code. `.claude/skills/*` mirrors the same workflows
 for Claude Code.
 
+- React/Next.js feature work: `.agents/skills/react-nextjs-development/SKILL.md`
+- Frontend implementation guardrails: `.agents/skills/frontend-dev-guidelines/SKILL.md`
+- Backend/service/API guardrails: `.agents/skills/backend-dev-guidelines/SKILL.md`
+- Test-first feature and bugfix work: `.agents/skills/test-driven-development/SKILL.md`
+- Root-cause debugging: `.agents/skills/systematic-debugging/SKILL.md`
 - API auth / private routes: `.agents/skills/api-auth-routes/SKILL.md`
 - Vitest route tests: `.agents/skills/vitest-route-testing/SKILL.md`
-- Dividends, coupons, snapshots, and snapshot routes:
+- Dividends, coupons, investment operations, internal transfers, unified
+  cashflow movements, and snapshot routes:
   `.agents/skills/dividend-and-snapshot-workflows/SKILL.md`
 - Assistant SSE streaming, thread state, memory, and prompt context:
   `.agents/skills/assistant-streaming/SKILL.md`

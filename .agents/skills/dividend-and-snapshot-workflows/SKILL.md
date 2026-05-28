@@ -1,11 +1,12 @@
 ---
 name: dividend-and-snapshot-workflows
-description: Implements dividend, snapshot, price-update, and cron workflows in app/api/dividends/*, app/api/portfolio/snapshot/*, app/api/prices/*, and app/api/cron/*. Use when user says 'sync dividends', 'create snapshot', 'update prices', or 'cron job'. Do NOT use for unrelated analytics pages.
+description: Implements dividend, snapshot, price-update, cron, investment-operation, internal-transfer, and unified cashflow movement workflows. Use for app/api/dividends/*, app/api/portfolio/snapshot/*, app/api/prices/*, app/api/cron/*, components/cashflow/*, lib/services/investmentOperationService.ts, or types/investments.ts. Do NOT use for unrelated analytics pages.
 ---
 # dividend-and-snapshot-workflows
 
 ## Critical
-- Keep these workflows server-side only. Any route under `app/api/dividends/*`, `app/api/portfolio/snapshot/*`, `app/api/prices/*`, or `app/api/cron/*` must not rely on client state.
+- Keep server workflows server-side only. Any route under `app/api/dividends/*`, `app/api/portfolio/snapshot/*`, `app/api/prices/*`, or `app/api/cron/*` must not rely on client state.
+- For unified cashflow movement UI, keep investment-operation and internal-transfer create/edit forms inside `components/cashflow/ExpenseTrackingTab.tsx` instead of reintroducing always-visible special-operation cards.
 - Private `app/api/*` routes must verify Firebase UID server-side via `lib/server/apiAuth.ts`.
 - Cron routes must reject requests unless `Authorization: Bearer ${process.env.CRON_SECRET}` matches exactly.
 - User-facing strings must stay Italian; code comments stay English.
@@ -19,8 +20,12 @@ description: Implements dividend, snapshot, price-update, and cron workflows in 
      - `app/api/prices/*`
      - `app/api/cron/*`
      - supporting orchestration in `lib/server/*`, `lib/services/*`, and `lib/helpers/priceUpdater.ts`
+     - `components/cashflow/ExpenseTrackingTab.tsx`
+     - `components/expenses/ExpenseDialog.tsx`
+     - `lib/services/investmentOperationService.ts`
+     - `types/investments.ts`
    - Match the same route method/export style used in the codebase’s App Router handlers.
-   - Verify which of the four patterns you are extending before proceeding to the next step.
+   - Verify whether you are extending a server route workflow or the unified cashflow movement workflow before proceeding to the next step.
    - This step uses the output from the project’s existing server route patterns.
 
 2. **Add or update the route handler in the correct `app/api/*` folder.**
@@ -37,6 +42,7 @@ description: Implements dividend, snapshot, price-update, and cron workflows in 
 3. **Delegate workflow logic to the existing server layer instead of embedding it in the route.**
    - Put dividend orchestration in `lib/server/dividendUseCase.ts` and `lib/server/dividendProcessor.ts` when the task is about dividend synchronization or processing.
    - Put performance/snapshot business logic in `lib/services/performanceService.ts` when the task is snapshot-related or needs derived portfolio calculations.
+   - Put investment-operation and internal-transfer persistence math in `lib/services/investmentOperationService.ts`; keep `ExpenseTrackingTab.tsx` focused on form state, validation feedback, query invalidation, and dialog orchestration.
    - Put price-update orchestration in `lib/helpers/priceUpdater.ts` for price refresh flows.
    - Keep cross-cutting server logic in `lib/server/*` and reuse the current helpers rather than inventing a new service layer.
    - Verify the new logic lives in the same layer as the closest existing implementation before proceeding to the next step.
@@ -45,7 +51,8 @@ description: Implements dividend, snapshot, price-update, and cron workflows in 
 4. **Use the existing domain types and keep request/response shapes consistent.**
    - Reuse types from `types/*.ts` instead of creating duplicate inline shapes.
    - Keep payload names consistent with nearby code in `app/api/dividends/*`, `app/api/portfolio/snapshot/*`, and `app/api/prices/*`.
-   - If the workflow touches pricing, preserve the currency/date helpers already used elsewhere in the project, especially `formatCurrency()`, `formatDate()`, and `dateHelpers.ts`.
+   - If the workflow touches pricing or movement display, preserve the currency/date helpers already used elsewhere in the project, especially `formatCurrency()`, `formatDate()`, and `dateHelpers.ts`.
+   - Preserve the `InternalTransfer` / `InvestmentOperation` domain types from `types/investments.ts`; do not model trades as ordinary expenses/income.
    - Verify the request and response objects match the surrounding types before proceeding to the next step.
    - This step uses the output from Step 3.
 
@@ -70,6 +77,7 @@ description: Implements dividend, snapshot, price-update, and cron workflows in 
      - auth failure path for private routes
      - cron secret failure path for cron routes
      - external/API failure path when the workflow depends on remote data
+     - unified movement edit/save/delete regressions when changing `ExpenseTrackingTab.tsx` or `investmentOperationService.ts`
    - Verify the tests fail before the fix and pass after the fix before proceeding to the next step.
    - This step uses the output from Steps 2–6.
 
@@ -77,6 +85,8 @@ description: Implements dividend, snapshot, price-update, and cron workflows in 
    - Run the relevant targeted test file first, for example:
      - `npm.cmd test -- --run __tests__/assistantRoutes.test.ts`
      - `npm.cmd test -- --run __tests__/householdUtils.test.ts`
+     - `npm.cmd test -- --run __tests__/cashflowUnifiedMovementForm.test.ts __tests__/cashflowTrackingUnification.test.ts __tests__/cashflowUiRegression.test.ts`
+     - `npm.cmd test -- --run __tests__/investmentOperationService.test.ts`
    - Then run the full suite if the workflow touches shared server code:
      - `npm.cmd test`
    - Finish with type and lint checks when route logic or shared types changed:
