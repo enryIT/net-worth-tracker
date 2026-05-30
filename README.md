@@ -34,8 +34,8 @@ The app integrates with Yahoo Finance for real-time price updates and includes a
 ### Performance Analytics
 - Comprehensive metrics: ROI, CAGR, TWR, IRR, Sharpe Ratio, Maximum Drawdown
 - Yield on Cost (YOC) and Current Yield calculations
-- Monthly returns heatmap and underwater drawdown chart
-- Rolling performance charts
+- Monthly returns heatmap and underwater drawdown chart (theme-aware colors, boosted contrast in dark themes); all metric values and benchmark comparison tooltips adapt correctly to all six color themes in both light and dark mode
+- Rolling 12-month CAGR and Sharpe Ratio charts with 3-month moving average; always visible with an informative empty state when data is insufficient
 - **Benchmark comparison**: compare your portfolio against six model portfolios (60/40, All Weather, Buffett 90/10, Golden Butterfly, Permanent Portfolio, 100% ACWI) with an indexed growth-of-100 chart and a comprehensive risk/return table — TWR, Volatility, Sharpe, Sortino, Calmar, Max Drawdown, best/worst month, and positive/negative month counts; optional USD→EUR conversion via Frankfurter API
 - Progressive disclosure: methodology section collapsed by default; one-time guide strip for new users; "Avanzato" badge on technical metrics (TWR, IRR, Sharpe, YOC); each chart has an inline 2-line reading hint
 - Animated metric cards: values count up on load and settle more naturally during period changes; staggered entrance cascade per section

@@ -52,3 +52,5 @@ standalone Analisi page, assistant target-allocation context, household scoped
 views, unified cashflow movements, investment/transfer edit persistence,
 validation feedback, roomy investment/transfer dialogs, and benchmark
 comparison workflows.
+The 2026-05-30 upstream merge also brings asset-cache invalidation and
+Storico/Rendimenti quality-pass updates reflected in that status document.
