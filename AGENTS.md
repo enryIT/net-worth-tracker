@@ -31,6 +31,7 @@ When a change affects durable guidance, update the docs above first, then keep
 - Private `app/api/*` routes must verify Firebase UID server-side.
 - Cron routes must validate `Authorization: Bearer ${process.env.CRON_SECRET}`.
 - Do not revert unrelated user changes or touch `Draft Release Temp.md` / `Temp.md`.
+- Keep Caliber-managed sections in `AGENTS.md` intact.
 
 ## Core Areas
 

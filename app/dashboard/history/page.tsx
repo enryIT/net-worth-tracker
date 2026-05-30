@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 import { Asset, MonthlySnapshot, AssetAllocationTarget, DoublingMode, AssetAllocationSettings } from '@/types/assets';
 import { DoublingTimeSummaryCards } from '@/components/history/DoublingTimeSummaryCards';
@@ -341,10 +342,23 @@ export default function HistoryPage() {
   const displayExpenses = householdEnabled ? scopedExpenses : expenses;
   const displaySnapshots = householdEnabled ? scopedSnapshots : snapshots;
 
-  const netWorthHistory = prepareNetWorthHistoryData(displaySnapshots);
-  const assetClassHistory = prepareAssetClassHistoryData(displaySnapshots);
-  const yoyVariationData = prepareYoYVariationData(displaySnapshots);
-  const savingsVsInvestmentData = prepareSavingsVsInvestmentData(displaySnapshots, displayExpenses);
+  // Memoized — these iterate over every snapshot on every call.
+  const netWorthHistory = useMemo(
+    () => prepareNetWorthHistoryData(displaySnapshots),
+    [displaySnapshots]
+  );
+  const assetClassHistory = useMemo(
+    () => prepareAssetClassHistoryData(displaySnapshots),
+    [displaySnapshots]
+  );
+  const yoyVariationData = useMemo(
+    () => prepareYoYVariationData(displaySnapshots),
+    [displaySnapshots]
+  );
+  const savingsVsInvestmentData = useMemo(
+    () => prepareSavingsVsInvestmentData(displaySnapshots, displayExpenses),
+    [displaySnapshots, displayExpenses]
+  );
   const savingsVsInvestmentDataMonthly = useMemo(
     () =>
       typeof savingsSelectedYear === 'number'
@@ -360,7 +374,10 @@ export default function HistoryPage() {
     () => [...new Set(displaySnapshots.map((s) => s.year))].sort((a, b) => b - a),
     [displaySnapshots]
   );
-  const doublingTimeSummary = prepareDoublingTimeData(displaySnapshots, doublingMode);
+  const doublingTimeSummary = useMemo(
+    () => prepareDoublingTimeData(displaySnapshots, doublingMode),
+    [displaySnapshots, doublingMode]
+  );
   const visibleChapterSet = useMemo(() => new Set(visibleChapters), [visibleChapters]);
   const notesCount = useMemo(
     () => netWorthHistory.filter((item) => item.note && item.note.trim() !== '').length,
@@ -421,7 +438,7 @@ export default function HistoryPage() {
       totalInvestmentGrowthNet,
       startYear,
     };
-  }, [expenses, snapshots, portfolioSettings, assets]);
+  }, [displayExpenses, displaySnapshots, portfolioSettings, assets]);
 
   const laborMetricsChartData = useMemo(() => {
     const categoryIds = portfolioSettings?.laborIncomeCategoryIds;
@@ -441,15 +458,19 @@ export default function HistoryPage() {
     );
   }, [laborMetricsChartData]);
 
-  // Pre-calculate liquid/illiquid percentages for the liquidity chart toggle
-  const liquidityHistory = netWorthHistory.map((item) => {
-    const total = item.liquidNetWorth + item.illiquidNetWorth;
-    return {
-      ...item,
-      liquidPercentage: total > 0 ? (item.liquidNetWorth / total) * 100 : 0,
-      illiquidPercentage: total > 0 ? (item.illiquidNetWorth / total) * 100 : 0,
-    };
-  });
+  // Pre-calculate liquid/illiquid percentages for the liquidity chart toggle.
+  // Depends on netWorthHistory so it recomputes only when snapshots change.
+  const liquidityHistory = useMemo(
+    () => netWorthHistory.map((item) => {
+      const total = item.liquidNetWorth + item.illiquidNetWorth;
+      return {
+        ...item,
+        liquidPercentage: total > 0 ? (item.liquidNetWorth / total) * 100 : 0,
+        illiquidPercentage: total > 0 ? (item.illiquidNetWorth / total) * 100 : 0,
+      };
+    }),
+    [netWorthHistory]
+  );
 
   // Hero metrics: latest patrimonio, total growth %, and annualized CAGR
   const heroMetrics = useMemo(() => {
@@ -548,29 +569,47 @@ export default function HistoryPage() {
           {heroMetrics && (heroMetrics.cagr !== null || heroMetrics.totalGrowthPct !== null) && (
             <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
               {heroMetrics.cagr !== null && (
-                // This CAGR is the raw net-worth growth rate: (endNW / startNW)^(12/months) - 1.
-                // It includes both investment returns and new contributions — it is NOT
-                // cash-flow adjusted. For pure investment return, see the Rendimenti page.
-                <span
-                  title="Crescita annua del patrimonio netto — include sia i rendimenti degli investimenti sia i nuovi versamenti. Non aggiustato per i flussi di cassa. Per il rendimento puro degli investimenti, vedi la pagina Rendimenti."
-                  className={cn(
-                  'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium cursor-help',
-                  heroMetrics.cagr >= 0
-                    ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                    : 'bg-red-500/10 text-red-600 dark:text-red-400'
-                )}>
-                  {heroMetrics.cagr >= 0 ? '+' : ''}{heroMetrics.cagr.toFixed(1)}% /anno (CAGR)
-                </span>
+                // Raw net-worth CAGR: (endNW / startNW)^(12/months) - 1.
+                // Includes both investment returns AND new contributions — not cash-flow adjusted.
+                // The Rendimenti CAGR is lower because contributions go into the denominator.
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium cursor-help focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                        heroMetrics.cagr >= 0
+                          ? 'bg-positive/10 text-positive'
+                          : 'bg-destructive/10 text-destructive'
+                      )}
+                    >
+                      {heroMetrics.cagr >= 0 ? '+' : ''}{heroMetrics.cagr.toFixed(1)}% /anno (CAGR)
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="bottom" align="start" className="max-w-[280px] text-sm leading-relaxed">
+                    Crescita annua del patrimonio netto — include sia i rendimenti degli investimenti sia i nuovi versamenti. Non aggiustato per i flussi di cassa. Per il rendimento puro degli investimenti, vedi la pagina Rendimenti.
+                  </PopoverContent>
+                </Popover>
               )}
               {heroMetrics.totalGrowthPct !== null && (
-                <span className={cn(
-                  'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium',
-                  heroMetrics.totalGrowthPct >= 0
-                    ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                    : 'bg-red-500/10 text-red-600 dark:text-red-400'
-                )}>
-                  {heroMetrics.totalGrowthPct >= 0 ? '+' : ''}{heroMetrics.totalGrowthPct.toFixed(1)}% totale
-                </span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium cursor-help focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
+                        heroMetrics.totalGrowthPct >= 0
+                          ? 'bg-positive/10 text-positive'
+                          : 'bg-destructive/10 text-destructive'
+                      )}
+                    >
+                      {heroMetrics.totalGrowthPct >= 0 ? '+' : ''}{heroMetrics.totalGrowthPct.toFixed(1)}% totale
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="bottom" align="start" className="max-w-[280px] text-sm leading-relaxed">
+                    Crescita complessiva del patrimonio dall&apos;inizio del tracciamento — non annualizzata. Include sia i rendimenti degli investimenti sia i versamenti effettuati nel tempo.
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
           )}
@@ -731,8 +770,8 @@ export default function HistoryPage() {
                               <table className="w-full">
                                 <thead className="sticky top-0 bg-muted/50 border-b">
                                   <tr>
-                                    <th className="px-4 py-3 text-left text-sm font-medium w-[200px]">Periodo</th>
-                                    <th className="px-4 py-3 text-left text-sm font-medium">Nota</th>
+                                    <th scope="col" className="px-4 py-3 text-left text-sm font-medium w-[200px]">Periodo</th>
+                                    <th scope="col" className="px-4 py-3 text-left text-sm font-medium">Nota</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1162,11 +1201,11 @@ export default function HistoryPage() {
                               <YAxis width={getYAxisWidth()} tickFormatter={(v) => formatCurrencyCompact(v)} />
                               <Tooltip formatter={(v, name) => [formatCurrency(v as number), name]} {...tooltipStyle} cursor={{ fill: 'rgba(128,128,128,0.1)' }} />
                               <Legend wrapperStyle={{ display: isMobile ? 'none' : 'block', paddingTop: '20px' }} iconSize={10} fontSize={12} />
-                              <Bar dataKey="netSavings" name="Risparmio Netto" fill={chartColors[1] || '#10B981'} stackId="a" animationDuration={600} animationEasing="ease-out" />
-                              {/* fill sets legend color; Cell overrides individual bar color based on sign */}
-                              <Bar dataKey="investmentGrowth" name="Crescita Investimenti" fill={chartColors[0] || '#3B82F6'} stackId="a" animationDuration={600} animationEasing="ease-out">
+                              <Bar dataKey="netSavings" name="Risparmio Netto" fill={chartColors[1]} stackId="a" animationDuration={600} animationEasing="ease-out" />
+                              {/* fill sets the legend swatch color; Cell overrides individual bar color by sign */}
+                              <Bar dataKey="investmentGrowth" name="Crescita Investimenti" fill={chartColors[0]} stackId="a" animationDuration={600} animationEasing="ease-out">
                                 {savingsVsInvestmentData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.investmentGrowth >= 0 ? (chartColors[0] || '#3B82F6') : '#EF4444'} />
+                                  <Cell key={`cell-${index}`} fill={entry.investmentGrowth >= 0 ? chartColors[0] : 'var(--destructive)'} />
                                 ))}
                               </Bar>
                             </BarChart>
@@ -1174,11 +1213,11 @@ export default function HistoryPage() {
                           {isMobile && (
                             <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-3 px-1">
                               <div className="flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[1] || '#10B981' }} />
+                                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[1] }} />
                                 <span className="text-xs text-muted-foreground">Risparmio</span>
                               </div>
                               <div className="flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[0] || '#3B82F6' }} />
+                                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[0] }} />
                                 <span className="text-xs text-muted-foreground">Investimenti</span>
                               </div>
                             </div>
@@ -1204,14 +1243,26 @@ export default function HistoryPage() {
                                 <YAxis width={getYAxisWidth()} tickFormatter={(v) => formatCurrencyCompact(v)} />
                                 <Tooltip formatter={(v, name) => [formatCurrency(v as number), name]} {...tooltipStyle} cursor={{ fill: 'rgba(128,128,128,0.1)' }} />
                                 <Legend wrapperStyle={{ display: isMobile ? 'none' : 'block', paddingTop: '20px' }} iconSize={10} fontSize={12} />
-                                <Bar dataKey="netSavings" name="Risparmio Netto" fill={chartColors[1] || '#10B981'} stackId="a" animationDuration={600} animationEasing="ease-out" />
-                                <Bar dataKey="investmentGrowth" name="Crescita Investimenti" fill={chartColors[0] || '#3B82F6'} stackId="a" animationDuration={600} animationEasing="ease-out">
+                                <Bar dataKey="netSavings" name="Risparmio Netto" fill={chartColors[1]} stackId="a" animationDuration={600} animationEasing="ease-out" />
+                                <Bar dataKey="investmentGrowth" name="Crescita Investimenti" fill={chartColors[0]} stackId="a" animationDuration={600} animationEasing="ease-out">
                                   {monthlyData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.investmentGrowth >= 0 ? (chartColors[0] || '#3B82F6') : '#EF4444'} />
+                                    <Cell key={`cell-${index}`} fill={entry.investmentGrowth >= 0 ? chartColors[0] : 'var(--destructive)'} />
                                   ))}
                                 </Bar>
                               </BarChart>
                             </ResponsiveContainer>
+                            {isMobile && (
+                              <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-3 px-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[1] }} />
+                                  <span className="text-xs text-muted-foreground">Risparmio</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[0] }} />
+                                  <span className="text-xs text-muted-foreground">Investimenti</span>
+                                </div>
+                              </div>
+                            )}
                           </motion.div>
                         );
                       })()
@@ -1252,7 +1303,7 @@ export default function HistoryPage() {
 
                   <div className="flex items-center justify-between px-6 py-3.5">
                     <div className="flex items-center gap-3 min-w-0">
-                      <PiggyBank className={cn('h-4 w-4 shrink-0', laborIncomeMetrics.totalSavedFromWork >= 0 ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400')} />
+                      <PiggyBank className={cn('h-4 w-4 shrink-0', laborIncomeMetrics.totalSavedFromWork >= 0 ? 'text-positive' : 'text-destructive')} />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">Risparmiato da Lavoro</p>
                         <p className="text-xs text-muted-foreground">
@@ -1260,7 +1311,7 @@ export default function HistoryPage() {
                         </p>
                       </div>
                     </div>
-                    <p className={cn('text-base font-bold font-mono tabular-nums shrink-0 ml-4', laborIncomeMetrics.totalSavedFromWork >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
+                    <p className={cn('text-base font-bold font-mono tabular-nums shrink-0 ml-4', laborIncomeMetrics.totalSavedFromWork >= 0 ? 'text-positive' : 'text-destructive')}>
                       {laborIncomeMetrics.totalSavedFromWork >= 0 ? '+' : ''}{formatCurrency(laborIncomeMetrics.totalSavedFromWork)}
                     </p>
                   </div>
@@ -1268,14 +1319,14 @@ export default function HistoryPage() {
                   <div className="flex items-center justify-between px-6 py-3.5">
                     <div className="flex items-center gap-3 min-w-0">
                       {laborIncomeMetrics.totalInvestmentGrowthGross >= 0
-                        ? <TrendingUp className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" />
-                        : <TrendingDown className="h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />}
+                        ? <TrendingUp className="h-4 w-4 shrink-0 text-positive" />
+                        : <TrendingDown className="h-4 w-4 shrink-0 text-destructive" />}
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">Crescita Investimenti (Lordo)</p>
                         <p className="text-xs text-muted-foreground">Dal {laborIncomeMetrics.startYear}</p>
                       </div>
                     </div>
-                    <p className={cn('text-base font-bold font-mono tabular-nums shrink-0 ml-4', laborIncomeMetrics.totalInvestmentGrowthGross >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
+                    <p className={cn('text-base font-bold font-mono tabular-nums shrink-0 ml-4', laborIncomeMetrics.totalInvestmentGrowthGross >= 0 ? 'text-positive' : 'text-destructive')}>
                       {laborIncomeMetrics.totalInvestmentGrowthGross >= 0 ? '+' : ''}{formatCurrency(laborIncomeMetrics.totalInvestmentGrowthGross)}
                     </p>
                   </div>
@@ -1283,40 +1334,40 @@ export default function HistoryPage() {
                   <div className="flex items-center justify-between px-6 py-3.5">
                     <div className="flex items-center gap-3 min-w-0">
                       {laborIncomeMetrics.totalInvestmentGrowthNet >= 0
-                        ? <TrendingUp className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" />
-                        : <TrendingDown className="h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />}
+                        ? <TrendingUp className="h-4 w-4 shrink-0 text-positive" />
+                        : <TrendingDown className="h-4 w-4 shrink-0 text-destructive" />}
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">Crescita Investimenti (Netto)</p>
                         <p className="text-xs text-muted-foreground">Dal {laborIncomeMetrics.startYear} &middot; al netto tasse stimate</p>
                       </div>
                     </div>
-                    <p className={cn('text-base font-bold font-mono tabular-nums shrink-0 ml-4', laborIncomeMetrics.totalInvestmentGrowthNet >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400')}>
+                    <p className={cn('text-base font-bold font-mono tabular-nums shrink-0 ml-4', laborIncomeMetrics.totalInvestmentGrowthNet >= 0 ? 'text-positive' : 'text-destructive')}>
                       {laborIncomeMetrics.totalInvestmentGrowthNet >= 0 ? '+' : ''}{formatCurrency(laborIncomeMetrics.totalInvestmentGrowthNet)}
                     </p>
                   </div>
 
                   <div className="flex items-center justify-between px-6 py-3.5">
                     <div className="flex items-center gap-3 min-w-0">
-                      <TrendingUp className="h-4 w-4 shrink-0 text-green-500 dark:text-green-400" />
+                      <TrendingUp className="h-4 w-4 shrink-0 text-positive" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">Mesi in Positivo</p>
                         <p className="text-xs text-muted-foreground">Dal {laborIncomeMetrics.startYear} &middot; patrimonio in crescita</p>
                       </div>
                     </div>
-                    <p className="text-base font-bold font-mono tabular-nums text-green-600 dark:text-green-400 shrink-0 ml-4">
+                    <p className="text-base font-bold font-mono tabular-nums text-positive shrink-0 ml-4">
                       {laborMonthCounts.positiveMonths}
                     </p>
                   </div>
 
                   <div className="flex items-center justify-between px-6 py-3.5">
                     <div className="flex items-center gap-3 min-w-0">
-                      <TrendingDown className="h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
+                      <TrendingDown className="h-4 w-4 shrink-0 text-destructive" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">Mesi in Negativo</p>
                         <p className="text-xs text-muted-foreground">Dal {laborIncomeMetrics.startYear} &middot; patrimonio in calo</p>
                       </div>
                     </div>
-                    <p className="text-base font-bold font-mono tabular-nums text-red-600 dark:text-red-400 shrink-0 ml-4">
+                    <p className="text-base font-bold font-mono tabular-nums text-destructive shrink-0 ml-4">
                       {laborMonthCounts.negativeMonths}
                     </p>
                   </div>
@@ -1406,13 +1457,25 @@ export default function HistoryPage() {
                             animationDuration={600}
                             animationEasing="ease-out"
                           >
-                            {/* chartColors[0] = anni positivi, chartColors[3] = anni negativi */}
+                            {/* chartColors[0] = positive years, chartColors[3] = negative years */}
                             {yoyVariationData.map((entry, index) => (
                               <Cell key={`cell-${index}`} fill={entry.variation >= 0 ? chartColors[0] : chartColors[3]} />
                             ))}
                           </Bar>
                         </BarChart>
                       </ResponsiveContainer>
+                      {isMobile && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-3 px-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[0] }} />
+                            <span className="text-xs text-muted-foreground">Anno positivo</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: chartColors[3] }} />
+                            <span className="text-xs text-muted-foreground">Anno negativo</span>
+                          </div>
+                        </div>
+                      )}
                     </motion.div>
                   </AnimatePresence>
                 )}
