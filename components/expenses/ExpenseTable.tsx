@@ -49,12 +49,14 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, TrendingUp, TrendingDown, Calendar, ChevronLeft, ChevronRight, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Edit, Trash2, TrendingUp, TrendingDown, Calendar, ChevronLeft, ChevronRight, ExternalLink, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 
-const ITEMS_PER_PAGE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
 
 interface ExpenseTableProps {
   expenses: Expense[];
@@ -71,13 +73,22 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'asc' | 'desc' | null>(null);
+  const [pageSize, setPageSize] = useState<PageSizeOption>(20);
+  // Multi-column sort: col determines which column, dir the direction
+  const [sortCol, setSortCol] = useState<'amount' | 'date' | 'category' | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // ========== Formatting Utilities ==========
 
   const formatDate = (date: Date | string | Timestamp): string => {
     const dateObj = date instanceof Date ? date : (date instanceof Timestamp ? date.toDate() : new Date(date));
     return format(dateObj, 'dd/MM/yyyy', { locale: it });
+  };
+
+  const getExpenseDate = (d: Expense['date']): Date => {
+    if (d instanceof Date) return d;
+    if (d instanceof Timestamp) return d.toDate();
+    return new Date(d as string);
   };
 
   // ========== Delete Handlers ==========
@@ -264,9 +275,9 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * - endIndex = 10 + 10 = 20
    * - slice(10, 20) returns items 10-19 (indices), showing expenses 11-20 (1-indexed)
    */
-  const totalPages = Math.ceil(expenses.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const totalPages = Math.ceil(expenses.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
 
   /**
    * Teacher Comment: Three-State Sorting Cycle
@@ -282,17 +293,19 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * A third "reset" state lets them return to the default view.
    */
   const sortedExpenses = useMemo(() => {
-    if (sortBy === null) {
-      return expenses; // No sort: keep date order from parent
-    }
-
-    const sorted = [...expenses]; // Copy to avoid mutation
-    sorted.sort((a, b) => {
-      return sortBy === 'desc' ? b.amount - a.amount : a.amount - b.amount;
+    if (sortCol === null) return expenses;
+    return [...expenses].sort((a, b) => {
+      let cmp = 0;
+      if (sortCol === 'amount') {
+        cmp = Math.abs(b.amount) - Math.abs(a.amount);
+      } else if (sortCol === 'date') {
+        cmp = getExpenseDate(b.date).getTime() - getExpenseDate(a.date).getTime();
+      } else if (sortCol === 'category') {
+        cmp = b.categoryName.localeCompare(a.categoryName, 'it');
+      }
+      return sortDir === 'desc' ? cmp : -cmp;
     });
-
-    return sorted;
-  }, [expenses, sortBy]);
+  }, [expenses, sortCol, sortDir]);
 
   // Paginate sorted expenses
   const paginatedExpenses = useMemo(() => {
@@ -309,7 +322,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    */
   useEffect(() => {
     setCurrentPage(1);
-  }, [expenses.length, sortBy]);
+  }, [expenses.length, sortCol, sortDir, pageSize]);
 
   /**
    * Why reset sort when expenses array changes?
@@ -320,7 +333,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * provides a predictable "reset" behavior when switching filters.
    */
   useEffect(() => {
-    setSortBy(null);
+    setSortCol(null);
   }, [expenses]);
 
   const handlePreviousPage = () => {
@@ -334,16 +347,23 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
   // ========== Event Handlers ==========
 
   /**
-   * Handle amount column header click to cycle through sort states.
-   * Cycle: null → desc → asc → null
+   * Multi-column sort handler.
+   * Click a new column: activates it with its default direction.
+   * Click active column: flips direction. Click again: resets.
+   * Default directions: amount=desc (high→low), date=desc (newest→oldest), category=asc (A→Z).
    */
-  const handleSortByAmount = () => {
-    setSortBy(prevSort => {
-      if (prevSort === null) return 'desc'; // First click: high to low
-      if (prevSort === 'desc') return 'asc'; // Second click: low to high
-      return null; // Third click: reset to date order
-    });
+  const handleSort = (col: 'amount' | 'date' | 'category') => {
+    const defaultDir: 'asc' | 'desc' = col === 'category' ? 'asc' : 'desc';
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir(defaultDir);
+    } else if (sortDir === defaultDir) {
+      setSortDir(defaultDir === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortCol(null);
+    }
   };
+
 
   // ========== Render ==========
 
@@ -365,19 +385,57 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
           {/* ========== Table Header ========== */}
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">Data</TableHead>
+              <TableHead className="w-[110px]">
+                <button
+                  onClick={() => handleSort('date')}
+                  className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
+                  aria-label="Ordina per data"
+                  type="button"
+                >
+                  <span>Data</span>
+                  {sortCol === 'date' ? (
+                    sortDir === 'desc'
+                      ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      : <ArrowUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  )}
+                </button>
+              </TableHead>
               <TableHead className="w-[120px]">Tipo</TableHead>
-              <TableHead>Categoria</TableHead>
+              <TableHead>
+                <button
+                  onClick={() => handleSort('category')}
+                  className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
+                  aria-label="Ordina per categoria"
+                  type="button"
+                >
+                  <span>Categoria</span>
+                  {sortCol === 'category' ? (
+                    sortDir === 'desc'
+                      ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      : <ArrowUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  )}
+                </button>
+              </TableHead>
               <TableHead>Sottocategoria</TableHead>
               <TableHead className="text-right w-[120px]">
                 <button
-                  onClick={handleSortByAmount}
+                  onClick={() => handleSort('amount')}
                   className="flex items-center justify-end gap-1 cursor-pointer hover:text-foreground transition-colors w-full"
                   aria-label="Ordina per importo"
+                  type="button"
                 >
                   <span>Importo</span>
-                  {sortBy === 'desc' && <ArrowDown className="h-4 w-4 text-muted-foreground" />}
-                  {sortBy === 'asc' && <ArrowUp className="h-4 w-4 text-muted-foreground" />}
+                  {sortCol === 'amount' ? (
+                    sortDir === 'desc'
+                      ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      : <ArrowUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  )}
                 </button>
               </TableHead>
               <TableHead className="max-w-[200px]">Note</TableHead>
@@ -419,8 +477,8 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                 <div
                   className={`flex items-center justify-end gap-1 ${
                     expense.type === 'income'
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-destructive'
                   }`}
                 >
                   {expense.type === 'income' ? (
@@ -463,6 +521,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                     // Why disable during deletion: Prevents concurrent edit/delete operations
                     // that could cause data inconsistency or race conditions
                     disabled={isDemo || deletingId === expense.id || deletingId === expense.recurringParentId || deletingId === expense.installmentParentId}
+                    aria-label={isDemo ? 'Modifica — non disponibile in modalità demo' : 'Modifica voce'}
                     title={isDemo ? 'Non disponibile in modalità demo' : undefined}
                   >
                     <Edit className="h-4 w-4" />
@@ -472,9 +531,10 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                     size="sm"
                     onClick={() => handleDelete(expense)}
                     disabled={isDemo || deletingId === expense.id || deletingId === expense.recurringParentId || deletingId === expense.installmentParentId}
+                    aria-label={isDemo ? 'Elimina — non disponibile in modalità demo' : 'Elimina voce'}
                     title={isDemo ? 'Non disponibile in modalità demo' : undefined}
                   >
-                    <Trash2 className="h-4 w-4 text-red-500" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </TableCell>
@@ -485,34 +545,58 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
     </div>
 
     {/* Pagination Controls */}
-    {totalPages > 1 && (
-      <div className="flex items-center justify-between px-2">
-        <div className="text-sm text-muted-foreground">
-          Visualizzate {startIndex + 1}-{Math.min(endIndex, expenses.length)} di {expenses.length} voci
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePreviousPage}
-            disabled={currentPage === 1}
+    {expenses.length > 0 && (
+      <div className="flex flex-wrap items-center justify-between gap-3 px-2">
+        {/* Left: rows-per-page selector + count */}
+        <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+          <span className="hidden sm:inline shrink-0">Righe per pagina</span>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => setPageSize(Number(v) as PageSizeOption)}
           >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Precedente
-          </Button>
-          <div className="text-sm font-medium">
-            Pagina {currentPage} di {totalPages}
+            <SelectTrigger
+              className="h-8 w-[70px] text-sm"
+              aria-label="Righe per pagina"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map(n => (
+                <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="shrink-0 tabular-nums">
+            {startIndex + 1}-{Math.min(endIndex, expenses.length)} di {expenses.length}
+          </span>
+        </div>
+
+        {/* Right: prev / page indicator / next */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePreviousPage}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Precedente
+            </Button>
+            <div className="text-sm font-medium tabular-nums">
+              {currentPage} / {totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+            >
+              Successiva
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNextPage}
-            disabled={currentPage === totalPages}
-          >
-            Successiva
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
+        )}
       </div>
     )}
   </div>

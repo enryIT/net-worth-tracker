@@ -35,6 +35,7 @@ import { queryKeys } from '@/lib/query/queryKeys';
 import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -47,7 +48,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, X, Trash2, Pencil } from 'lucide-react';
+import { Plus, X, Trash2, Pencil, Search, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ExpenseDialog } from '@/components/expenses/ExpenseDialog';
 import { ExpenseTable } from '@/components/expenses/ExpenseTable';
@@ -56,6 +57,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useChartColors } from '@/lib/hooks/useChartColors';
+import { useAssets } from '@/lib/hooks/useAssets';
 import { PeriodPicker } from '@/components/ui/period-picker';
 import { type Period, periodToRange, periodLabel, currentMonthPeriod, isCurrentMonth } from '@/lib/utils/period';
 import { MultiSelect, type MultiSelectGroup, type MultiSelectOption } from '@/components/ui/multi-select';
@@ -247,6 +249,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   const isDemo = useDemoMode();
   const queryClient = useQueryClient();
   const chartColors = useChartColors();
+  const { data: allAssets = [] } = useAssets(user?.uid);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
@@ -276,10 +279,19 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   // Mobile load-more state
   const [mobileShowCount, setMobileShowCount] = useState<number>(20);
 
+  // Free-text search — applied after type/category filters.
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Sort key for the mobile/tablet flat list.
+  const [mobileSortKey, setMobileSortKey] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'category-asc'>('date-desc');
+
   // Multi-select category filter: values are either a real categoryId or
   // a synthetic "__type__<type>" sentinel that matches all categories of that type.
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState<string>('all');
+
+  // Conto corrente filter — 'all' means no account filter applied.
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
 
   // Generate available years from ALL expenses (not filtered)
@@ -335,10 +347,12 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     setPeriod(currentMonthPeriod());
     setSelectedCategoryIds([]);
     setSelectedSubCategoryId('all');
+    setSearchQuery('');
+    setSelectedAccountId('all');
   };
 
   // A filter is "active" (non-default) if period ≠ current month or any taxonomy filter is set.
-  const hasActiveFilters = !isCurrentMonth(period) || selectedCategoryIds.length > 0 || selectedSubCategoryId !== 'all';
+  const hasActiveFilters = !isCurrentMonth(period) || selectedCategoryIds.length > 0 || selectedSubCategoryId !== 'all' || searchQuery !== '' || selectedAccountId !== 'all';
 
   // Derive period slice from allExpenses synchronously.
   const expenses = useMemo(() => {
@@ -359,7 +373,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   // Reset mobile show count when filters change
   useEffect(() => {
     setMobileShowCount(20);
-  }, [period, selectedCategoryIds, selectedSubCategoryId]);
+  }, [period, selectedCategoryIds, selectedSubCategoryId, searchQuery, selectedAccountId]);
 
   // Toggling another row collapses the previously expanded one (accordion pattern).
   const handleToggleExpand = useCallback((id: string) => {
@@ -369,6 +383,33 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   const handleAddExpense = () => {
     setEditingExpense(null);
     setDialogOpen(true);
+  };
+
+  /**
+   * Export the current filtered view as a semicolon-delimited CSV.
+   * Semicolon delimiter is standard in Italian Excel. BOM ensures UTF-8 recognition.
+   */
+  const handleExportCSV = () => {
+    const headers = ['Data', 'Tipo', 'Categoria', 'Sottocategoria', 'Importo (€)', 'Note', 'Link'];
+    const rows = filteredExpenses.map(e => [
+      format(getExpenseDate(e.date), 'dd/MM/yyyy'),
+      EXPENSE_TYPE_LABELS[e.type] || e.type,
+      e.categoryName,
+      e.subCategoryName || '',
+      e.amount.toFixed(2).replace('.', ','),
+      e.notes || '',
+      e.link || '',
+    ]);
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cashflow-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleEditExpense = (expense: Expense) => {
@@ -545,6 +586,26 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     }));
   }, [soloSelectedCategory]);
 
+  // Build id→name lookup from all loaded assets (shared React Query cache — no extra fetch).
+  const assetNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of allAssets) map.set(a.id, a.name);
+    return map;
+  }, [allAssets]);
+
+  // Account options: accounts that appear in the current period expenses.
+  // Only shown when at least 2 distinct accounts exist (otherwise the filter is useless).
+  const accountOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of expenses) {
+      if (e.linkedCashAssetId) ids.add(e.linkedCashAssetId);
+    }
+    return Array.from(ids).map(id => ({
+      id,
+      name: assetNameMap.get(id) ?? id,
+    }));
+  }, [expenses, assetNameMap]);
+
   /**
    * Cumulative AND filtering (progressive narrowing)
    *
@@ -583,8 +644,42 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
       filtered = filtered.filter(e => e.subCategoryId === selectedSubCategoryId);
     }
 
+    // Free-text search across notes, category name, and subcategory name
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(e =>
+        (e.notes?.toLowerCase().includes(q)) ||
+        e.categoryName.toLowerCase().includes(q) ||
+        (e.subCategoryName?.toLowerCase().includes(q))
+      );
+    }
+
+    // Account (conto corrente) filter
+    if (selectedAccountId !== 'all') {
+      filtered = filtered.filter(e => e.linkedCashAssetId === selectedAccountId);
+    }
+
     return filtered;
-  }, [expenses, selectedCategoryIds, soloSelectedCategory, selectedSubCategoryId]);
+  }, [expenses, selectedCategoryIds, soloSelectedCategory, selectedSubCategoryId, searchQuery, selectedAccountId]);
+
+  // Sort the filtered list for the mobile/tablet flat list.
+  const mobileSortedExpenses = useMemo(() => {
+    if (mobileSortKey === 'date-desc') return filteredExpenses;
+    return [...filteredExpenses].sort((a, b) => {
+      switch (mobileSortKey) {
+        case 'date-asc':
+          return getExpenseDate(a.date).getTime() - getExpenseDate(b.date).getTime();
+        case 'amount-desc':
+          return Math.abs(b.amount) - Math.abs(a.amount);
+        case 'amount-asc':
+          return Math.abs(a.amount) - Math.abs(b.amount);
+        case 'category-asc':
+          return a.categoryName.localeCompare(b.categoryName, 'it');
+        default:
+          return 0;
+      }
+    });
+  }, [filteredExpenses, mobileSortKey]);
 
   // Calculate totals from filtered expenses
   const totalIncome = calculateTotalIncome(filteredExpenses);
@@ -709,6 +804,27 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     <div className="space-y-4">
       {/* ── Filters bar — always visible, commands the whole page ─────────── */}
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Ricerca testo */}
+        <div className="relative w-full sm:w-[220px] sm:mr-auto">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Cerca nelle note..."
+            className="h-9 pl-8 pr-8 text-sm"
+            aria-label="Cerca nelle note, categoria o sottocategoria"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Cancella ricerca"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
         {/* Periodo */}
         <PeriodPicker
           value={period}
@@ -744,6 +860,23 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                 <SelectItem value="all">Tutte</SelectItem>
                 {subCategoryOptions.map(sub => (
                   <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Conto corrente — only shown when 2+ accounts appear in the period */}
+        {accountOptions.length >= 2 && (
+          <div className="w-full sm:w-[190px] sm:shrink-0">
+            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+              <SelectTrigger id="filter-account" aria-label="Filtra per conto corrente" className="w-full">
+                <SelectValue placeholder="Tutti i conti" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tutti i conti</SelectItem>
+                {accountOptions.map(acc => (
+                  <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -857,19 +990,22 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                       Spese per Categoria
                     </p>
                     <div className="space-y-3">
-                      {heroExpenseCategories.map(cat => (
+                      {heroExpenseCategories.map((cat, i) => (
                         <div key={cat.category} className="space-y-1">
                           <div className="flex justify-between items-center">
                             <div className="flex items-center gap-2 min-w-0">
                               <div
                                 className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ background: chartColors[0] || 'var(--chart-1)' }}
+                                style={{ background: chartColors[i % chartColors.length] || `var(--chart-${(i % 5) + 1})` }}
                               />
                               <span className="text-[13px] text-foreground truncate">{cat.category}</span>
                             </div>
-                            <span className="text-[13px] font-mono tabular-nums text-foreground ml-3 flex-shrink-0">
-                              {cachedFormatCurrencyEUR(cat.amount, true)}
-                            </span>
+                            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                              <span className="text-[11px] text-muted-foreground tabular-nums">{Math.round(cat.percentage)}%</span>
+                              <span className="text-[13px] font-mono tabular-nums text-foreground">
+                                {cachedFormatCurrencyEUR(cat.amount, true)}
+                              </span>
+                            </div>
                           </div>
                           <div
                             className="h-[3px] bg-muted rounded-full overflow-hidden"
@@ -881,7 +1017,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                           >
                             <div
                               className="h-full rounded-full"
-                              style={{ width: `${cat.percentage}%`, background: chartColors[0] || 'var(--chart-1)' }}
+                              style={{ width: `${cat.percentage}%`, background: chartColors[i % chartColors.length] || `var(--chart-${(i % 5) + 1})` }}
                             />
                           </div>
                         </div>
@@ -897,19 +1033,22 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                       Entrate per Categoria
                     </p>
                     <div className="space-y-3">
-                      {heroIncomeCategories.map(cat => (
+                      {heroIncomeCategories.map((cat, i) => (
                         <div key={cat.category} className="space-y-1">
                           <div className="flex justify-between items-center">
                             <div className="flex items-center gap-2 min-w-0">
                               <div
                                 className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ background: chartColors[1] || 'var(--chart-2)' }}
+                                style={{ background: chartColors[i % chartColors.length] || `var(--chart-${(i % 5) + 1})` }}
                               />
                               <span className="text-[13px] text-foreground truncate">{cat.category}</span>
                             </div>
-                            <span className="text-[13px] font-mono tabular-nums text-foreground ml-3 flex-shrink-0">
-                              {cachedFormatCurrencyEUR(cat.amount, true)}
-                            </span>
+                            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                              <span className="text-[11px] text-muted-foreground tabular-nums">{Math.round(cat.percentage)}%</span>
+                              <span className="text-[13px] font-mono tabular-nums text-foreground">
+                                {cachedFormatCurrencyEUR(cat.amount, true)}
+                              </span>
+                            </div>
                           </div>
                           <div
                             className="h-[3px] bg-muted rounded-full overflow-hidden"
@@ -921,7 +1060,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                           >
                             <div
                               className="h-full rounded-full"
-                              style={{ width: `${cat.percentage}%`, background: chartColors[1] || 'var(--chart-2)' }}
+                              style={{ width: `${cat.percentage}%`, background: chartColors[i % chartColors.length] || `var(--chart-${(i % 5) + 1})` }}
                             />
                           </div>
                         </div>
@@ -947,17 +1086,31 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
               </Badge>
               <span className="text-sm text-muted-foreground">{periodLabel(period)}</span>
             </div>
-            {/* Mobile: inline add button — desktop uses the header button */}
-            <Button
-              size="sm"
-              onClick={handleAddExpense}
-              disabled={isDemo}
-              title={isDemo ? 'Non disponibile in modalit\u00e0 demo' : undefined}
-              className="desktop:hidden flex-shrink-0 h-9"
-            >
-              <Plus className="h-4 w-4 mr-1.5" />
-              Aggiungi
-            </Button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Export CSV — always visible on all viewports */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportCSV}
+                disabled={filteredExpenses.length === 0}
+                aria-label="Esporta voci come CSV"
+                className="gap-1.5 h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Esporta CSV</span>
+              </Button>
+              {/* Mobile: inline add button — desktop uses the header button */}
+              <Button
+                size="sm"
+                onClick={handleAddExpense}
+                disabled={isDemo}
+                title={isDemo ? 'Non disponibile in modalit\u00e0 demo' : undefined}
+                className="desktop:hidden flex-shrink-0 h-9"
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                Aggiungi
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-5">
@@ -982,8 +1135,29 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
               </div>
             ) : (
               <>
+                {/* Sort selector for mobile/tablet */}
+                <div className="flex items-center justify-end mb-3">
+                  <Select
+                    value={mobileSortKey}
+                    onValueChange={v => setMobileSortKey(v as typeof mobileSortKey)}
+                  >
+                    <SelectTrigger
+                      className="h-8 w-auto min-w-[160px] text-xs text-muted-foreground"
+                      aria-label="Ordina voci per"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date-desc">Più recente</SelectItem>
+                      <SelectItem value="date-asc">Meno recente</SelectItem>
+                      <SelectItem value="amount-desc">Importo maggiore</SelectItem>
+                      <SelectItem value="amount-asc">Importo minore</SelectItem>
+                      <SelectItem value="category-asc">Categoria A→Z</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="divide-y divide-border">
-                  {filteredExpenses.slice(0, mobileShowCount).map(expense => (
+                  {mobileSortedExpenses.slice(0, mobileShowCount).map(expense => (
                     <MobileExpenseRow
                       key={expense.id}
                       expense={expense}
