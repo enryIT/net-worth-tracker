@@ -24,7 +24,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { Receipt, Coins, Target, Layers } from 'lucide-react';
+import { Receipt, Coins, Target, Layers, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useDemoMode } from '@/lib/hooks/useDemoMode';
 import { cn } from '@/lib/utils';
 import { TabsContent } from '@/components/ui/tabs';
 import { ExpenseTrackingTab } from '@/components/cashflow/ExpenseTrackingTab';
@@ -80,6 +82,7 @@ export default function CashflowPage() {
   const [otherDataLoaded, setOtherDataLoaded] = useState(false);
 
   const loading = expensesLoading || categoriesLoading || otherDataLoading;
+  const isDemo = useDemoMode();
 
   // Load dividends and assets only when their tabs are mounted
   const loadOtherData = async () => {
@@ -174,8 +177,21 @@ export default function CashflowPage() {
       <PageHeader
         label="Operatività"
         title="Cashflow"
-        description="Traccia e analizza le tue entrate e uscite nel tempo"
         separator={false}
+        actions={
+          activeTab === 'tracking' ? (
+            <Button
+              size="sm"
+              disabled={isDemo}
+              aria-label={isDemo ? 'Nuova Spesa — non disponibile in modalità demo' : 'Nuova Spesa'}
+              title={isDemo ? 'Non disponibile in modalità demo' : undefined}
+              onClick={() => window.dispatchEvent(new CustomEvent('cashflow:add-expense'))}
+            >
+              <Plus className="h-4 w-4" />
+              Nuova Spesa
+            </Button>
+          ) : undefined
+        }
       />
 
       <PageTabs

@@ -666,18 +666,15 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   if (loading) {
     return (
       <div className="space-y-6">
-        {/* Filters skeleton — matches compact filter card */}
-        <div className="rounded-xl border py-3 desktop:py-4 px-3 desktop:px-4 space-y-2">
-          <div className="h-9 bg-muted animate-pulse rounded-md" />
-          <div className="grid grid-cols-2 gap-2">
-            <div className="h-9 bg-muted animate-pulse rounded-md" />
-            <div className="h-9 bg-muted animate-pulse rounded-md" />
-          </div>
+        {/* Filters skeleton */}
+        <div className="flex flex-wrap justify-end gap-2">
+          <div className="h-9 w-full sm:w-[190px] bg-muted animate-pulse rounded-md" />
+          <div className="h-9 w-full sm:w-[260px] bg-muted animate-pulse rounded-md" />
         </div>
         {/* Hero card skeleton */}
         <div className="rounded-xl border p-[22px] space-y-4">
           <div className="h-3 w-36 bg-muted animate-pulse rounded" />
-          <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {[0, 1, 2, 3].map(i => (
               <div key={i} className="bg-muted/40 rounded-xl p-3.5 space-y-2">
                 <div className="h-2.5 w-14 bg-muted animate-pulse rounded" />
@@ -709,88 +706,80 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Filters bar — always visible, commands the whole page ─────────── */}
-      <Card className="py-3 desktop:py-4">
-        <CardContent className="px-3 desktop:px-4">
-          <div className="space-y-2 desktop:flex desktop:items-center desktop:gap-2 desktop:space-y-0">
-            {/* Periodo — full row on mobile, auto-width on desktop */}
-            <PeriodPicker
-              value={period}
-              onChange={setPeriod}
-              availableYears={availableYears}
-              className="w-full desktop:w-auto desktop:flex-shrink-0"
-            />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Periodo */}
+        <PeriodPicker
+          value={period}
+          onChange={setPeriod}
+          availableYears={availableYears}
+          className="w-full sm:w-auto sm:flex-shrink-0"
+        />
 
-            {/* Categorie — MultiSelect grouped by type */}
-            <MultiSelect
-              options={categoryMultiSelectOptions}
-              defaultValue={multiSelectValue}
-              onValueChange={handleSelectCategories}
-              placeholder="Tutte le categorie"
-              searchable
-              hideSelectAll
-              maxCount={2}
-              className="desktop:min-w-[220px]"
-              popoverClassName="w-[280px]"
-              resetOnDefaultValueChange={true}
-            />
+        {/* Categorie */}
+        <div className="w-full sm:w-[260px] sm:shrink-0">
+          <MultiSelect
+            options={categoryMultiSelectOptions}
+            defaultValue={multiSelectValue}
+            onValueChange={handleSelectCategories}
+            placeholder="Tutte le categorie"
+            searchable
+            hideSelectAll
+            maxCount={2}
+            className="w-full"
+            popoverClassName="w-[280px]"
+            resetOnDefaultValueChange={true}
+          />
+        </div>
 
-            {/* Sottocategoria — full row on mobile, inline on desktop */}
-            {soloSelectedCategory && subCategoryOptions.length > 0 && (
-              <Select value={selectedSubCategoryId} onValueChange={setSelectedSubCategoryId}>
-                <SelectTrigger id="filter-subcategory" aria-label="Filtra per sottocategoria" className="w-full desktop:min-w-[150px]">
-                  <SelectValue placeholder="Tutte" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tutte</SelectItem>
-                  {subCategoryOptions.map(sub => (
-                    <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
-            {/* Actions — Ripristina chip + desktop Nuova Spesa */}
-            <div className="flex items-center gap-2 desktop:ml-auto">
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground">
-                  <X className="h-3.5 w-3.5" />
-                  Ripristina
-                </Button>
-              )}
-              <Button
-                onClick={handleAddExpense}
-                disabled={isDemo}
-                title={isDemo ? 'Non disponibile in modalit\u00e0 demo' : undefined}
-                className="hidden desktop:flex ml-auto"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nuova Spesa
-              </Button>
-            </div>
+        {/* Sottocategoria */}
+        {soloSelectedCategory && subCategoryOptions.length > 0 && (
+          <div className="w-full sm:w-[190px] sm:shrink-0">
+            <Select value={selectedSubCategoryId} onValueChange={setSelectedSubCategoryId}>
+              <SelectTrigger id="filter-subcategory" aria-label="Filtra per sottocategoria" className="w-full">
+                <SelectValue placeholder="Tutte" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tutte</SelectItem>
+                {subCategoryOptions.map(sub => (
+                  <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
+        )}
 
+        {/* Ripristina — only when filters are active */}
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-9 gap-1.5 px-2.5 text-muted-foreground hover:text-foreground">
+            <X className="h-3.5 w-3.5" />
+            Ripristina
+          </Button>
+        )}
+      </div>
+
+      {/* Desktop: sticky KPI summary on left, transaction list on right */}
+      <div className="desktop:grid desktop:grid-cols-[360px_1fr] desktop:gap-6 desktop:items-start space-y-6 desktop:space-y-0">
+      <div className="desktop:sticky desktop:top-4">
       {/* ── Hero Cashflow Card ─────────────────────────────────────────────── */}
       {/* Mirrors the cashflow card in the Overview/Panoramica page, but driven  */}
       {/* by filteredExpenses (honours the active time + hierarchy filters).      */}
-      <Card className="rounded-2xl">
-        <CardContent className="p-[22px]">
+      <Card className="py-0">
+        <CardContent className="p-5">
           {/* Header label: "MAGGIO 2026" or "2026" depending on filter state */}
           <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-3">
             Cashflow · {heroLabel}
           </p>
 
           {/* 4 KPI chips */}
-          <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {/* ENTRATE */}
             <div className="bg-muted/40 rounded-xl p-3.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
                 Entrate
               </p>
-              <p className="text-[22px] font-bold font-mono tabular-nums text-emerald-500 dark:text-emerald-400 leading-none">
+              <p className="text-[22px] desktop:text-[26px] font-bold font-mono tabular-nums text-emerald-500 dark:text-emerald-400 leading-none">
                 {cachedFormatCurrencyEUR(totalIncome, true)}
               </p>
               {heroDelta !== null && (() => {
@@ -808,7 +797,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
               <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
                 Spese
               </p>
-              <p className="text-[22px] font-bold font-mono tabular-nums text-destructive leading-none">
+              <p className="text-[22px] desktop:text-[26px] font-bold font-mono tabular-nums text-destructive leading-none">
                 {cachedFormatCurrencyEUR(totalExpenses, true)}
               </p>
               {heroDelta !== null && (() => {
@@ -828,7 +817,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                 Risparmio
               </p>
               <p className={cn(
-                'text-[22px] font-bold font-mono tabular-nums leading-none',
+                'text-[22px] desktop:text-[26px] font-bold font-mono tabular-nums leading-none',
                 netBalance >= 0 ? 'text-foreground' : 'text-destructive',
               )}>
                 {cachedFormatCurrencyEUR(netBalance, true)}
@@ -845,7 +834,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
               <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
                 Rapporto
               </p>
-              <p className="text-[22px] font-bold font-mono tabular-nums text-foreground leading-none">
+              <p className="text-[22px] desktop:text-[26px] font-bold font-mono tabular-nums text-foreground leading-none">
                 {incomeExpenseRatio !== null ? `${incomeExpenseRatio.toFixed(2)}×` : '—'}
               </p>
               {incomeExpenseRatio !== null && (
@@ -860,7 +849,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
           {(heroExpenseCategories.length > 0 || heroIncomeCategories.length > 0) && (
             <>
               <div className="mt-4 border-t border-border" />
-              <div className="grid desktop:grid-cols-2 gap-x-8 gap-y-4 mt-4">
+              <div className="grid gap-y-4 mt-4">
                 {/* Spese per categoria */}
                 {heroExpenseCategories.length > 0 && (
                   <div>
@@ -882,7 +871,14 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                               {cachedFormatCurrencyEUR(cat.amount, true)}
                             </span>
                           </div>
-                          <div className="h-[3px] bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-[3px] bg-muted rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={Math.round(cat.percentage)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`${cat.category}: ${Math.round(cat.percentage)}%`}
+                          >
                             <div
                               className="h-full rounded-full"
                               style={{ width: `${cat.percentage}%`, background: chartColors[0] || 'var(--chart-1)' }}
@@ -915,7 +911,14 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
                               {cachedFormatCurrencyEUR(cat.amount, true)}
                             </span>
                           </div>
-                          <div className="h-[3px] bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-[3px] bg-muted rounded-full overflow-hidden"
+                            role="progressbar"
+                            aria-valuenow={Math.round(cat.percentage)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-label={`${cat.category}: ${Math.round(cat.percentage)}%`}
+                          >
                             <div
                               className="h-full rounded-full"
                               style={{ width: `${cat.percentage}%`, background: chartColors[1] || 'var(--chart-2)' }}
@@ -931,18 +934,20 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
           )}
         </CardContent>
       </Card>
+      </div>{/* end desktop sticky left panel */}
 
-      {/* Expenses - Desktop Table / Mobile Cards */}
-      <Card>
-        <CardHeader className="pb-3">
+      {/* RIGHT: transaction list */}
+      <Card className="gap-0 py-0">
+        <CardHeader className="px-5 pt-5 pb-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <CardTitle className="text-base">Voci</CardTitle>
               <Badge variant="secondary" className="tabular-nums text-xs">
                 {filteredExpenses.length}
               </Badge>
+              <span className="text-sm text-muted-foreground">{periodLabel(period)}</span>
             </div>
-            {/* Mobile: inline add button — desktop uses the filter bar button */}
+            {/* Mobile: inline add button — desktop uses the header button */}
             <Button
               size="sm"
               onClick={handleAddExpense}
@@ -954,9 +959,8 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
               Aggiungi
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground">{periodLabel(period)}</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-5 pb-5">
           {/* Desktop: Table */}
           <div className="hidden desktop:block">
             <ExpenseTable
@@ -1011,6 +1015,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
           </div>
         </CardContent>
       </Card>
+      </div>{/* end desktop two-column grid */}
 
       {/* Expense Dialog */}
       <ExpenseDialog

@@ -26,7 +26,7 @@ export function PageTabBar({ tabs, value, onValueChange, layoutId, className }: 
     <div
       role="tablist"
       className={cn(
-        'flex border-b border-border mb-6 overflow-x-auto scrollbar-none',
+        'flex border-b border-border mb-3 overflow-x-auto scrollbar-none',
         className,
       )}
     >
