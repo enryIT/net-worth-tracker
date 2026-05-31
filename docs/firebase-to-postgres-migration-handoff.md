@@ -996,6 +996,55 @@ Remaining:
   components, tests, and comments; rerun the residual usage search before the
   next slice.
 
+## Slice Notes - 2026-05-31 Asset Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/assetService.ts` from direct Firebase client SDK calls
+  to local authenticated API calls through `/api/assets` and
+  `/api/assets/[assetId]` while preserving the legacy wrapper signatures used by
+  UI and cashflow code.
+- Preserved pure asset calculation helpers in `assetService.ts` and kept the
+  wrapper responsible for local dashboard invalidation and household audit
+  side effects that previously happened after client-side writes.
+- Added `getLocalAssetById(userId, assetId)` to
+  `lib/server/assets/localAssetService.ts` and exposed thin `GET`, `PUT`, and
+  `DELETE` handlers in `app/api/assets/[assetId]/route.ts`.
+- Extended asset route validation for rich asset payloads such as bond details,
+  pension fund details, ownership metadata, and EUR price fields.
+- Preserved cash-overdraft behaviour by allowing negative quantity updates for
+  cash assets through the item `PUT` route while continuing to reject negative
+  quantities for non-cash updates and on asset creation.
+- Added `__tests__/assetServiceClientMigration.test.ts` to guard that the active
+  client wrapper no longer imports Firebase runtime modules and delegates reads,
+  creates, updates, price updates, cash balance changes, investment quantity
+  changes, and deletes to local API routes.
+
+Verified:
+
+- Red migration test failed before implementation because `assetService.ts` still
+  imported `firebase/firestore` and `@/lib/firebase/config` and because wrapper
+  calls reached mocked Firestore helpers instead of `authenticatedFetch`.
+- Red cash-overdraft route test failed before the validation fix because the item
+  `PUT` route returned `400` for a cash asset quantity of `-1`.
+- `npm test -- --run __tests__/assetServiceClientMigration.test.ts __tests__/localAssetService.test.ts __tests__/localAssetsRoutes.test.ts __tests__/localAssetItemRoute.test.ts`
+  passed: 4 files, 26 tests.
+- `npm test -- --run __tests__/localPerformanceYieldMetricsService.test.ts __tests__/localAutomatedSnapshotService.test.ts __tests__/assetAdminRepositoryMigration.test.ts __tests__/assetAllocationServiceClientMigration.test.ts`
+  passed: 4 files, 12 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- Residual usage search was rerun with
+  `rg -n "firebase|Firestore|adminDb|Timestamp|requireFirebaseAuth|lib/firebase" app lib components types __tests__`.
+  `lib/services/assetService.ts` now has only a legacy comment hit mentioning
+  Firestore in the GBp fallback documentation and no Firebase runtime import.
+
+Remaining:
+
+- Active Firebase runtime dependencies still remain outside this slice, notably
+  expenses, snapshots, performance, dividends, dashboard overview compatibility
+  services, periodic email, assistant legacy store, API auth compatibility,
+  dividend processing, and price updater paths. Rerun the residual search before
+  selecting the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -1003,7 +1052,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 
 High-value next targets:
 
-- `lib/services/assetService.ts`
 - `lib/services/expenseService.ts`
 - `lib/services/dummySnapshotGenerator.ts`
 - `lib/services/snapshotService.ts`

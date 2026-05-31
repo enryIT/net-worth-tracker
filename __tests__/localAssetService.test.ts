@@ -7,6 +7,7 @@ const { prismaMock } = vi.hoisted(() => ({
     asset: {
       create: vi.fn(),
       deleteMany: vi.fn(),
+      findUnique: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
     },
@@ -20,6 +21,7 @@ vi.mock("@/lib/server/prisma", () => ({
 import {
   createLocalAsset,
   deleteLocalAsset,
+  getLocalAssetById,
   listLocalAssets,
   updateLocalAsset,
 } from "@/lib/server/assets/localAssetService";
@@ -112,6 +114,42 @@ describe("local asset service", () => {
           autoUpdatePrice: true,
         },
       },
+    });
+  });
+
+  it("gets one user-scoped asset by id", async () => {
+    prismaMock.asset.findUnique.mockResolvedValue({
+      id: "asset-1",
+      userId: "user-1",
+      ticker: "VWCE",
+      name: "Vanguard FTSE All-World",
+      type: "etf",
+      assetClass: "equity",
+      subCategory: null,
+      currency: "EUR",
+      quantity: 10,
+      currentPrice: 100,
+      currentPriceEur: null,
+      metadata: { isin: "IE00BK5BQT80" },
+      createdAt: new Date("2026-05-16T10:00:00.000Z"),
+      updatedAt: new Date("2026-05-16T10:00:00.000Z"),
+    });
+
+    const asset = await getLocalAssetById("user-1", "asset-1");
+
+    expect(prismaMock.asset.findUnique).toHaveBeenCalledWith({
+      where: {
+        id_userId: {
+          id: "asset-1",
+          userId: "user-1",
+        },
+      },
+    });
+    expect(asset).toMatchObject({
+      id: "asset-1",
+      userId: "user-1",
+      ticker: "VWCE",
+      isin: "IE00BK5BQT80",
     });
   });
 

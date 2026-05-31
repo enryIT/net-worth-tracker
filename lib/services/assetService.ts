@@ -1,26 +1,7 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  limit,
-  Timestamp,
-  orderBy,
-  deleteField
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { invalidateDashboardOverviewSummary } from '@/lib/services/dashboardOverviewInvalidation';
 import { appendHouseholdAuditEntrySafe } from '@/lib/services/householdService';
 import { Asset, AssetFormData } from '@/types/assets';
-
-const ASSETS_COLLECTION = 'assets';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -39,18 +20,96 @@ export const ASSET_CLASS_ORDER: Record<string, number> = {
   crypto: 6,
 };
 
-/**
- * Remove undefined fields from an object to prevent Firebase errors
- */
-function removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  const cleaned: Partial<T> = {};
-  Object.keys(obj).forEach((key) => {
-    const value = obj[key];
-    if (value !== undefined) {
-      cleaned[key as keyof T] = value as T[keyof T];
+type DateInput = Date | string | { toDate: () => Date } | null | undefined;
+
+function toDate(value: DateInput): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && 'toDate' in value) {
+    return value.toDate();
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
     }
-  });
-  return cleaned;
+  }
+
+  return new Date();
+}
+
+function mapAsset(input: Asset): Asset {
+  return {
+    ...input,
+    lastPriceUpdate: toDate(input.lastPriceUpdate as DateInput),
+    createdAt: toDate(input.createdAt as DateInput),
+    updatedAt: toDate(input.updatedAt as DateInput),
+  };
+}
+
+function mapAssets(input: Asset[]): Asset[] {
+  return input
+    .map(mapAsset)
+    .sort((a, b) => {
+      const orderA = ASSET_CLASS_ORDER[a.assetClass] || 999;
+      const orderB = ASSET_CLASS_ORDER[b.assetClass] || 999;
+
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+}
+
+async function parseJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
+  const payload = await response.json().catch(() => null) as
+    | { error?: string }
+    | T
+    | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload === 'object' && 'error' in payload && payload.error
+        ? payload.error
+        : fallbackError
+    );
+  }
+
+  return payload as T;
+}
+
+function buildAssetFormData(asset: Asset): AssetFormData {
+  return {
+    ticker: asset.ticker,
+    name: asset.name,
+    type: asset.type,
+    assetClass: asset.assetClass,
+    subCategory: asset.subCategory,
+    currency: asset.currency,
+    quantity: asset.quantity,
+    averageCost: asset.averageCost,
+    taxRate: asset.taxRate,
+    totalExpenseRatio: asset.totalExpenseRatio,
+    stampDutyExempt: asset.stampDutyExempt,
+    includeInHistoryTables: asset.includeInHistoryTables,
+    currentPrice: asset.currentPrice,
+    currentPriceEur: asset.currentPriceEur,
+    isLiquid: asset.isLiquid,
+    autoUpdatePrice: asset.autoUpdatePrice,
+    composition: asset.composition,
+    outstandingDebt: asset.outstandingDebt,
+    isPrimaryResidence: asset.isPrimaryResidence,
+    isin: asset.isin,
+    bondDetails: asset.bondDetails,
+    pensionFundDetails: asset.pensionFundDetails,
+    ownershipProfileId: asset.ownershipProfileId,
+    ownershipProfileName: asset.ownershipProfileName,
+    ownershipSplits: asset.ownershipSplits,
+  };
 }
 
 /**
@@ -60,34 +119,12 @@ function removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Parti
  */
 export async function getAllAssets(userId: string): Promise<Asset[]> {
   try {
-    const assetsRef = collection(db, ASSETS_COLLECTION);
-    const q = query(
-      assetsRef,
-      where('userId', '==', userId)
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    const assets = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      lastPriceUpdate: doc.data().lastPriceUpdate?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Asset[];
-
-    // Sort by asset class first, then by name
-    return assets.sort((a, b) => {
-      const orderA = ASSET_CLASS_ORDER[a.assetClass] || 999;
-      const orderB = ASSET_CLASS_ORDER[b.assetClass] || 999;
-
-      if (orderA !== orderB) {
-        return orderA - orderB;
-      }
-
-      // If same asset class, sort by name
-      return a.name.localeCompare(b.name);
+    const response = await authenticatedFetch('/api/assets', {
+      method: 'GET',
     });
+
+    const assets = await parseJsonResponse<Asset[]>(response, 'Errore nel caricamento asset.');
+    return mapAssets(assets);
   } catch (error) {
     console.error('Failed to fetch assets', {
       userId,
@@ -105,30 +142,17 @@ export async function getAllAssets(userId: string): Promise<Asset[]> {
  */
 export async function getAssetsWithIsin(userId: string): Promise<Asset[]> {
   try {
-    const assetsRef = collection(db, ASSETS_COLLECTION);
-    const q = query(
-      assetsRef,
-      where('userId', '==', userId),
-      where('assetClass', '==', 'equity')
-    );
+    const response = await authenticatedFetch('/api/assets', {
+      method: 'GET',
+    });
 
-    const querySnapshot = await getDocs(q);
+    const assets = await parseJsonResponse<Asset[]>(response, 'Errore nel caricamento asset.');
 
-    const assets = querySnapshot.docs
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        lastPriceUpdate: doc.data().lastPriceUpdate?.toDate() || new Date(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      }))
-      .filter(asset => {
-        // Filter out assets without ISIN or with empty ISIN
-        const assetData = asset as Asset;
-        return assetData.isin && assetData.isin.trim() !== '';
-      }) as Asset[];
-
-    return assets;
+    return mapAssets(assets).filter((asset) => (
+      asset.assetClass === 'equity' &&
+      typeof asset.isin === 'string' &&
+      asset.isin.trim() !== ''
+    ));
   } catch (error) {
     console.error('Failed to fetch assets with ISIN', {
       userId,
@@ -144,20 +168,16 @@ export async function getAssetsWithIsin(userId: string): Promise<Asset[]> {
  */
 export async function getAssetById(assetId: string): Promise<Asset | null> {
   try {
-    const assetRef = doc(db, ASSETS_COLLECTION, assetId);
-    const assetDoc = await getDoc(assetRef);
+    const response = await authenticatedFetch(`/api/assets/${assetId}`, {
+      method: 'GET',
+    });
 
-    if (!assetDoc.exists()) {
+    if (response.status === 404) {
       return null;
     }
 
-    return {
-      id: assetDoc.id,
-      ...assetDoc.data(),
-      lastPriceUpdate: assetDoc.data().lastPriceUpdate?.toDate() || new Date(),
-      createdAt: assetDoc.data().createdAt?.toDate() || new Date(),
-      updatedAt: assetDoc.data().updatedAt?.toDate() || new Date(),
-    } as Asset;
+    const asset = await parseJsonResponse<Asset>(response, 'Errore nel caricamento asset.');
+    return mapAsset(asset);
   } catch (error) {
     console.error('Failed to fetch asset', {
       assetId,
@@ -170,96 +190,37 @@ export async function getAssetById(assetId: string): Promise<Asset | null> {
 
 /**
  * Create a new asset
- * If ISIN exists and we have historical dividends with that ISIN, reuse the existing assetId
- * to maintain continuity with historical dividend data
  */
 export async function createAsset(
   userId: string,
   assetData: AssetFormData
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
-    const assetsRef = collection(db, ASSETS_COLLECTION);
-
-    // Check if ISIN exists and we have historical dividends with that ISIN
-    let assetId: string | null = null;
-
-    if (assetData.isin && assetData.isin.trim() !== '') {
-      // Query dividends collection to find existing assetId for this ISIN
-      const dividendsRef = collection(db, 'dividends');
-      const dividendsQuery = query(
-        dividendsRef,
-        where('userId', '==', userId),
-        where('assetIsin', '==', assetData.isin.trim()),
-        limit(1)
-      );
-
-      const dividendsSnapshot = await getDocs(dividendsQuery);
-
-      if (!dividendsSnapshot.empty) {
-        // Found existing dividend with this ISIN - reuse its assetId
-        const existingDividend = dividendsSnapshot.docs[0].data();
-        assetId = existingDividend.assetId;
-
-        console.log('Reusing existing asset ID for ISIN continuity', {
-          userId,
-          assetId,
-          isin: assetData.isin,
-        });
-      }
-    }
-
-    // Remove undefined fields to prevent Firebase errors
-    const cleanedData = removeUndefinedFields({
-      ...assetData,
-      userId,
-      lastPriceUpdate: now,
-      createdAt: now,
-      updatedAt: now,
+    const response = await authenticatedFetch('/api/assets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assetData),
     });
 
-    if (assetId) {
-      // Reuse existing ID
-      const assetRef = doc(db, ASSETS_COLLECTION, assetId);
-      await setDoc(assetRef, cleanedData);
-      await invalidateDashboardOverviewSummary(userId, 'asset_created');
-      appendHouseholdAuditEntrySafe(userId, {
-        entityType: 'asset',
-        entityId: assetId,
-        action: 'create',
-        summary: `Asset creato: ${assetData.name}`,
-        after: {
-          name: assetData.name,
-          ownershipProfileId: assetData.ownershipProfileId,
-          ownershipProfileName: assetData.ownershipProfileName,
-        },
-      });
-      console.log('Asset created with existing ID', {
-        userId,
-        assetId,
-      });
-      return assetId;
-    } else {
-      // Generate new ID
-      const docRef = await addDoc(assetsRef, cleanedData);
-      await invalidateDashboardOverviewSummary(userId, 'asset_created');
-      appendHouseholdAuditEntrySafe(userId, {
-        entityType: 'asset',
-        entityId: docRef.id,
-        action: 'create',
-        summary: `Asset creato: ${assetData.name}`,
-        after: {
-          name: assetData.name,
-          ownershipProfileId: assetData.ownershipProfileId,
-          ownershipProfileName: assetData.ownershipProfileName,
-        },
-      });
-      console.log('Asset created with new ID', {
-        userId,
-        assetId: docRef.id,
-      });
-      return docRef.id;
-    }
+    const createdAsset = await parseJsonResponse<Asset>(response, 'Errore nel salvataggio asset.');
+    const asset = mapAsset(createdAsset);
+
+    await invalidateDashboardOverviewSummary(userId, 'asset_created');
+    appendHouseholdAuditEntrySafe(userId, {
+      entityType: 'asset',
+      entityId: asset.id,
+      action: 'create',
+      summary: `Asset creato: ${assetData.name}`,
+      after: {
+        name: assetData.name,
+        ownershipProfileId: assetData.ownershipProfileId,
+        ownershipProfileName: assetData.ownershipProfileName,
+      },
+    });
+
+    return asset.id;
   } catch (error) {
     console.error('Failed to create asset', {
       userId,
@@ -274,53 +235,48 @@ export async function createAsset(
 
 /**
  * Update an existing asset
- *
- * Cost-basis fields (averageCost, taxRate) are nullable: when the user disables
- * cost basis tracking the form sends undefined for these fields. We must translate
- * undefined → deleteField() so Firestore actually removes the old values instead of
- * leaving them in place (removeUndefinedFields would just omit them, keeping stale data).
  */
 export async function updateAsset(
   assetId: string,
   updates: Partial<AssetFormData>
 ): Promise<void> {
   try {
-    const assetRef = doc(db, ASSETS_COLLECTION, assetId);
-    const existingAsset = await getDoc(assetRef);
+    const existingAsset = await getAssetById(assetId);
 
-    // Remove undefined fields to prevent Firebase errors, then explicitly delete
-    // cost-basis fields that the caller cleared (undefined → deleteField sentinel).
-    const cleanedUpdates: Record<string, unknown> = removeUndefinedFields({
+    if (!existingAsset) {
+      throw new Error('Asset non trovato.');
+    }
+
+    const payload: AssetFormData = {
+      ...buildAssetFormData(existingAsset),
       ...updates,
-      updatedAt: Timestamp.now(),
+    };
+
+    const response = await authenticatedFetch(`/api/assets/${assetId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
-    if (updates.averageCost === undefined) cleanedUpdates.averageCost = deleteField();
-    if (updates.taxRate === undefined) cleanedUpdates.taxRate = deleteField();
-    if (updates.bondDetails === undefined) cleanedUpdates.bondDetails = deleteField();
-    if (updates.pensionFundDetails === undefined) cleanedUpdates.pensionFundDetails = deleteField();
-    if (updates.composition === undefined) cleanedUpdates.composition = deleteField();
+    await parseJsonResponse<Asset>(response, 'Errore asset.');
 
-    await updateDoc(assetRef, cleanedUpdates);
-
-    const userId = existingAsset.data()?.userId;
-    if (userId) {
-      await invalidateDashboardOverviewSummary(userId, 'asset_updated');
-      appendHouseholdAuditEntrySafe(userId, {
-        entityType: 'asset',
-        entityId: assetId,
-        action: 'update',
-        summary: `Asset aggiornato: ${updates.name ?? existingAsset.data()?.name ?? assetId}`,
-        before: {
-          ownershipProfileId: existingAsset.data()?.ownershipProfileId,
-          ownershipProfileName: existingAsset.data()?.ownershipProfileName,
-        },
-        after: {
-          ownershipProfileId: updates.ownershipProfileId,
-          ownershipProfileName: updates.ownershipProfileName,
-        },
-      });
-    }
+    await invalidateDashboardOverviewSummary(existingAsset.userId, 'asset_updated');
+    appendHouseholdAuditEntrySafe(existingAsset.userId, {
+      entityType: 'asset',
+      entityId: assetId,
+      action: 'update',
+      summary: `Asset aggiornato: ${updates.name ?? existingAsset.name ?? assetId}`,
+      before: {
+        ownershipProfileId: existingAsset.ownershipProfileId,
+        ownershipProfileName: existingAsset.ownershipProfileName,
+      },
+      after: {
+        ownershipProfileId: updates.ownershipProfileId,
+        ownershipProfileName: updates.ownershipProfileName,
+      },
+    });
   } catch (error) {
     console.error('Failed to update asset', {
       assetId,
@@ -340,19 +296,27 @@ export async function updateAssetPrice(
   price: number
 ): Promise<void> {
   try {
-    const assetRef = doc(db, ASSETS_COLLECTION, assetId);
-    const existingAsset = await getDoc(assetRef);
+    const asset = await getAssetById(assetId);
 
-    await updateDoc(assetRef, {
+    if (!asset) {
+      throw new Error('Asset non trovato.');
+    }
+
+    const payload: AssetFormData = {
+      ...buildAssetFormData(asset),
       currentPrice: price,
-      lastPriceUpdate: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+    };
+
+    const response = await authenticatedFetch(`/api/assets/${assetId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
-    const userId = existingAsset.data()?.userId;
-    if (userId) {
-      await invalidateDashboardOverviewSummary(userId, 'asset_price_updated');
-    }
+    await parseJsonResponse<Asset>(response, 'Errore asset.');
+    await invalidateDashboardOverviewSummary(asset.userId, 'asset_price_updated');
   } catch (error) {
     console.error('Failed to update asset price', {
       assetId,
@@ -390,13 +354,20 @@ export async function updateCashAssetBalance(assetId: string, signedDelta: numbe
       return;
     }
 
-    // For cash assets, treat quantity as the direct balance (e.g., €8000 balance = quantity 8000)
-    const newQuantity = asset.quantity + signedDelta;
-    const assetRef = doc(db, ASSETS_COLLECTION, assetId);
-    await updateDoc(assetRef, {
-      quantity: newQuantity,
-      updatedAt: Timestamp.now(),
+    const payload: AssetFormData = {
+      ...buildAssetFormData(asset),
+      quantity: asset.quantity + signedDelta,
+    };
+
+    const response = await authenticatedFetch(`/api/assets/${assetId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
+
+    await parseJsonResponse<Asset>(response, 'Errore asset.');
     await invalidateDashboardOverviewSummary(asset.userId, 'cash_asset_balance_updated');
   } catch (error) {
     console.error('Failed to update cash asset balance', {
@@ -436,11 +407,20 @@ export async function updateInvestmentAssetQuantity(assetId: string, signedQuant
       return;
     }
 
-    const assetRef = doc(db, ASSETS_COLLECTION, assetId);
-    await updateDoc(assetRef, {
+    const payload: AssetFormData = {
+      ...buildAssetFormData(asset),
       quantity: asset.quantity + signedQuantityDelta,
-      updatedAt: Timestamp.now(),
+    };
+
+    const response = await authenticatedFetch(`/api/assets/${assetId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
+
+    await parseJsonResponse<Asset>(response, 'Errore asset.');
     await invalidateDashboardOverviewSummary(asset.userId, 'investment_asset_quantity_updated');
   } catch (error) {
     console.error('Failed to update investment asset quantity', {
@@ -456,7 +436,6 @@ export async function updateInvestmentAssetQuantity(assetId: string, signedQuant
 /**
  * Delete an asset and its future dividends
  * Only deletes dividends with ex-date > today to preserve historical data
- * Uses API endpoint to leverage Admin SDK and bypass Firestore Security Rules
  */
 export async function deleteAsset(assetId: string, userId: string): Promise<void> {
   try {
@@ -518,15 +497,6 @@ export async function deleteAsset(assetId: string, userId: string): Promise<void
   }
 }
 
-/**
- * Calculate total value of an asset
- *
- * For real estate with outstanding debt: net value = gross value - debt
- * This calculates the equity (net ownership) rather than gross property value.
- *
- * @param asset - Asset to calculate value for
- * @returns Total asset value (quantity × price, minus outstanding debt for real estate)
- */
 export function calculateAssetValue(asset: Asset): number {
   // For non-EUR assets, prefer the pre-converted EUR price stored during price updates.
   // This avoids async FX calls at read time while keeping portfolio totals in EUR.

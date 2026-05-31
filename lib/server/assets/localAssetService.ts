@@ -4,6 +4,18 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import type { Asset, AssetFormData } from "@/types/assets";
 
+type LocalBondDetailsInput = Omit<
+  NonNullable<AssetFormData["bondDetails"]>,
+  "issueDate" | "maturityDate"
+> & {
+  issueDate: string | Date;
+  maturityDate: string | Date;
+};
+
+type LocalAssetFormInput = Omit<AssetFormData, "bondDetails"> & {
+  bondDetails?: LocalBondDetailsInput;
+};
+
 type LocalAssetRow = {
   id: string;
   userId: string;
@@ -30,9 +42,25 @@ export async function listLocalAssets(userId: string): Promise<Asset[]> {
   return rows.map(mapAssetRow);
 }
 
+export async function getLocalAssetById(
+  userId: string,
+  assetId: string
+): Promise<Asset | null> {
+  const row = await prisma.asset.findUnique({
+    where: {
+      id_userId: {
+        id: assetId,
+        userId,
+      },
+    },
+  });
+
+  return row ? mapAssetRow(row) : null;
+}
+
 export async function createLocalAsset(
   userId: string,
-  assetData: AssetFormData
+  assetData: LocalAssetFormInput
 ): Promise<Asset> {
   const metadata = buildAssetMetadata(assetData);
   const row = await prisma.asset.create({
@@ -57,7 +85,7 @@ export async function createLocalAsset(
 export async function updateLocalAsset(
   userId: string,
   assetId: string,
-  assetData: AssetFormData
+  assetData: LocalAssetFormInput
 ): Promise<Asset | null> {
   try {
     const row = await prisma.asset.update({
@@ -94,7 +122,7 @@ export async function deleteLocalAsset(
   return result.count > 0;
 }
 
-function buildAssetData(assetData: AssetFormData): Prisma.AssetUncheckedUpdateInput {
+function buildAssetData(assetData: LocalAssetFormInput): Prisma.AssetUncheckedUpdateInput {
   return {
     ticker: assetData.ticker,
     name: assetData.name,
@@ -146,7 +174,7 @@ function mapAssetRow(row: LocalAssetRow): Asset {
   };
 }
 
-function buildAssetMetadata(assetData: AssetFormData): Prisma.InputJsonObject {
+function buildAssetMetadata(assetData: LocalAssetFormInput): Prisma.InputJsonObject {
   return stripUndefined({
     averageCost: assetData.averageCost,
     taxRate: assetData.taxRate,
