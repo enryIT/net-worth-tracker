@@ -12,28 +12,19 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
+import { CashflowKpiCarousel } from '@/components/cashflow/cashflow-kpi/CashflowKpiCarousel';
+import { EmptyState, FilterEmptyIcon } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
 import { getItalyDate } from '@/lib/utils/dateHelpers';
 import { getExpenseDate } from '@/lib/utils/expenseHelpers';
-import { type Period, periodToRange } from '@/lib/utils/period';
+import { type Period } from '@/lib/utils/period';
 import type { Expense, ExpenseCategory, ExpenseType } from '@/types/expenses';
 import type { MultiSelectGroup } from '@/components/ui/multi-select';
 import { MobileFiltersDrawer } from '@/components/cashflow/MobileFiltersDrawer';
-import { CategoryBreakdownList, type CategoryBreakdownItem } from '@/components/cashflow/CategoryBreakdownList';
-import { coverageHealthLabel } from '@/components/cashflow/CashflowHeroCard';
+import { type CategoryBreakdownItem } from '@/components/cashflow/CategoryBreakdownList';
 import { MobileExpenseRow, TYPE_DOT_CLASS } from '@/components/cashflow/MobileExpenseRow';
 import { getLazyIcon } from '@/components/expenses/IconPickerPopover';
-
-// ─── Shadow tokens ─────────────────────────────────────────────────────────────
-
-// 3D embossed look for the KPI carousel chips.
-const CHIP_SHADOW =
-  'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.08),0_12px_28px_rgba(0,0,0,0.05)]' +
-  ' dark:shadow-[0_1px_3px_rgba(0,0,0,0.30),0_4px_16px_rgba(0,0,0,0.28),0_12px_28px_rgba(0,0,0,0.20)]';
-
-
 
 // ─── Italian type labels ───────────────────────────────────────────────────────
 
@@ -358,14 +349,7 @@ export function CashflowTrackingMobile({
   categoryMetaMap,
   className,
 }: Readonly<CashflowTrackingMobileProps>) {
-  const [catDrawerOpen, setCatDrawerOpen] = useState(false);
-  const [catView, setCatView] = useState<'expense' | 'income'>('expense');
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-
-  // ── Derived values ────────────────────────────────────────────────────────────
-
-  const ratioLabel = ratio !== null ? coverageHealthLabel(ratio) : null;
-  const ratioDisplay = ratio !== null ? `${ratio.toFixed(2)}×` : '—';
 
   // Slice visible transactions for the list.
   const sliced = useMemo(() => transactions.slice(0, showCount), [transactions, showCount]);
@@ -460,117 +444,32 @@ export function CashflowTrackingMobile({
         ]}
       />
 
-      {/* ── 3. KPI carousel — shadcn Carousel with Embla ──────────────────── */}
-      <div className="-mx-4 sm:-mx-6">
-        <Carousel
-          opts={{ align: 'start', dragFree: true, containScroll: false }}
-          className="w-full"
-          aria-label="Riepilogo cashflow"
-        >
-          <CarouselContent viewportClassName="px-6 py-3 pb-6" className="items-stretch">
-            {/* Entrate */}
-            <CarouselItem className="basis-[160px] pl-3">
-              <div className={cn('h-full bg-card rounded-2xl p-4 ring-1 ring-border/20', CHIP_SHADOW)}>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Entrate</p>
-                <p className="text-[21px] font-bold font-mono tabular-nums mt-1.5 leading-none text-emerald-600 dark:text-emerald-400">
-                  {cachedFormatCurrencyEUR(income)}
-                </p>
-                {incomeDelta !== null && incomeDelta !== undefined ? (
-                  <p className={cn('text-[11px] font-medium mt-1.5 leading-none', incomeDelta > 0 ? 'text-emerald-600 dark:text-emerald-400' : incomeDelta < 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                    {incomeDelta > 0 ? '↑' : incomeDelta < 0 ? '↓' : '→'} {Math.abs(incomeDelta).toFixed(1)}% vs mese prec.
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground mt-1.5 leading-none opacity-50">vs mese prec.</p>
-                )}
-              </div>
-            </CarouselItem>
-
-            {/* Spese */}
-            <CarouselItem className="basis-[160px] pl-3">
-              <div className={cn('h-full bg-card rounded-2xl p-4 ring-1 ring-border/20', CHIP_SHADOW)}>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Spese</p>
-                <p className="text-[21px] font-bold font-mono tabular-nums mt-1.5 leading-none text-destructive">
-                  {cachedFormatCurrencyEUR(Math.abs(expenses))}
-                </p>
-                {expensesDelta !== null && expensesDelta !== undefined ? (
-                  <p className={cn('text-[11px] font-medium mt-1.5 leading-none', expensesDelta < 0 ? 'text-emerald-600 dark:text-emerald-400' : expensesDelta > 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                    {expensesDelta > 0 ? '↑' : expensesDelta < 0 ? '↓' : '→'} {Math.abs(expensesDelta).toFixed(1)}% vs mese prec.
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground mt-1.5 leading-none opacity-50">vs mese prec.</p>
-                )}
-              </div>
-            </CarouselItem>
-
-            {/* Risparmio Netto */}
-            <CarouselItem className="basis-[160px] pl-3">
-              <div className={cn('h-full bg-card rounded-2xl p-4 ring-1 ring-border/20', CHIP_SHADOW)}>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Risparmio Netto</p>
-                <p className={cn(
-                  'text-[21px] font-bold font-mono tabular-nums mt-1.5 leading-none',
-                  net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
-                )}>
-                  {net >= 0 ? '+' : ''}{cachedFormatCurrencyEUR(net)}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-1.5 leading-none">
-                  Tasso {savingsRate.toFixed(1)}%
-                </p>
-              </div>
-            </CarouselItem>
-
-            {/* Rapporto */}
-            <CarouselItem className="basis-[160px] pl-3">
-              <div className={cn('h-full bg-card rounded-2xl p-4 ring-1 ring-border/20', CHIP_SHADOW)}>
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Rapporto</p>
-                <p className={cn(
-                  'text-[21px] font-bold font-mono tabular-nums mt-1.5 leading-none',
-                  ratio !== null && ratio >= 1
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : ratio !== null
-                      ? 'text-destructive'
-                      : 'text-foreground',
-                )}>
-                  {ratioDisplay}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-1.5 leading-none">
-                  {ratioLabel ?? 'Nessun dato'}
-                </p>
-              </div>
-            </CarouselItem>
-
-            {/* Categorie — opens drawer */}
-            <CarouselItem className="basis-[160px] pl-3">
-              <button
-                type="button"
-                onClick={() => setCatDrawerOpen(true)}
-                className={cn(
-                  'h-full w-full bg-card rounded-2xl p-4 ring-1 ring-border/20 text-left',
-                  'active:scale-[0.97] transition-transform duration-100',
-                  CHIP_SHADOW,
-                )}
-                aria-label="Apri dettaglio categorie"
-              >
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Categorie</p>
-                <p className="text-[21px] font-bold tabular-nums mt-1.5 leading-none text-foreground">
-                  {expenseCategories.length}
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-1.5 leading-none">Vedi dettaglio →</p>
-              </button>
-            </CarouselItem>
-          </CarouselContent>
-        </Carousel>
-      </div>
+      {/* ── 3. KPI carousel ───────────────────────────────────────────────── */}
+      <CashflowKpiCarousel
+        className="-mx-4 sm:-mx-6"
+        income={income}
+        expenses={expenses}
+        net={net}
+        ratio={ratio}
+        incomeDelta={incomeDelta}
+        expensesDelta={expensesDelta}
+        savingsRate={savingsRate}
+        expenseCategories={expenseCategories}
+        incomeCategories={incomeCategories}
+        categories={categories}
+      />
 
       {/* ── 4. Transaction list ─────────────────────────────────────────────── */}
       {transactions.length === 0 ? (
-        <div className="rounded-2xl border border-dashed p-8 text-center">
-          <p className="text-muted-foreground">Nessuna voce trovata</p>
-          <p className="text-sm text-muted-foreground mt-2">
-            {hasActiveFilters
+        <EmptyState
+          icon={FilterEmptyIcon}
+          title="Nessuna voce trovata"
+          description={
+            hasActiveFilters
               ? 'Nessun risultato per i filtri applicati. Prova ad azzerare i filtri.'
-              : 'Usa il pulsante Aggiungi per inserire la prima voce'}
-          </p>
-        </div>
+              : 'Usa il pulsante Aggiungi per inserire la prima voce.'
+          }
+        />
       ) : (
         <div className="space-y-5">
           {dateGroups.map((group, idx) => (
@@ -628,58 +527,6 @@ export function CashflowTrackingMobile({
       categoryMetaMap={categoryMetaMap}
     />
 
-    {/* ── Categories drawer — outside space-y-5 to avoid phantom gap ─── */}
-    <Drawer open={catDrawerOpen} onOpenChange={setCatDrawerOpen}>
-      <DrawerContent className="max-h-[85vh]">
-        <DrawerHeader className="pb-2">
-          <DrawerTitle>
-            Categorie · {format(periodToRange(period).from, 'MMM yyyy', { locale: it })}
-          </DrawerTitle>
-          <DrawerDescription className="sr-only">
-            Breakdown delle categorie per il periodo selezionato
-          </DrawerDescription>
-        </DrawerHeader>
-
-        {/* Spese / Entrate toggle */}
-        <div className="flex gap-1 mx-4 mb-3 bg-muted rounded-lg p-1" role="tablist" aria-label="Tipo di voci">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={catView === 'expense'}
-            onClick={() => setCatView('expense')}
-            className={cn(
-              'flex-1 rounded-md py-1.5 text-sm font-medium transition-colors',
-              catView === 'expense'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Spese
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={catView === 'income'}
-            onClick={() => setCatView('income')}
-            className={cn(
-              'flex-1 rounded-md py-1.5 text-sm font-medium transition-colors',
-              catView === 'income'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            Entrate
-          </button>
-        </div>
-
-        <div className="overflow-y-auto px-4 pb-8">
-          <CategoryBreakdownList
-            items={catView === 'expense' ? expenseCategories : incomeCategories}
-            categories={categories}
-          />
-        </div>
-      </DrawerContent>
-    </Drawer>
     </>
   );
 }

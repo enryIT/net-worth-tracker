@@ -37,7 +37,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { EmptyState } from '@/components/ui/EmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
 import { useDashboardOverview } from '@/lib/hooks/useDashboardOverview';
@@ -232,7 +232,7 @@ function ThreadList({
   if (threads.length === 0) {
     return (
       <EmptyState
-        icon={<Bot className="h-8 w-8" />}
+        icon={Bot}
         title="Nessuna conversazione"
         description="Il primo messaggio crea automaticamente una nuova conversazione."
         className="py-6"
@@ -1117,7 +1117,7 @@ export function AssistantPageClient({ assistantConfigured }: AssistantPageClient
         {isDemo ? (
           // No outer Card — EmptyState is self-contained
           <EmptyState
-            icon={<Lock className="h-10 w-10" />}
+            icon={Lock}
             title="Non disponibile in modalità demo"
             description="L'Assistente AI non è accessibile nell'account demo."
             action={
@@ -1129,7 +1129,7 @@ export function AssistantPageClient({ assistantConfigured }: AssistantPageClient
           />
         ) : !assistantConfigured ? (
           <EmptyState
-            icon={<Lock className="h-10 w-10" />}
+            icon={Lock}
             title="Servizio AI non configurato"
             description="La pagina resta accessibile, ma per usare l'assistente devi configurare ANTHROPIC_API_KEY nell'ambiente."
             action={
@@ -1369,7 +1369,7 @@ export function AssistantPageClient({ assistantConfigured }: AssistantPageClient
                     // When no thread is selected the hero chips card above already serves as the CTA,
                     // so we show nothing here to avoid two competing empty states.
                     <EmptyState
-                      icon={<MessageSquare className="h-8 w-8" />}
+                      icon={MessageSquare}
                       title="Nessun messaggio ancora"
                       description="Scrivi la tua domanda nel composer in basso."
                       className="py-10"

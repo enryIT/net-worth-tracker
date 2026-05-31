@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Check, X, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { FilterEmptyIcon } from '@/components/ui/EmptyState';
+import { FilterEmptyIcon } from '@/components/ui/empty-state';
 
 export interface ComboboxOption {
   value: string;

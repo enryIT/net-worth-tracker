@@ -640,7 +640,6 @@ export default function DashboardPage() {
               expenseCategories={overview.expenseStats.topExpenseCategories}
               incomeCategories={overview.expenseStats.topIncomeCategories}
               categories={expenseCategories}
-              showAnalysisBanner
               className="rounded-2xl"
             />
           </motion.div>
