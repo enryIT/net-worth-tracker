@@ -1,36 +1,40 @@
 ---
 name: api-auth-routes
-description: Creates or edits authenticated `app/api/*` routes with Firebase UID checks, `assertSameUser()`, `assertResourceOwner()`, and `getApiAuthErrorResponse()`. Use when user says 'secure this route', 'add private API', or 'Firebase auth for API'. Do NOT use for public endpoints or UI-only work.
+description: Creates or edits authenticated `app/api/*` routes using the route family's current auth layer: either legacy Firebase UID helpers (`requireFirebaseAuth`, `assertSameUser`, `assertResourceOwner`, `getApiAuthErrorResponse`) or the local-session helpers (`requireUserSession`, `assertWritableUser`, `AuthSessionError`) used by PostgreSQL-backed routes. Use when user says 'secure this route', 'add private API', or 'auth for API'. Do NOT use for public endpoints or UI-only work.
 ---
 # API Auth Routes
 
 ## Critical
 
-1. Private `app/api/*` routes must verify the Firebase UID server-side before any resource access or mutation.
-2. Use the project’s auth helpers exactly as existing routes do:
+1. Private `app/api/*` routes must verify the authenticated user server-side before any resource access or mutation.
+2. Use the route family's auth helpers exactly as existing routes do:
+   - Local PostgreSQL-backed routes usually use `requireUserSession()` from `lib/server/auth/session.ts` and `assertWritableUser()` for mutations.
+   - Legacy Firebase-backed routes may still use `requireFirebaseAuth()`, `assertSameUser()`, `assertResourceOwner()`, and `getApiAuthErrorResponse()` from `lib/server/apiAuth.ts`.
    - `getApiAuthErrorResponse()` for auth failures
    - `assertSameUser()` when the request user must match a target UID
    - `assertResourceOwner()` when the request user must own the resource being accessed
-3. Never return raw auth errors or custom ad hoc auth payloads if an existing route uses `getApiAuthErrorResponse()`.
-4. Do not skip ownership checks even if the route already checks Firebase authentication.
+3. Never return raw auth errors or custom ad hoc auth payloads when the route family already has a standard auth failure shape.
+4. Do not skip ownership checks even if the route already checks authentication.
 5. Verify the route shape against existing `app/api/*` routes before writing code.
 
 ## Instructions
 
 1. **Find the matching route pattern in `app/api/*` and its helper usage in `lib/server/*`.**
    - Inspect existing private routes under `app/api/ai/assistant/*`, `app/api/dividends/*`, `app/api/performance/*`, `app/api/portfolio/snapshot/*`, or `app/api/prices/*`.
-   - Look for imports from `lib/server/apiAuth.ts` and any route-specific authorization helpers.
+   - Look for imports from `lib/server/auth/session.ts`, `lib/server/apiAuth.ts`, and any route-specific authorization helpers.
    - Match the route handler style already used in the project: `export async function GET(...)`, `POST(...)`, `PUT(...)`, or `DELETE(...)`.
-   - **Verify** the target route is private and requires Firebase auth before proceeding to the next step.
+   - **Verify** the target route is private and identify whether it uses local-session auth or legacy Firebase auth before proceeding to the next step.
 
-2. **Add or preserve server-side Firebase auth in the route handler.**
-   - In the route file under `app/api/<feature>/route.ts` or `app/api/<feature>/[id]/route.ts`, import the auth helper from `lib/server/apiAuth.ts`.
-   - Use the same pattern as neighboring routes to extract the Firebase user from the request and gate the handler immediately.
+2. **Add or preserve server-side auth in the route handler.**
+   - For local PostgreSQL-backed routes, import `requireUserSession()` from `lib/server/auth/session.ts`; for mutations also call `assertWritableUser(user)` after the session is loaded.
+   - For legacy Firebase-backed routes, import the auth helper from `lib/server/apiAuth.ts`.
+   - Use the same pattern as neighboring routes to extract the user and gate the handler immediately.
    - If the route is public, do not add these checks; this skill is only for authenticated routes.
    - **This step uses the output from Step 1. Verify** the route returns the same auth failure shape as existing private routes before proceeding.
 
-3. **Use `assertSameUser()` when the request body, query param, or path param contains a user UID.**
+3. **Use same-user or local-session ownership checks when the request carries user identity.**
    - Apply this check when the client submits something like `userId`, `uid`, or a similar identifier that must equal the authenticated Firebase UID.
+   - For local-session routes, prefer ignoring legacy client-supplied `userId` fields and use `user.id` from `requireUserSession()` unless the route family already validates a supplied ID.
    - Keep the check near the top of the handler, before DB reads or writes.
    - Follow existing project convention: throw or return the same error response pattern used in `lib/server/apiAuth.ts` and the current route.
    - **This step uses the output from Step 2. Verify** the request UID cannot differ from the authenticated UID before proceeding to the next step.
@@ -41,8 +45,9 @@ description: Creates or edits authenticated `app/api/*` routes with Firebase UID
    - Keep the ownership guard before update/delete logic and before any data returned to the client.
    - **This step uses the output from Step 3. Verify** ownership is enforced on every read/write path before proceeding to the next step.
 
-5. **Return auth failures with `getApiAuthErrorResponse()` instead of custom logic.**
+5. **Return auth failures using the route family's standard shape.**
    - In the route file, use `getApiAuthErrorResponse()` for unauthorized/forbidden responses exactly as existing routes do.
+   - In local-session routes, catch `AuthSessionError` and return the same 401/403 JSON shape used by neighboring local routes.
    - Do not invent new auth JSON shapes, status codes, or error messages unless the current route family already uses them.
    - Keep the response consistent for all auth failure branches.
    - **This step uses the output from Step 4. Verify** auth failures match the project’s existing response shape before proceeding to the next step.
@@ -67,13 +72,13 @@ description: Creates or edits authenticated `app/api/*` routes with Firebase UID
 
 **Actions taken:**
 1. Open the existing file under `app/api/<feature>/route.ts`.
-2. Import and use the same Firebase auth helper pattern from `lib/server/apiAuth.ts`.
+2. Import and use the same auth helper pattern as neighboring routes (`lib/server/auth/session.ts` for local-session routes, `lib/server/apiAuth.ts` for legacy Firebase routes).
 3. Add `assertSameUser()` if the request includes a UID.
 4. Add `assertResourceOwner()` if the handler loads a resource by ID.
 5. Return failures with `getApiAuthErrorResponse()`.
 6. Run the relevant Vitest file and `npx tsc --noEmit`.
 
-**Result:** The route behaves like the rest of the authenticated API layer: server-side Firebase auth is enforced, unauthorized access is blocked early, and responses match the project’s existing auth error shape.
+**Result:** The route behaves like the rest of the authenticated API layer: server-side auth is enforced, unauthorized access is blocked early, and responses match the project’s existing auth error shape.
 
 ## Common Issues
 
