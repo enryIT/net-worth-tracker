@@ -9,23 +9,12 @@
  * - Calculate month-over-month and year-to-date changes
  * - Add/update/delete notes for specific snapshots
  *
- * Storage format: Firestore document ID is "userId-YYYY-M" (month without padding)
+ * Storage format: Snapshot ID is "userId-YYYY-M" (month without padding)
  * Snapshots are sorted by year (asc), then month (asc) for chronological order.
  */
 
-import {
-  collection,
-  doc,
-  setDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  deleteField,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { Asset, MonthlySnapshot } from '@/types/assets';
+import { authenticatedFetch } from '@/lib/utils/authFetch';
 import {
   calculateAssetValue,
   calculateTotalValue,
@@ -35,10 +24,77 @@ import {
 } from './assetService';
 import { calculateCurrentAllocation } from './assetAllocationService';
 import { getHouseholdConfig } from './householdService';
-import { getItalyMonthYear } from '@/lib/utils/dateHelpers';
+import { getItalyMonthYear, toDate } from '@/lib/utils/dateHelpers';
 import { buildOwnershipSnapshotBreakdown, getDefaultHouseholdConfig } from '@/lib/utils/householdUtils';
 
-const SNAPSHOTS_COLLECTION = 'monthly-snapshots';
+const SNAPSHOTS_API_PATH = '/api/snapshots';
+
+type SnapshotWritePayload = {
+  year: number;
+  month: number;
+  isDummy?: boolean;
+  totalNetWorth: number;
+  liquidNetWorth: number;
+  illiquidNetWorth: number;
+  fireNetWorth?: number;
+  byAssetClass: { [assetClass: string]: number };
+  byAsset: MonthlySnapshot['byAsset'];
+  byOwnershipProfile?: MonthlySnapshot['byOwnershipProfile'];
+  byParticipant?: MonthlySnapshot['byParticipant'];
+  assetAllocation: { [assetClass: string]: number };
+  note?: string;
+};
+
+async function parseJsonResponse<T>(
+  response: Response,
+  fallbackError: string
+): Promise<T> {
+  const payload = await response.json().catch(() => null) as
+    | { error?: string }
+    | T
+    | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload &&
+      typeof payload === 'object' &&
+      'error' in payload &&
+      typeof payload.error === 'string'
+        ? payload.error
+        : fallbackError
+    );
+  }
+
+  return payload as T;
+}
+
+function mapSnapshot(snapshot: MonthlySnapshot): MonthlySnapshot {
+  return {
+    ...snapshot,
+    createdAt: toDate(snapshot.createdAt),
+  };
+}
+
+function toSnapshotWritePayload(
+  snapshot: MonthlySnapshot,
+  note: string
+): SnapshotWritePayload {
+  return {
+    year: snapshot.year,
+    month: snapshot.month,
+    isDummy: snapshot.isDummy,
+    totalNetWorth: snapshot.totalNetWorth,
+    liquidNetWorth: snapshot.liquidNetWorth,
+    illiquidNetWorth: snapshot.illiquidNetWorth,
+    fireNetWorth: snapshot.fireNetWorth,
+    byAssetClass: snapshot.byAssetClass,
+    byAsset: snapshot.byAsset,
+    byOwnershipProfile: snapshot.byOwnershipProfile,
+    byParticipant: snapshot.byParticipant,
+    assetAllocation: snapshot.assetAllocation,
+    note,
+  };
+}
 
 /**
  * Create a monthly snapshot from current assets
@@ -97,11 +153,7 @@ export async function createSnapshot(
     );
 
     const snapshotId = `${userId}-${snapshotYear}-${snapshotMonth}`;
-
-    const snapshot: Omit<MonthlySnapshot, 'createdAt'> & {
-      createdAt: Timestamp;
-    } = {
-      userId,
+    const payload: SnapshotWritePayload = {
       year: snapshotYear,
       month: snapshotMonth,
       totalNetWorth,
@@ -113,11 +165,18 @@ export async function createSnapshot(
       byOwnershipProfile: ownershipBreakdown.byOwnershipProfile,
       byParticipant: ownershipBreakdown.byParticipant,
       assetAllocation,
-      createdAt: Timestamp.now(),
     };
 
-    const snapshotRef = doc(db, SNAPSHOTS_COLLECTION, snapshotId);
-    await setDoc(snapshotRef, snapshot);
+    const response = await authenticatedFetch(SNAPSHOTS_API_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    await parseJsonResponse<MonthlySnapshot>(
+      response,
+      'Failed to create snapshot'
+    );
 
     return snapshotId;
   } catch (error) {
@@ -139,25 +198,20 @@ export async function getUserSnapshots(
   userId: string
 ): Promise<MonthlySnapshot[]> {
   try {
-    const snapshotsRef = collection(db, SNAPSHOTS_COLLECTION);
-    // Sort by year, then month (both ascending) for chronological order
-    // This ensures consistent ordering for time-series calculations and charts
-    const q = query(
-      snapshotsRef,
-      where('userId', '==', userId),
-      orderBy('year', 'asc'),
-      orderBy('month', 'asc')
+    const response = await authenticatedFetch(SNAPSHOTS_API_PATH, {
+      method: 'GET',
+    });
+    const snapshots = await parseJsonResponse<MonthlySnapshot[]>(
+      response,
+      'Failed to fetch snapshots'
     );
 
-    const querySnapshot = await getDocs(q);
-
-    return querySnapshot.docs.map((doc) => ({
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-    })) as MonthlySnapshot[];
+    return snapshots.map(mapSnapshot);
   } catch (error) {
     console.error('Error getting snapshots:', error);
-    throw new Error('Failed to fetch snapshots');
+    throw new Error(`Failed to fetch snapshots for user ${userId}`, {
+      cause: error,
+    });
   }
 }
 
@@ -294,8 +348,8 @@ export function calculateYearlyChange(
 /**
  * Update or delete a note from a monthly snapshot
  *
- * Uses setDoc with merge: true to handle both create and update cases safely.
- * This allows adding notes even if the snapshot document doesn't exist yet.
+ * Routes note updates through the local snapshots API by upserting the matched
+ * monthly snapshot payload with the new note value.
  *
  * @param userId - User ID
  * @param year - Snapshot year
@@ -315,30 +369,26 @@ export async function updateSnapshotNote(
     throw new Error('Note cannot exceed 500 characters');
   }
 
-  // Firestore document ID format: userId-YYYY-M (without padding for consistency with existing snapshots)
-  const snapshotId = `${userId}-${year}-${month}`;
-  const snapshotRef = doc(db, SNAPSHOTS_COLLECTION, snapshotId);
+  const snapshots = await getUserSnapshots(userId);
+  const targetSnapshot = snapshots.find((snapshot) => (
+    snapshot.year === year && snapshot.month === month
+  ));
 
-  // Use setDoc with merge: true to handle both create and update cases
-  // This prevents overwriting existing snapshot data and satisfies Firestore security rules
-  // Include userId field to allow document creation if snapshot doesn't exist yet
-  if (trimmedNote.length === 0) {
-    await setDoc(
-      snapshotRef,
-      {
-        note: deleteField(), // Firestore special value to remove field
-        userId: userId,
-      },
-      { merge: true }
-    );
-  } else {
-    await setDoc(
-      snapshotRef,
-      {
-        note: trimmedNote,
-        userId: userId,
-      },
-      { merge: true }
-    );
+  // Legacy runtime behavior allowed writing notes before a full snapshot
+  // existed. In the local schema, snapshots are strongly typed; keep this as
+  // a no-op when the period is missing instead of throwing in the UI flow.
+  if (!targetSnapshot) {
+    return;
   }
+
+  const response = await authenticatedFetch(SNAPSHOTS_API_PATH, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnapshotWritePayload(targetSnapshot, trimmedNote)),
+  });
+
+  await parseJsonResponse<MonthlySnapshot>(
+    response,
+    'Failed to update snapshot note'
+  );
 }

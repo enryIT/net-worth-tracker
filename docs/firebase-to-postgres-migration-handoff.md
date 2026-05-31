@@ -1087,6 +1087,54 @@ Remaining:
   overview compatibility services, periodic email, assistant legacy store, API
   auth compatibility, dividend processing, and price updater paths.
 
+## Slice Notes - 2026-06-01 Snapshot Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/snapshotService.ts` from direct Firebase client SDK
+  reads/writes to authenticated local API calls through `/api/snapshots` while
+  preserving the existing public exports used by history, performance, dashboard,
+  and snapshot hooks.
+- Kept `createSnapshot()` responsible for the existing net-worth, allocation,
+  household ownership, and snapshot ID calculations, then persisted the computed
+  payload through the local route.
+- Kept snapshot reads sorted through the local Prisma-backed snapshot service and
+  normalized JSON `createdAt` values back to `Date` objects in the client wrapper.
+- Reworked `updateSnapshotNote()` to use the local snapshots API by reading the
+  existing month and upserting the same snapshot payload with the updated note.
+- Added `__tests__/snapshotServiceClientMigration.test.ts` as a source-level and
+  behavior regression guard so the active snapshot wrapper cannot reintroduce
+  Firebase runtime imports or Firestore calls.
+
+Verified:
+
+- Red migration test failed before implementation because `snapshotService.ts`
+  still imported `firebase/firestore` and `@/lib/firebase/config` and because
+  wrapper calls reached mocked Firestore helpers instead of `authenticatedFetch`.
+- `npm test -- --run __tests__/snapshotServiceClientMigration.test.ts __tests__/localSnapshotsRoute.test.ts __tests__/localSnapshotService.test.ts __tests__/snapshot-id-format.test.ts`
+  passed: 4 files, 25 tests.
+- `npm test -- --run __tests__/snapshotServiceClientMigration.test.ts __tests__/localSnapshotsRoute.test.ts __tests__/localSnapshotService.test.ts __tests__/snapshot-id-format.test.ts __tests__/localManualSnapshotRoute.test.ts __tests__/localManualSnapshotService.test.ts __tests__/localAutomatedSnapshotRoute.test.ts __tests__/localAutomatedSnapshotService.test.ts __tests__/performanceService.test.ts`
+  passed: 9 files, 108 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- Focused residual search over `lib/services/snapshotService.ts` found no
+  remaining Firebase, Firestore, `Timestamp`, `adminDb`, `requireFirebaseAuth`,
+  or `lib/firebase` matches.
+
+Caveats:
+
+- `updateSnapshotNote()` is now a two-call `GET` + `POST` local API flow for
+  existing snapshots. If no snapshot row exists for the requested month, it is a
+  no-op because the local Postgres snapshot schema requires full monthly metrics
+  instead of partial note-only records.
+
+Remaining:
+
+- Active Firebase runtime dependencies still remain outside this slice, notably
+  expenses, dummy snapshot/data helpers, performance, dividends, dashboard
+  overview compatibility services, periodic email, assistant legacy store, API
+  auth compatibility, dividend processing, and price updater paths. Rerun the
+  residual search before selecting the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
