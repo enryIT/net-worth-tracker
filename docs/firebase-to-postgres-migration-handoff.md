@@ -1135,6 +1135,53 @@ Remaining:
   auth compatibility, dividend processing, and price updater paths. Rerun the
   residual search before selecting the next slice.
 
+## Slice Notes - 2026-06-01 Dummy Data Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/dummyDataService.ts` from direct Firebase client SDK
+  reads/deletes to a local authenticated `/api/dummy-data` route while preserving
+  the legacy exported functions and `DummyDataCount` interface used by
+  `DeleteDummyDataDialog`.
+- Added `app/api/dummy-data/route.ts`, a thin local-session route for dummy data
+  counts and deletes. `GET` requires a local session; `DELETE` also enforces
+  `assertWritableUser()` and validates optional `target` query values.
+- Added `lib/server/dummy/localDummyDataService.ts` with Prisma-backed,
+  user-scoped count/delete helpers. Dummy snapshots use `MonthlySnapshot.isDummy`,
+  while dummy expenses and categories use the legacy import ID prefixes
+  `dummy-` and `dummy-category-` stored in `legacyFirebaseId`.
+- Added client wrapper, route, and server-service regression tests.
+
+Verified:
+
+- Red migration tests failed before implementation because the wrapper still
+  imported `firebase/firestore` and `@/lib/firebase/config`, the local route did
+  not exist, and the local server service did not exist.
+- `npm test -- --run __tests__/dummyDataServiceClientMigration.test.ts __tests__/localDummyDataRoute.test.ts __tests__/localDummyDataService.test.ts`
+  passed: 3 files, 20 tests.
+- `npm test -- --run __tests__/dummyDataServiceClientMigration.test.ts __tests__/localDummyDataRoute.test.ts __tests__/localDummyDataService.test.ts __tests__/localSnapshotsRoute.test.ts __tests__/localSnapshotService.test.ts __tests__/localExpensesRoutes.test.ts __tests__/localExpenseService.test.ts __tests__/localExpenseCategoriesRoutes.test.ts __tests__/localExpenseCategoryService.test.ts`
+  passed: 9 files, 61 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- Focused residual search over the dummy wrapper, route, server service, and
+  dummy tests found no Firebase runtime imports in active dummy code. Remaining
+  dummy-slice hits are test-only boundary mocks/assertions.
+
+Caveats:
+
+- Local dummy expense/category cleanup depends on imported legacy dummy markers
+  in `legacyFirebaseId`; records without those markers are intentionally not
+  counted or deleted by this compatibility slice.
+- The wrapper keeps accepting `userId` for legacy signature compatibility but
+  ignores it; ownership is now scoped by the server-side local session.
+
+Remaining:
+
+- Active Firebase runtime dependencies still remain outside this slice, notably
+  expenses, dummy snapshot generation, performance, dividends, dashboard
+  overview compatibility services, periodic email, assistant legacy store, API
+  auth compatibility, dividend processing, and price updater paths. Rerun the
+  residual search before selecting the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
