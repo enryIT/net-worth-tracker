@@ -442,3 +442,22 @@ If the goal is not complete, report:
 * current branch status;
 * whether anything was pushed.
 
+## Continuation rule
+
+Do not return a final response after completing a single slice.
+
+A completed slice is only an intermediate checkpoint.
+
+After each successful commit and push, immediately start the next remaining Firebase runtime dependency.
+
+Stop only when:
+
+1. the full completion criteria are satisfied;
+2. a hard blocker prevents safe progress;
+3. the execution environment/tool budget prevents continuing safely.
+
+If stopping before full completion, the final response must begin with:
+
+`STOPPED_BEFORE_GOAL_COMPLETE`
+
+and must explain why continuation was not possible.
