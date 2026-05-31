@@ -47,11 +47,22 @@ function DrawerOverlay({
   )
 }
 
+const minHeightMap = {
+  small: "min-h-[30dvh]",
+  medium: "min-h-[60dvh]",
+  large: "min-h-[75dvh]",
+  xlarge: "min-h-[85dvh]",
+  full: "min-h-[92dvh]",
+} as const
+
 function DrawerContent({
   className,
   children,
+  minHeight,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+}: React.ComponentProps<typeof DrawerPrimitive.Content> & {
+  minHeight?: keyof typeof minHeightMap
+}) {
   return (
     <DrawerPortal>
       <DrawerOverlay />
@@ -61,6 +72,7 @@ function DrawerContent({
           "fixed inset-x-0 bottom-0 z-50 flex flex-col rounded-t-[10px] border bg-background",
           // Max height: 92vh so the top is always visible
           "max-h-[92dvh]",
+          minHeight && minHeightMap[minHeight],
           className
         )}
         {...props}
