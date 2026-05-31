@@ -1045,6 +1045,48 @@ Remaining:
   dividend processing, and price updater paths. Rerun the residual search before
   selecting the next slice.
 
+## Slice Notes - 2026-05-31 Hall of Fame Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/hallOfFameService.ts` from direct Firebase client SDK
+  reads/writes to authenticated local API calls while preserving the existing
+  public exports used by the Hall of Fame UI and dashboard refresh path.
+- Kept `getNotesForPeriod()` as a pure client-side helper and normalized Hall of
+  Fame `updatedAt` plus note timestamps back to `Date` objects after JSON API
+  responses.
+- Added local Hall of Fame routes:
+  - `app/api/hall-of-fame/route.ts` for authenticated reads.
+  - `app/api/hall-of-fame/notes/route.ts` for authenticated writable note
+    creation.
+  - `app/api/hall-of-fame/notes/[noteId]/route.ts` for authenticated writable
+    note updates and deletes.
+- Extended `lib/server/hall-of-fame/localHallOfFameService.ts` with
+  Prisma-backed read and note mutation helpers, preserving existing note
+  validation semantics and full-document note-array replacement behaviour.
+- Added client wrapper and route migration tests to guard against Firebase
+  runtime reintroduction.
+
+Verified:
+
+- Red client-wrapper migration test failed before implementation because
+  `hallOfFameService.ts` still imported `firebase/firestore` and
+  `@/lib/firebase/config`, and wrapper calls reached mocked Firestore helpers.
+- `npm test -- --run __tests__/hallOfFameServiceClientMigration.test.ts __tests__/localHallOfFameService.test.ts __tests__/localHallOfFameRoutes.test.ts __tests__/localHallOfFameRecalculateRoute.test.ts __tests__/hallOfFameServerCompatibilityMigration.test.ts __tests__/hallOfFameTypesFirebaseBoundary.test.ts`
+  passed: 6 files, 29 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- Focused residual search over Hall of Fame service, routes, local server
+  service, and tests found no Firebase runtime imports in active Hall of Fame
+  code. Remaining hits are boundary-test/mock-only references in Hall of Fame
+  tests.
+
+Remaining:
+
+- This slice does not remove remaining Firebase runtime dependencies in other
+  active services such as expenses, snapshots, performance, dividends, dashboard
+  overview compatibility services, periodic email, assistant legacy store, API
+  auth compatibility, dividend processing, and price updater paths.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent

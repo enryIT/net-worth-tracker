@@ -9,6 +9,7 @@ const { prismaMock } = vi.hoisted(() => ({
     },
     hallOfFame: {
       findUnique: vi.fn(),
+      update: vi.fn(),
       upsert: vi.fn(),
     },
     monthlySnapshot: {
@@ -22,13 +23,42 @@ vi.mock("@/lib/server/prisma", () => ({
 }));
 
 import { updateLocalHallOfFame } from "@/lib/server/hall-of-fame/localHallOfFameService";
+import {
+  addLocalHallOfFameNote,
+  deleteLocalHallOfFameNote,
+  getLocalHallOfFameData,
+  updateLocalHallOfFameNote,
+} from "@/lib/server/hall-of-fame/localHallOfFameService";
+
+const baseHallOfFameRow = {
+  userId: "user-1",
+  notes: [
+    {
+      id: "note-1",
+      text: "Keep me",
+      sections: ["bestMonthsByIncome"],
+      year: 2026,
+      month: 5,
+      createdAt: "2026-05-01T12:00:00.000Z",
+      updatedAt: "2026-05-01T12:00:00.000Z",
+    },
+  ],
+  bestMonthsByNetWorthGrowth: [],
+  bestMonthsByIncome: [],
+  worstMonthsByNetWorthDecline: [],
+  worstMonthsByExpenses: [],
+  bestYearsByNetWorthGrowth: [],
+  bestYearsByIncome: [],
+  worstYearsByNetWorthDecline: [],
+  worstYearsByExpenses: [],
+  updatedAt: new Date("2026-05-31T10:00:00.000Z"),
+};
 
 describe("local hall of fame service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    prismaMock.hallOfFame.findUnique.mockResolvedValue({
-      notes: [{ id: "note-1", text: "Keep me" }],
-    });
+    prismaMock.hallOfFame.findUnique.mockResolvedValue(baseHallOfFameRow);
+    prismaMock.hallOfFame.update.mockResolvedValue(baseHallOfFameRow);
     prismaMock.hallOfFame.upsert.mockResolvedValue({});
   });
 
@@ -78,7 +108,7 @@ describe("local hall of fame service", () => {
       where: { userId: "user-1" },
       create: expect.objectContaining({
         userId: "user-1",
-        notes: [{ id: "note-1", text: "Keep me" }],
+        notes: [expect.objectContaining({ id: "note-1", text: "Keep me" })],
         bestMonthsByNetWorthGrowth: [
           expect.objectContaining({ month: 1, netWorthDiff: 10000 }),
           expect.objectContaining({ month: 3, netWorthDiff: 7000 }),
@@ -101,9 +131,138 @@ describe("local hall of fame service", () => {
         ],
       }),
       update: expect.objectContaining({
-        notes: [{ id: "note-1", text: "Keep me" }],
+        notes: [expect.objectContaining({ id: "note-1", text: "Keep me" })],
         updatedAt: expect.any(Date),
       }),
+    });
+  });
+
+  it("returns null when Hall of Fame has not been created yet", async () => {
+    prismaMock.hallOfFame.findUnique.mockResolvedValueOnce(null);
+
+    await expect(getLocalHallOfFameData("user-1")).resolves.toBeNull();
+  });
+
+  it("returns stored Hall of Fame data for the authenticated user", async () => {
+    await expect(getLocalHallOfFameData("user-1")).resolves.toEqual(
+      expect.objectContaining({
+        userId: "user-1",
+        notes: [expect.objectContaining({ id: "note-1" })],
+        updatedAt: new Date("2026-05-31T10:00:00.000Z"),
+      })
+    );
+  });
+
+  it("adds note entries while preserving existing Hall of Fame document data", async () => {
+    const created = await addLocalHallOfFameNote("user-1", {
+      text: "  Nuova nota  ",
+      sections: ["bestMonthsByIncome"],
+      year: 2026,
+      month: 5,
+    });
+
+    expect(created.text).toBe("Nuova nota");
+    expect(created.sections).toEqual(["bestMonthsByIncome"]);
+    expect(created.year).toBe(2026);
+    expect(created.month).toBe(5);
+    expect(prismaMock.hallOfFame.update).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      data: {
+        notes: [
+          expect.objectContaining({ id: "note-1", text: "Keep me" }),
+          expect.objectContaining({
+            id: created.id,
+            text: "Nuova nota",
+            sections: ["bestMonthsByIncome"],
+            year: 2026,
+            month: 5,
+          }),
+        ],
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it("validates note text and sections before adding a note", async () => {
+    await expect(
+      addLocalHallOfFameNote("user-1", {
+        text: " ",
+        sections: ["bestMonthsByIncome"],
+        year: 2026,
+      })
+    ).rejects.toThrow("Note text cannot be empty");
+
+    await expect(
+      addLocalHallOfFameNote("user-1", {
+        text: "x".repeat(501),
+        sections: ["bestMonthsByIncome"],
+        year: 2026,
+      })
+    ).rejects.toThrow("Note text cannot exceed 500 characters");
+
+    await expect(
+      addLocalHallOfFameNote("user-1", {
+        text: "Valida",
+        sections: [],
+        year: 2026,
+      })
+    ).rejects.toThrow("At least one section must be selected");
+  });
+
+  it("updates existing notes by id", async () => {
+    await updateLocalHallOfFameNote("user-1", "note-1", {
+      text: "  Nota aggiornata ",
+      sections: ["bestYearsByIncome"],
+    });
+
+    expect(prismaMock.hallOfFame.update).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      data: {
+        notes: [
+          expect.objectContaining({
+            id: "note-1",
+            text: "Nota aggiornata",
+            sections: ["bestYearsByIncome"],
+            updatedAt: expect.any(Date),
+          }),
+        ],
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it("throws when updating a missing note", async () => {
+    await expect(
+      updateLocalHallOfFameNote("user-1", "note-missing", {
+        text: "Nota aggiornata",
+      })
+    ).rejects.toThrow("Note not found");
+  });
+
+  it("deletes notes by id while preserving other notes", async () => {
+    prismaMock.hallOfFame.findUnique.mockResolvedValueOnce({
+      ...baseHallOfFameRow,
+      notes: [
+        baseHallOfFameRow.notes[0],
+        {
+          id: "note-2",
+          text: "Delete me",
+          sections: ["bestYearsByIncome"],
+          year: 2026,
+          createdAt: "2026-05-10T12:00:00.000Z",
+          updatedAt: "2026-05-10T12:00:00.000Z",
+        },
+      ],
+    });
+
+    await deleteLocalHallOfFameNote("user-1", "note-2");
+
+    expect(prismaMock.hallOfFame.update).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      data: {
+        notes: [expect.objectContaining({ id: "note-1" })],
+        updatedAt: expect.any(Date),
+      },
     });
   });
 });

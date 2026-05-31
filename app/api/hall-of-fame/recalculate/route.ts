@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     console.error('Error recalculating Hall of Fame:', error);
     return NextResponse.json(
-      { error: 'Si e verificato un errore durante il ricalcolo Hall of Fame.' },
+      { error: 'Si è verificato un errore durante il ricalcolo Hall of Fame.' },
       { status: 500 }
     );
   }

@@ -2,8 +2,15 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
-import { getItalyMonthYear, getItalyYear } from "@/lib/utils/dateHelpers";
-import type { MonthlyRecord, YearlyRecord } from "@/types/hall-of-fame";
+import { getItalyMonthYear, getItalyYear, toDate } from "@/lib/utils/dateHelpers";
+import { createId } from "@/lib/utils/idHelpers";
+import type {
+  HallOfFameData,
+  HallOfFameNote,
+  HallOfFameSectionKey,
+  MonthlyRecord,
+  YearlyRecord,
+} from "@/types/hall-of-fame";
 
 const MAX_MONTHLY_RECORDS = 20;
 const MAX_YEARLY_RECORDS = 10;
@@ -19,6 +26,42 @@ type ExpenseRow = {
   amount: number;
   date: Date;
 };
+
+type HallOfFameRow = {
+  userId: string;
+  notes: Prisma.JsonValue;
+  bestMonthsByNetWorthGrowth: Prisma.JsonValue;
+  bestMonthsByIncome: Prisma.JsonValue;
+  worstMonthsByNetWorthDecline: Prisma.JsonValue;
+  worstMonthsByExpenses: Prisma.JsonValue;
+  bestYearsByNetWorthGrowth: Prisma.JsonValue;
+  bestYearsByIncome: Prisma.JsonValue;
+  worstYearsByNetWorthDecline: Prisma.JsonValue;
+  worstYearsByExpenses: Prisma.JsonValue;
+  updatedAt: Date;
+};
+
+type HallOfFameNoteInput = {
+  text: string;
+  sections: HallOfFameSectionKey[];
+  year: number;
+  month?: number;
+};
+
+type HallOfFameNoteUpdates = {
+  text?: string;
+  sections?: HallOfFameSectionKey[];
+};
+
+export async function getLocalHallOfFameData(
+  userId: string
+): Promise<HallOfFameData | null> {
+  const row = await prisma.hallOfFame.findUnique({
+    where: { userId },
+  });
+
+  return row ? mapHallOfFameRow(row) : null;
+}
 
 export async function updateLocalHallOfFame(userId: string): Promise<void> {
   const [snapshots, expenses, existing] = await Promise.all([
@@ -78,6 +121,104 @@ export async function updateLocalHallOfFame(userId: string): Promise<void> {
     update: {
       ...rankings,
       updatedAt: new Date(),
+    },
+  });
+}
+
+export async function addLocalHallOfFameNote(
+  userId: string,
+  noteData: HallOfFameNoteInput
+): Promise<HallOfFameNote> {
+  const trimmedText = validateNoteText(noteData.text);
+  validateNoteSections(noteData.sections);
+
+  const existing = await prisma.hallOfFame.findUnique({
+    where: { userId },
+  });
+
+  if (!existing) {
+    throw new Error("Hall of Fame data not found. Create a snapshot first.");
+  }
+
+  const now = new Date();
+  const newNote: HallOfFameNote = {
+    id: createId("hall-of-fame-note"),
+    text: trimmedText,
+    sections: noteData.sections,
+    year: noteData.year,
+    month: noteData.month,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const existingNotes = parseHallOfFameNotes(existing.notes);
+  await prisma.hallOfFame.update({
+    where: { userId },
+    data: {
+      notes: [...existingNotes, newNote] as unknown as Prisma.InputJsonValue,
+      updatedAt: now,
+    },
+  });
+
+  return newNote;
+}
+
+export async function updateLocalHallOfFameNote(
+  userId: string,
+  noteId: string,
+  updates: HallOfFameNoteUpdates
+): Promise<void> {
+  const sanitizedUpdates = sanitizeNoteUpdates(updates);
+  const existing = await prisma.hallOfFame.findUnique({
+    where: { userId },
+  });
+
+  if (!existing) {
+    throw new Error("Hall of Fame data not found");
+  }
+
+  const notes = parseHallOfFameNotes(existing.notes);
+  const noteIndex = notes.findIndex((note) => note.id === noteId);
+  if (noteIndex === -1) {
+    throw new Error("Note not found");
+  }
+
+  const now = new Date();
+  const updatedNotes = [...notes];
+  updatedNotes[noteIndex] = {
+    ...updatedNotes[noteIndex],
+    ...sanitizedUpdates,
+    updatedAt: now,
+  };
+
+  await prisma.hallOfFame.update({
+    where: { userId },
+    data: {
+      notes: updatedNotes as unknown as Prisma.InputJsonValue,
+      updatedAt: now,
+    },
+  });
+}
+
+export async function deleteLocalHallOfFameNote(
+  userId: string,
+  noteId: string
+): Promise<void> {
+  const existing = await prisma.hallOfFame.findUnique({
+    where: { userId },
+  });
+
+  if (!existing) {
+    throw new Error("Hall of Fame data not found");
+  }
+
+  const notes = parseHallOfFameNotes(existing.notes);
+  const now = new Date();
+  await prisma.hallOfFame.update({
+    where: { userId },
+    data: {
+      notes: notes.filter((note) => note.id !== noteId) as unknown as Prisma.InputJsonValue,
+      updatedAt: now,
     },
   });
 }
@@ -174,4 +315,87 @@ function calculateExpenses(expenses: ExpenseRow[]): number {
 
 function formatMonthYear(month: number, year: number): string {
   return `${String(month).padStart(2, "0")}/${year}`;
+}
+
+function mapHallOfFameRow(row: HallOfFameRow): HallOfFameData {
+  return {
+    userId: row.userId,
+    notes: parseHallOfFameNotes(row.notes),
+    bestMonthsByNetWorthGrowth: asArray<MonthlyRecord>(row.bestMonthsByNetWorthGrowth),
+    bestMonthsByIncome: asArray<MonthlyRecord>(row.bestMonthsByIncome),
+    worstMonthsByNetWorthDecline: asArray<MonthlyRecord>(row.worstMonthsByNetWorthDecline),
+    worstMonthsByExpenses: asArray<MonthlyRecord>(row.worstMonthsByExpenses),
+    bestYearsByNetWorthGrowth: asArray<YearlyRecord>(row.bestYearsByNetWorthGrowth),
+    bestYearsByIncome: asArray<YearlyRecord>(row.bestYearsByIncome),
+    worstYearsByNetWorthDecline: asArray<YearlyRecord>(row.worstYearsByNetWorthDecline),
+    worstYearsByExpenses: asArray<YearlyRecord>(row.worstYearsByExpenses),
+    updatedAt: row.updatedAt,
+  };
+}
+
+function parseHallOfFameNotes(value: Prisma.JsonValue): HallOfFameNote[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const notes = value.filter(isJsonObject);
+
+  return notes
+    .map((note) => {
+      const sections = Array.isArray(note["sections"])
+        ? note["sections"].filter(
+          (section): section is HallOfFameSectionKey => typeof section === "string"
+        )
+        : [];
+
+      return {
+        id: typeof note["id"] === "string" ? note["id"] : "",
+        text: typeof note["text"] === "string" ? note["text"] : "",
+        sections,
+        year: typeof note["year"] === "number" ? note["year"] : 0,
+        month: typeof note["month"] === "number" ? note["month"] : undefined,
+        createdAt: toDate(note["createdAt"] as Date | string | { toDate(): Date } | undefined),
+        updatedAt: toDate(note["updatedAt"] as Date | string | { toDate(): Date } | undefined),
+      };
+    })
+    .filter((note) => note.id !== "");
+}
+
+function validateNoteText(text: string): string {
+  const trimmedText = text.trim();
+  if (trimmedText.length === 0) {
+    throw new Error("Note text cannot be empty");
+  }
+  if (trimmedText.length > 500) {
+    throw new Error("Note text cannot exceed 500 characters");
+  }
+
+  return trimmedText;
+}
+
+function validateNoteSections(sections: HallOfFameSectionKey[]): void {
+  if (sections.length === 0) {
+    throw new Error("At least one section must be selected");
+  }
+}
+
+function sanitizeNoteUpdates(updates: HallOfFameNoteUpdates): HallOfFameNoteUpdates {
+  const nextUpdates: HallOfFameNoteUpdates = { ...updates };
+  if (nextUpdates.text !== undefined) {
+    nextUpdates.text = validateNoteText(nextUpdates.text);
+  }
+
+  if (nextUpdates.sections !== undefined) {
+    validateNoteSections(nextUpdates.sections);
+  }
+
+  return nextUpdates;
+}
+
+function asArray<T>(value: Prisma.JsonValue): T[] {
+  return Array.isArray(value) ? (value as unknown as T[]) : [];
+}
+
+function isJsonObject(input: Prisma.JsonValue): input is Prisma.JsonObject {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
 }
