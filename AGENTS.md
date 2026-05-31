@@ -35,57 +35,31 @@ When a change affects durable guidance, update the docs above first, then keep
 ## Core Areas
 
 - App Router: `app/page.tsx`, `app/layout.tsx`, `app/dashboard/*`
-- APIs: `app/api/*`, especially `app/api/ai/assistant/*`, `app/api/dividends/*`, `app/api/portfolio/snapshot/*`
+- APIs: `app/api/*`, especially `app/api/ai/assistant/*`, `app/api/dividends/*`, `app/api/assets/*`, `app/api/hall-of-fame/*`, `app/api/portfolio/snapshot/*`
 - Services: `lib/services/*`, `lib/server/*`, `lib/helpers/priceUpdater.ts`
 - Types: `types/*`
 - Tests: `__tests__/*.test.ts` with `vitest.config.ts`
 
 ## Workflow Skills
 
-Codex does not automatically load repo-local skills. Treat `.agents/skills/*`
-as workflow playbooks: when a task matches one of these areas, read the matching
-`SKILL.md` before changing code. `.claude/skills/*` mirrors the same workflows
-for Claude Code.
-
-- API auth / private routes: `.agents/skills/api-auth-routes/SKILL.md`
-- Vitest route tests: `.agents/skills/vitest-route-testing/SKILL.md`
-- Dividends, coupons, snapshots, and snapshot routes:
-  `.agents/skills/dividend-and-snapshot-workflows/SKILL.md`
-- Assistant SSE streaming, thread state, memory, and prompt context:
-  `.agents/skills/assistant-streaming/SKILL.md`
-- Caliber setup or missing Caliber binary:
-  `.agents/skills/setup-caliber/SKILL.md`
-- Searching available workflow guidance:
-  `.agents/skills/find-skills/SKILL.md`
-
-Do not duplicate skill content into `AGENTS.md`; keep this file as a short index
-and update the skill file itself when the detailed workflow changes. Keep the
-`.agents/skills` and `.claude/skills` copies aligned.
+- Use the `api-auth-routes` skill for `app/api/*` auth changes.
+- Use the `assistant-streaming` skill for assistant routes, memory, or SSE.
+- Use the `dividend-and-snapshot-workflows` skill for dividends, snapshots, prices, and cron flows.
+- Use the `vitest-route-testing` skill for API and server tests.
+- Use the `nextjs-app-router-fundamentals` skill for routing or App Router changes.
 
 ## Commands
 
 ```bash
 npm.cmd test -- --run __tests__/assistantRoutes.test.ts
-npm.cmd test -- --run __tests__/apiAuthRoutes.test.ts
-npm.cmd test
-```
-
-```bash
+npm.cmd test -- --run __tests__/householdUtils.test.ts
 npx tsc --noEmit
-npm.cmd run build
 ```
 
-```bash
-git diff --check
-npm.cmd run lint
-```
+## Notes
 
-## Verification
-
-- Start with the narrowest `__tests__/*` file related to the change.
-- Broaden to `npm.cmd test`, then `npx tsc --noEmit`, then `npm.cmd run build`.
-- For docs-only edits, `git diff --check` is the minimum useful check.
-- `npm.cmd run lint` may still report historical repo issues.
+- Keep `CALIBER_LEARNINGS.md` as the durable learning store.
+- Refresh `AGENTS.md` and `CLAUDE.md` together when shared conventions change.
 
 <!-- caliber:managed:pre-commit -->
 ## Before Committing
@@ -100,7 +74,7 @@ grep -q "caliber" .git/hooks/pre-commit 2>/dev/null && echo "hook-active" || ech
 - If **hook-active**: the hook handles sync automatically — just commit normally. Tell the user: "Caliber will sync your agent configs automatically via the pre-commit hook."
 - If **no-hook**: run Caliber manually before committing:
   1. Tell the user: "Caliber: Syncing agent configs with your latest changes..."
-  2. Run: `caliber refresh && git add CLAUDE.md .claude/ .cursor/ .cursorrules .github/copilot-instructions.md .github/instructions/ AGENTS.md CALIBER_LEARNINGS.md .agents/ .opencode/ 2>/dev/null`
+  2. Run: `caliber refresh && git add CALIBER_LEARNINGS.md CLAUDE.md .claude/ AGENTS.md .agents/ 2>/dev/null`
   3. After it completes, briefly tell the user what Caliber updated. Then proceed with the commit.
 
 **Valid `caliber refresh` options:** `--quiet` (suppress output) and `--dry-run` (preview without writing). Do not pass any other flags — options like `--auto-approve`, `--debug`, or `--force` do not exist and will cause errors.

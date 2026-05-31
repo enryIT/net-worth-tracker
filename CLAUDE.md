@@ -42,42 +42,10 @@ areas live in `app/dashboard/*`, `app/api/*`, `components/*`, `lib/services/*`,
 - Keep settings synchronized across types, getters, and setters.
 - Prefer `useMemo` for derived data; avoid `useEffect + setState` for computed collections.
 - Do not revert unrelated changes or touch `Draft Release Temp.md` / `Temp.md`.
-- Private `app/api/*` routes must verify Firebase UID server-side.
-- Cron routes must check `Authorization: Bearer ${process.env.CRON_SECRET}`.
-
-## Commands
-
-```bash
-npm.cmd test -- --run __tests__/householdUtils.test.ts
-npm.cmd test -- --run __tests__/assistantRoutes.test.ts
-npm.cmd test
-```
-
-```bash
-npx tsc --noEmit
-npm.cmd run build
-```
-
-```bash
-git diff --check
-npm.cmd run lint
-```
-
-## Focus Areas
-
-- Household ownership flows: `types/household.ts`, `lib/utils/householdUtils.ts`, `components/household/*`
-- Assistant flows: `app/api/ai/assistant/*`, `lib/server/assistant/*`, `components/assistant/*`
-- Snapshot and pricing flows: `app/api/portfolio/snapshot/*`, `app/api/prices/*`, `lib/helpers/priceUpdater.ts`
-- Dividend flows: `app/api/dividends/*`, `lib/server/dividendUseCase.ts`, `lib/server/dividendProcessor.ts`
-- Performance flows: `app/api/performance/*`, `lib/services/performanceService.ts`
-- PDF export: `components/pdf/*`, `lib/services/pdfDataService.ts`, `lib/utils/pdfGenerator.tsx`
-
-## Verification Notes
-
-- Use the smallest matching test first from `__tests__/*`.
-- Broaden to `npm.cmd test`, then `npx tsc --noEmit`, then `npm.cmd run build`.
-- For docs-only edits, `git diff --check` is enough.
-- `npm.cmd run lint` may still show repo-wide historical issues.
+- Private `app/api/*` routes must verify Firebase UID server-side before data access.
+- Cron routes must validate `Authorization: Bearer ${process.env.CRON_SECRET}`.
+- Use `app/api/assets/*` and `app/api/hall-of-fame/*` for the migrated local-backed flows.
+- Keep `AGENTS.md`, `.claude/rules`, and `docs/project-status.md` aligned with route and service changes.
 
 <!-- caliber:managed:pre-commit -->
 ## Before Committing
