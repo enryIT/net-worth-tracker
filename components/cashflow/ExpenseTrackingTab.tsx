@@ -922,15 +922,6 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
       return;
     }
 
-    if (movement.kind === 'investment') {
-      const linkedAsset = assets.find(asset => asset.id === movement.source.assetId);
-      const currentQuantity = linkedAsset?.quantity ?? 0;
-      if (!linkedAsset || Math.abs(currentQuantity - movement.source.resultingQuantity) > 0.000001) {
-        toast.error("Puoi modificare solo l'operazione più recente per questo asset");
-        return;
-      }
-    }
-
     setEditingMovement(movement);
     setMovementDialogOpen(true);
   };

@@ -51,11 +51,13 @@ describe('cashflow unified movement form', () => {
     expect(source).not.toContain('Storico trasferimenti');
   });
 
-  it('blocks edit for investment rows when asset quantity changed after the operation', () => {
+  it('allows edit for any investment row without latest-operation blocking checks', () => {
     const source = readFileSync('components/cashflow/ExpenseTrackingTab.tsx', 'utf8');
 
-    expect(source).toContain('Math.abs(currentQuantity - movement.source.resultingQuantity) > 0.000001');
-    expect(source).toContain("toast.error(\"Puoi modificare solo l'operazione più recente per questo asset\")");
+    expect(source).not.toContain('Math.abs(currentQuantity - movement.source.resultingQuantity) > 0.000001');
+    expect(source).not.toContain("toast.error(\"Puoi modificare solo l'operazione più recente per questo asset\")");
+    expect(source).toContain('setEditingMovement(movement);');
+    expect(source).toContain('setMovementDialogOpen(true);');
   });
 
   it('keeps update wiring for investment and transfer edit flows', () => {
