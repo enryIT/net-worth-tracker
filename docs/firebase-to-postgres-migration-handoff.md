@@ -220,6 +220,36 @@ Caveat:
 
 - `requireFirebaseAuth()` now returns a minimal compatibility token rather than full Firebase custom claims. Current repository search found no active app/lib callers outside `lib/server/apiAuth.ts` itself, but any hidden legacy caller expecting Firebase-specific claims must be migrated or extended explicitly.
 
+## Slice Notes - 2026-06-01 Dividend Use Case Settings Runtime Removal
+
+Changed:
+
+- Migrated `lib/server/dividendUseCase.ts` away from Firebase Admin runtime reads while preserving `createDividendWithOptionalExpense()` signature and behavior.
+- Replaced `adminDb.collection('assetAllocationTargets')` settings reads with `getLocalSettings(userId)` from `lib/server/settings/localSettingsService.ts`.
+- Replaced `adminDb.collection('expenseCategories')` category reads with `listLocalExpenseCategories(userId)` from `lib/server/cashflow/localExpenseCategoryService.ts`.
+- Preserved paid-date expense creation behavior:
+  - future payment dates still skip settings/category reads;
+  - missing `dividendIncomeCategoryId` still returns no linked expense;
+  - configured subcategory names are still resolved from the selected category;
+  - dividend creation remains primary and expense creation remains best-effort/non-fatal.
+- Updated `__tests__/dividendUseCase.test.ts` to mock local settings/category services instead of Firebase Admin.
+- Added `__tests__/dividendUseCaseFirebaseAdminMigration.test.ts` as the boundary test for this slice.
+
+Verified:
+
+- RED boundary test failed as expected before implementation:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-fix.cjs' npm test -- --run __tests__/dividendUseCaseFirebaseAdminMigration.test.ts`
+  - Failure included forbidden `@/lib/firebase/admin` / `adminDb` source assertions and local service mocks not being called.
+- GREEN/relevant dividend tests passed:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-fix.cjs' npm test -- --run __tests__/dividendUseCaseFirebaseAdminMigration.test.ts __tests__/dividendUseCase.test.ts __tests__/dividendIncomeServiceFirebaseAdminMigration.test.ts __tests__/dividendServiceFirebaseAdminMigration.test.ts __tests__/dividendProcessor.test.ts __tests__/localDividendExpenseSyncRoute.test.ts __tests__/localDividendStatsRoute.test.ts __tests__/localDividendScrapeRoute.test.ts __tests__/localDailyDividendProcessor.test.ts`
+  - Result: 9 files, 41 tests passed.
+- `npx tsc --noEmit --incremental false` passed.
+- Touched production file search is clean for `lib/server/dividendUseCase.ts`; remaining Firebase Admin hits in this slice are test-only boundary mocks/assertions.
+
+Caveat:
+
+- Category lookup uses `listLocalExpenseCategories(userId)` and filters in memory. This is acceptable for this compatibility slice and avoids adding a new service helper, but a direct `getLocalExpenseCategoryById(userId, categoryId)` helper may be worth adding later if category volume grows.
+
 ## Slice Notes - 2026-06-01 Dividend Income Expense Link Runtime Removal
 
 Changed:

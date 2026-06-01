@@ -9,30 +9,16 @@ const {
   deleteUpcomingFinalPremiumForAssetMock,
   getDividendByIdMock,
   createExpenseFromDividendMock,
-  settingsDocGetMock,
-  categoryDocGetMock,
+  getLocalSettingsMock,
+  listLocalExpenseCategoriesMock,
 } = vi.hoisted(() => ({
   createDividendMock: vi.fn(),
   deleteUpcomingCouponsForAssetMock: vi.fn(),
   deleteUpcomingFinalPremiumForAssetMock: vi.fn(),
   getDividendByIdMock: vi.fn(),
   createExpenseFromDividendMock: vi.fn(),
-  settingsDocGetMock: vi.fn(),
-  categoryDocGetMock: vi.fn(),
-}));
-
-vi.mock('@/lib/firebase/admin', () => ({
-  adminDb: {
-    collection: vi.fn((name: string) => {
-      if (name === 'assetAllocationTargets') {
-        return { doc: vi.fn(() => ({ get: settingsDocGetMock })) };
-      }
-      if (name === 'expenseCategories') {
-        return { doc: vi.fn(() => ({ get: categoryDocGetMock })) };
-      }
-      throw new Error(`Unexpected collection: ${name}`);
-    }),
-  },
+  getLocalSettingsMock: vi.fn(),
+  listLocalExpenseCategoriesMock: vi.fn(),
 }));
 
 vi.mock('@/lib/services/dividendService', () => ({
@@ -44,6 +30,14 @@ vi.mock('@/lib/services/dividendService', () => ({
 
 vi.mock('@/lib/services/dividendIncomeService', () => ({
   createExpenseFromDividend: createExpenseFromDividendMock,
+}));
+
+vi.mock('@/lib/server/settings/localSettingsService', () => ({
+  getLocalSettings: getLocalSettingsMock,
+}));
+
+vi.mock('@/lib/server/cashflow/localExpenseCategoryService', () => ({
+  listLocalExpenseCategories: listLocalExpenseCategoriesMock,
 }));
 
 import { createDividendWithOptionalExpense } from '@/lib/server/dividendUseCase';
@@ -87,6 +81,8 @@ describe('createDividendWithOptionalExpense', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     createDividendMock.mockResolvedValue('div-123');
+    getLocalSettingsMock.mockResolvedValue(null);
+    listLocalExpenseCategoriesMock.mockResolvedValue([]);
   });
 
   it('creates dividend and expense when paymentDate is in the past and category is configured', async () => {
@@ -94,20 +90,20 @@ describe('createDividendWithOptionalExpense', () => {
     const pastDate = '2020-06-01T00:00:00.000Z' as unknown as Date;
     const formData = makeFormData({ paymentDate: pastDate });
 
-    settingsDocGetMock.mockResolvedValue({
-      exists: true,
-      data: () => ({
-        dividendIncomeCategoryId: 'cat-1',
-        dividendIncomeSubCategoryId: 'sub-1',
-      }),
+    getLocalSettingsMock.mockResolvedValue({
+      targets: {},
+      dividendIncomeCategoryId: 'cat-1',
+      dividendIncomeSubCategoryId: 'sub-1',
     });
-    categoryDocGetMock.mockResolvedValue({
-      exists: true,
-      data: () => ({
-        name: 'Dividendi',
-        subCategories: [{ id: 'sub-1', name: 'Azioni' }],
-      }),
-    });
+    listLocalExpenseCategoriesMock.mockResolvedValue([{
+      id: 'cat-1',
+      userId: 'user-1',
+      name: 'Dividendi',
+      type: 'income',
+      subCategories: [{ id: 'sub-1', name: 'Azioni' }],
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    }]);
     getDividendByIdMock.mockResolvedValue({ id: 'div-123', netAmount: 37, currency: 'EUR' });
     createExpenseFromDividendMock.mockResolvedValue('expense-456');
 
@@ -115,6 +111,8 @@ describe('createDividendWithOptionalExpense', () => {
 
     expect(result).toEqual({ skipped: false, dividendId: 'div-123', expenseId: 'expense-456' });
     expect(createDividendMock).toHaveBeenCalledOnce();
+    expect(getLocalSettingsMock).toHaveBeenCalledWith('user-1');
+    expect(listLocalExpenseCategoriesMock).toHaveBeenCalledWith('user-1');
     expect(createExpenseFromDividendMock).toHaveBeenCalledOnce();
   });
 
@@ -126,7 +124,8 @@ describe('createDividendWithOptionalExpense', () => {
 
     expect(result).toEqual({ skipped: false, dividendId: 'div-123', expenseId: undefined });
     expect(createDividendMock).toHaveBeenCalledOnce();
-    expect(settingsDocGetMock).not.toHaveBeenCalled();
+    expect(getLocalSettingsMock).not.toHaveBeenCalled();
+    expect(listLocalExpenseCategoriesMock).not.toHaveBeenCalled();
     expect(createExpenseFromDividendMock).not.toHaveBeenCalled();
   });
 
@@ -134,14 +133,12 @@ describe('createDividendWithOptionalExpense', () => {
     const pastDate = new Date('2020-06-01');
     const formData = makeFormData({ paymentDate: pastDate });
 
-    settingsDocGetMock.mockResolvedValue({
-      exists: true,
-      data: () => ({}), // no dividendIncomeCategoryId
-    });
+    getLocalSettingsMock.mockResolvedValue({ targets: {} });
 
     const result = await createDividendWithOptionalExpense('user-1', formData, baseAsset);
 
     expect(result).toEqual({ skipped: false, dividendId: 'div-123', expenseId: undefined });
+    expect(listLocalExpenseCategoriesMock).not.toHaveBeenCalled();
     expect(createExpenseFromDividendMock).not.toHaveBeenCalled();
   });
 
@@ -191,14 +188,19 @@ describe('createDividendWithOptionalExpense', () => {
     const pastDate = new Date('2020-06-01');
     const formData = makeFormData({ paymentDate: pastDate });
 
-    settingsDocGetMock.mockResolvedValue({
-      exists: true,
-      data: () => ({ dividendIncomeCategoryId: 'cat-1' }),
+    getLocalSettingsMock.mockResolvedValue({
+      targets: {},
+      dividendIncomeCategoryId: 'cat-1',
     });
-    categoryDocGetMock.mockResolvedValue({
-      exists: true,
-      data: () => ({ name: 'Dividendi', subCategories: [] }),
-    });
+    listLocalExpenseCategoriesMock.mockResolvedValue([{
+      id: 'cat-1',
+      userId: 'user-1',
+      name: 'Dividendi',
+      type: 'income',
+      subCategories: [],
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    }]);
     getDividendByIdMock.mockResolvedValue({ id: 'div-123' });
     createExpenseFromDividendMock.mockRejectedValue(new Error('Firestore error'));
 

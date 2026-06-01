@@ -1,4 +1,3 @@
-import { adminDb } from '@/lib/firebase/admin';
 import {
   createDividend,
   deleteUpcomingCouponsForAsset,
@@ -6,9 +5,10 @@ import {
   getDividendById,
 } from '@/lib/services/dividendService';
 import { createExpenseFromDividend } from '@/lib/services/dividendIncomeService';
+import { listLocalExpenseCategories } from '@/lib/server/cashflow/localExpenseCategoryService';
+import { getLocalSettings } from '@/lib/server/settings/localSettingsService';
 import { DividendFormData } from '@/types/dividend';
 import { Asset } from '@/types/assets';
-import { ExpenseCategory } from '@/types/expenses';
 
 export type CreateDividendResult =
   | { skipped: true; reason: string }
@@ -99,28 +99,19 @@ async function createExpenseIfConfigured(
   dividendId: string
 ): Promise<string | undefined> {
   try {
-    const settingsDoc = await adminDb
-      .collection('assetAllocationTargets')
-      .doc(userId)
-      .get();
+    const settings = await getLocalSettings(userId);
+    const categoryId = settings?.dividendIncomeCategoryId;
+    if (!categoryId) return undefined;
 
-    const settings = settingsDoc.exists ? settingsDoc.data() : null;
-    if (!settings?.dividendIncomeCategoryId) return undefined;
-
-    const categoryDoc = await adminDb
-      .collection('expenseCategories')
-      .doc(settings.dividendIncomeCategoryId)
-      .get();
-
-    if (!categoryDoc.exists) return undefined;
-
-    const categoryData = categoryDoc.data() as ExpenseCategory;
-    const category = { ...categoryData, id: categoryDoc.id };
+    const categories = await listLocalExpenseCategories(userId);
+    const category = categories.find((candidate) => candidate.id === categoryId);
+    if (!category) return undefined;
 
     let subCategoryName: string | undefined;
-    if (settings.dividendIncomeSubCategoryId) {
+    const subCategoryId = settings.dividendIncomeSubCategoryId;
+    if (subCategoryId) {
       const subCategory = category.subCategories?.find(
-        (sub: any) => sub.id === settings.dividendIncomeSubCategoryId
+        (subCategoryCandidate) => subCategoryCandidate.id === subCategoryId
       );
       subCategoryName = subCategory?.name;
     }
@@ -130,9 +121,9 @@ async function createExpenseIfConfigured(
 
     return await createExpenseFromDividend(
       dividend,
-      settings.dividendIncomeCategoryId,
+      categoryId,
       category.name,
-      settings.dividendIncomeSubCategoryId,
+      subCategoryId,
       subCategoryName
     );
   } catch (error) {
