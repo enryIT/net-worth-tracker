@@ -1,20 +1,25 @@
 import 'server-only';
 
-import { adminDb } from '@/lib/firebase/admin';
-import { Timestamp } from 'firebase-admin/firestore';
+import {
+  createLocalDividendFromLegacyInput,
+  deleteLocalDividendById,
+  deleteUpcomingLocalAutoDividendsForAsset,
+  getLocalDividendByIdAnyUser,
+  hasLocalDuplicateDividend,
+  listLocalDividends,
+  listUpcomingLocalDividends,
+  updateLocalDividendById,
+} from '@/lib/server/dividends/localDividendService';
 import {
   Dividend,
   DividendFormData,
   DividendStats,
   DividendsByAsset,
-  DividendType,
 } from '@/types/dividend';
 import { convertMultipleToEur, getExchangeRateToEur } from './currencyConversionService';
 
-const DIVIDENDS_COLLECTION = 'dividends';
-
 /**
- * Remove undefined fields from an object to prevent Firebase errors
+ * Remove undefined fields from an object to prevent accidental null-writes.
  */
 function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T> {
   const cleaned: Partial<T> = {};
@@ -33,26 +38,7 @@ function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T
  */
 export async function getAllDividends(userId: string): Promise<Dividend[]> {
   try {
-    console.log('[dividendService] getAllDividends called for userId:', userId);
-    const querySnapshot = await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .where('userId', '==', userId)
-      .orderBy('paymentDate', 'desc')
-      .get();
-
-    console.log('[dividendService] Query successful, docs count:', querySnapshot.size);
-
-    const dividends = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      exDate: doc.data().exDate?.toDate() || new Date(),
-      paymentDate: doc.data().paymentDate?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Dividend[];
-
-    console.log('[dividendService] Returning', dividends.length, 'dividends');
-    return dividends;
+    return await listLocalDividends(userId);
   } catch (error) {
     console.error('[dividendService] Error getting dividends:', error);
     console.error('[dividendService] Error details:', {
@@ -73,23 +59,7 @@ export async function getDividendsByAsset(
   assetId: string
 ): Promise<Dividend[]> {
   try {
-    const querySnapshot = await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .where('userId', '==', userId)
-      .where('assetId', '==', assetId)
-      .orderBy('paymentDate', 'desc')
-      .get();
-
-    const dividends = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      exDate: doc.data().exDate?.toDate() || new Date(),
-      paymentDate: doc.data().paymentDate?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Dividend[];
-
-    return dividends;
+    return await listLocalDividends(userId, { assetId });
   } catch (error) {
     console.error('Error getting dividends by asset:', error);
     throw new Error('Failed to fetch dividends by asset');
@@ -106,24 +76,7 @@ export async function getDividendsByDateRange(
   endDate: Date
 ): Promise<Dividend[]> {
   try {
-    const querySnapshot = await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .where('userId', '==', userId)
-      .where('paymentDate', '>=', Timestamp.fromDate(startDate))
-      .where('paymentDate', '<=', Timestamp.fromDate(endDate))
-      .orderBy('paymentDate', 'desc')
-      .get();
-
-    const dividends = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      exDate: doc.data().exDate?.toDate() || new Date(),
-      paymentDate: doc.data().paymentDate?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Dividend[];
-
-    return dividends;
+    return await listLocalDividends(userId, { startDate, endDate });
   } catch (error) {
     console.error('Error getting dividends by date range:', error);
     throw new Error('Failed to fetch dividends by date range');
@@ -135,23 +88,7 @@ export async function getDividendsByDateRange(
  */
 export async function getDividendById(dividendId: string): Promise<Dividend | null> {
   try {
-    const dividendDoc = await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .doc(dividendId)
-      .get();
-
-    if (!dividendDoc.exists) {
-      return null;
-    }
-
-    return {
-      id: dividendDoc.id,
-      ...dividendDoc.data(),
-      exDate: dividendDoc.data()?.exDate?.toDate() || new Date(),
-      paymentDate: dividendDoc.data()?.paymentDate?.toDate() || new Date(),
-      createdAt: dividendDoc.data()?.createdAt?.toDate() || new Date(),
-      updatedAt: dividendDoc.data()?.updatedAt?.toDate() || new Date(),
-    } as Dividend;
+    return await getLocalDividendByIdAnyUser(dividendId);
   } catch (error) {
     console.error('Error getting dividend:', error);
     throw new Error('Failed to fetch dividend');
@@ -159,14 +96,8 @@ export async function getDividendById(dividendId: string): Promise<Dividend | nu
 }
 
 /**
- * Compute a deterministic Firestore document ID for auto-generated dividends.
+ * Compute a deterministic legacy ID for auto-generated dividends.
  * Format: {assetId}_{YYYY-MM-DD}_{dividendType}
- *
- * Using a deterministic ID makes concurrent writes idempotent: if the cron job
- * fires twice simultaneously, both writes target the same document ID and
- * last-write-wins produces exactly one document instead of two duplicates.
- *
- * Only used for isAutoGenerated=true dividends. Manual dividends use .add() (random ID).
  */
 function buildDeterministicDividendId(assetId: string, exDate: Date, dividendType: string): string {
   const dateStr = exDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
@@ -175,20 +106,6 @@ function buildDeterministicDividendId(assetId: string, exDate: Date, dividendTyp
 
 /**
  * Create a new dividend
- *
- * Features:
- * - Automatically calculates netAmount if not provided (user convenience, avoids manual calculation errors)
- * - Converts amounts to EUR if currency is different (enables multi-currency portfolio analysis in EUR base)
- * - Continues without conversion on error (graceful degradation - better to save dividend without EUR data than fail completely)
- * - Auto-generated dividends use deterministic document IDs to prevent duplicates from concurrent cron runs
- *
- * @param userId - User ID
- * @param dividendData - Dividend form data
- * @param assetTicker - Asset ticker symbol
- * @param assetName - Asset display name
- * @param assetIsin - Optional ISIN code
- * @param isAutoGenerated - Whether dividend was auto-generated (e.g., from scraping)
- * @returns Created dividend ID
  */
 export async function createDividend(
   userId: string,
@@ -199,10 +116,7 @@ export async function createDividend(
   isAutoGenerated: boolean = false
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
-
     // Auto-calculate netAmount if not already set
-    // User convenience: avoid manual calculation errors (gross - tax = net)
     const netAmount = dividendData.netAmount || (dividendData.grossAmount - dividendData.taxAmount);
 
     // Convert dates to Date objects if they're strings
@@ -214,8 +128,6 @@ export async function createDividend(
       : new Date(dividendData.paymentDate);
 
     // Currency conversion to EUR
-    // Convert foreign currency dividends to EUR to enable unified multi-currency analysis
-    // All stats, charts, and reports use EUR as the base currency
     let grossAmountEur: number | undefined;
     let taxAmountEur: number | undefined;
     let netAmountEur: number | undefined;
@@ -223,10 +135,8 @@ export async function createDividend(
 
     if (dividendData.currency.toUpperCase() !== 'EUR') {
       try {
-        // Get exchange rate
         exchangeRate = await getExchangeRateToEur(dividendData.currency);
 
-        // Convert all amounts at once for efficiency
         const [convertedGross, convertedTax, convertedNet] = await convertMultipleToEur(
           [dividendData.grossAmount, dividendData.taxAmount, netAmount],
           dividendData.currency
@@ -239,58 +149,31 @@ export async function createDividend(
         console.log(`[dividendService] Converted dividend from ${dividendData.currency} to EUR using rate ${exchangeRate}`);
       } catch (conversionError) {
         console.error('[dividendService] Currency conversion failed:', conversionError);
-        // Graceful degradation: Continue without conversion - EUR fields remain undefined
-        // Better to save dividend without EUR data than fail the entire operation
       }
     }
 
-    const cleanedData = removeUndefinedFields({
-      userId,
-      assetId: dividendData.assetId,
+    const createdDividend = await createLocalDividendFromLegacyInput(userId, {
+      dividendData: {
+        ...dividendData,
+        exDate,
+        paymentDate,
+        netAmount,
+        isAutoGenerated,
+      },
       assetTicker,
       assetName,
       assetIsin,
-      exDate: Timestamp.fromDate(exDate),
-      paymentDate: Timestamp.fromDate(paymentDate),
-      dividendPerShare: dividendData.dividendPerShare,
-      quantity: dividendData.quantity,
-      grossAmount: dividendData.grossAmount,
-      taxAmount: dividendData.taxAmount,
-      netAmount,
-      currency: dividendData.currency,
-      dividendType: dividendData.dividendType,
-      notes: dividendData.notes,
       isAutoGenerated,
-      // Historical cost basis snapshot: asset.averageCost at time of dividend creation.
-      // Undefined for dividends created before this field was introduced.
-      costPerShare: dividendData.costPerShare,
-      // Currency conversion fields (only if currency !== EUR)
       grossAmountEur,
       taxAmountEur,
       netAmountEur,
       exchangeRate,
-      createdAt: now,
-      updatedAt: now,
+      legacyDeterministicId: isAutoGenerated
+        ? buildDeterministicDividendId(dividendData.assetId, exDate, dividendData.dividendType)
+        : undefined,
     });
 
-    let docId: string;
-    if (isAutoGenerated) {
-      // Deterministic ID makes concurrent writes idempotent.
-      // .set() on an existing doc is last-write-wins — safe since
-      // concurrent writes produce identical data.
-      docId = buildDeterministicDividendId(
-        dividendData.assetId,
-        exDate,
-        dividendData.dividendType
-      );
-      await adminDb.collection(DIVIDENDS_COLLECTION).doc(docId).set(cleanedData);
-    } else {
-      // Manual dividends: preserve random ID behaviour
-      const docRef = await adminDb.collection(DIVIDENDS_COLLECTION).add(cleanedData);
-      docId = docRef.id;
-    }
-
-    return docId;
+    return createdDividend.id;
   } catch (error) {
     console.error('Error creating dividend:', error);
     throw new Error('Failed to create dividend');
@@ -306,7 +189,7 @@ export async function updateDividend(
   updates: Partial<DividendFormData>
 ): Promise<void> {
   try {
-    // Convert dates to Date objects if they're strings, then to Timestamps
+    // Convert dates to Date objects if they're strings
     const exDate = updates.exDate
       ? (updates.exDate instanceof Date ? updates.exDate : new Date(updates.exDate))
       : undefined;
@@ -328,10 +211,8 @@ export async function updateDividend(
 
     if (updates.currency && updates.currency.toUpperCase() !== 'EUR') {
       try {
-        // Get exchange rate
         exchangeRate = await getExchangeRateToEur(updates.currency);
 
-        // Determine which amounts to convert
         const amountsToConvert: number[] = [];
         if (updates.grossAmount !== undefined) amountsToConvert.push(updates.grossAmount);
         if (updates.taxAmount !== undefined) amountsToConvert.push(updates.taxAmount);
@@ -350,8 +231,6 @@ export async function updateDividend(
         console.error('[dividendService] Currency conversion failed during update:', conversionError);
       }
     } else if (updates.currency && updates.currency.toUpperCase() === 'EUR') {
-      // If currency changed to EUR, clear conversion fields to avoid storing redundant data
-      // EUR amounts don't need conversion (they ARE the base currency)
       grossAmountEur = undefined;
       taxAmountEur = undefined;
       netAmountEur = undefined;
@@ -361,19 +240,16 @@ export async function updateDividend(
     const cleanedUpdates = removeUndefinedFields({
       ...updates,
       netAmount,
-      exDate: exDate ? Timestamp.fromDate(exDate) : undefined,
-      paymentDate: paymentDate ? Timestamp.fromDate(paymentDate) : undefined,
+      exDate,
+      paymentDate,
       grossAmountEur,
       taxAmountEur,
       netAmountEur,
       exchangeRate,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
 
-    await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .doc(dividendId)
-      .update(cleanedUpdates);
+    await updateLocalDividendById(dividendId, cleanedUpdates as any);
   } catch (error) {
     console.error('Error updating dividend:', error);
     throw new Error('Failed to update dividend');
@@ -385,10 +261,7 @@ export async function updateDividend(
  */
 export async function deleteDividend(dividendId: string): Promise<void> {
   try {
-    await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .doc(dividendId)
-      .delete();
+    await deleteLocalDividendById(dividendId);
   } catch (error) {
     console.error('Error deleting dividend:', error);
     throw new Error('Failed to delete dividend');
@@ -397,14 +270,6 @@ export async function deleteDividend(dividendId: string): Promise<void> {
 
 /**
  * Calculate dividend statistics for a user
- *
- * Aggregates dividend totals by asset and type (ordinary, extraordinary, interim, final).
- * Excludes future dividends (only counts paid/realized dividends).
- *
- * @param userId - User ID
- * @param startDate - Optional start date filter
- * @param endDate - Optional end date filter
- * @returns Dividend statistics with totals and breakdowns
  */
 export async function calculateDividendStats(
   userId: string,
@@ -421,13 +286,10 @@ export async function calculateDividendStats(
       dividends = await getAllDividends(userId);
     }
 
-    // Filter by asset when a specific asset is selected
     if (assetId) {
       dividends = dividends.filter(d => d.assetId === assetId);
     }
 
-    // Filter out future dividends - only calculate stats for paid/realized dividends
-    // Upcoming dividends are tracked separately and shouldn't inflate statistics
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const paidDividends = dividends.filter(div => {
@@ -452,12 +314,10 @@ export async function calculateDividendStats(
     };
 
     paidDividends.forEach(dividend => {
-      // Total stats
       stats.totalGross += dividend.grossAmount;
       stats.totalTax += dividend.taxAmount;
       stats.totalNet += dividend.netAmount;
 
-      // By asset stats
       if (!stats.byAsset[dividend.assetId]) {
         stats.byAsset[dividend.assetId] = {
           assetTicker: dividend.assetTicker,
@@ -473,7 +333,6 @@ export async function calculateDividendStats(
       stats.byAsset[dividend.assetId].totalNet += dividend.netAmount;
       stats.byAsset[dividend.assetId].count += 1;
 
-      // By type stats
       stats.byType[dividend.dividendType].totalGross += dividend.grossAmount;
       stats.byType[dividend.dividendType].totalTax += dividend.taxAmount;
       stats.byType[dividend.dividendType].totalNet += dividend.netAmount;
@@ -497,7 +356,6 @@ export async function getDividendsByAssetGrouped(
   try {
     const dividends = await getAllDividends(userId);
 
-    // Group by assetId
     const groupedMap = new Map<string, DividendsByAsset>();
 
     dividends.forEach(dividend => {
@@ -520,7 +378,6 @@ export async function getDividendsByAssetGrouped(
       group.totalNet += dividend.netAmount;
     });
 
-    // Convert map to array and sort by total net (highest first)
     return Array.from(groupedMap.values()).sort(
       (a, b) => b.totalNet - a.totalNet
     );
@@ -536,24 +393,7 @@ export async function getDividendsByAssetGrouped(
  */
 export async function getUpcomingDividends(userId: string): Promise<Dividend[]> {
   try {
-    const now = new Date();
-    const querySnapshot = await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .where('userId', '==', userId)
-      .where('paymentDate', '>=', Timestamp.fromDate(now))
-      .orderBy('paymentDate', 'asc')
-      .get();
-
-    const dividends = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      exDate: doc.data().exDate?.toDate() || new Date(),
-      paymentDate: doc.data().paymentDate?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Dividend[];
-
-    return dividends;
+    return await listUpcomingLocalDividends(userId, new Date());
   } catch (error) {
     console.error('Error getting upcoming dividends:', error);
     throw new Error('Failed to fetch upcoming dividends');
@@ -562,14 +402,6 @@ export async function getUpcomingDividends(userId: string): Promise<Dividend[]> 
 
 /**
  * Check if a dividend already exists for an asset on a specific ex-date
- *
- * Uses same-day range logic (00:00:00 to 23:59:59) to match dividends with the same ex-date,
- * even if the exact timestamp differs slightly. This prevents duplicate imports from scraping.
- *
- * @param userId - User ID
- * @param assetId - Asset ID
- * @param exDate - Ex-dividend date to check
- * @returns True if duplicate exists, false otherwise
  */
 export async function isDuplicateDividend(
   userId: string,
@@ -577,22 +409,12 @@ export async function isDuplicateDividend(
   exDate: Date
 ): Promise<boolean> {
   try {
-    // Create date range for the same day (start of day to end of day)
-    // This accounts for timezone differences and inexact timestamps from scrapers
     const startOfDay = new Date(exDate);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(exDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const querySnapshot = await adminDb
-      .collection(DIVIDENDS_COLLECTION)
-      .where('userId', '==', userId)
-      .where('assetId', '==', assetId)
-      .where('exDate', '>=', Timestamp.fromDate(startOfDay))
-      .where('exDate', '<=', Timestamp.fromDate(endOfDay))
-      .get();
-
-    return !querySnapshot.empty;
+    return await hasLocalDuplicateDividend(userId, assetId, startOfDay, endOfDay);
   } catch (error) {
     console.error('Error checking duplicate dividend:', error);
     throw new Error('Failed to check duplicate dividend');
@@ -612,15 +434,6 @@ export function calculateWithholdingTax(
 
 /**
  * Delete all upcoming auto-generated coupon dividends for an asset.
- *
- * Used before generating a new next-coupon entry when bond details change
- * (e.g., rate update, quantity change, frequency change).
- *
- * Why: We store only the "next" coupon per bond. On any asset update,
- * we delete the old upcoming coupon and regenerate with new parameters.
- *
- * @param userId - User ID (security filter)
- * @param assetId - Asset ID to clean up coupons for
  */
 export async function deleteUpcomingCouponsForAsset(
   userId: string,
@@ -629,42 +442,15 @@ export async function deleteUpcomingCouponsForAsset(
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
-  const querySnapshot = await adminDb
-    .collection(DIVIDENDS_COLLECTION)
-    .where('userId', '==', userId)
-    .where('assetId', '==', assetId)
-    .where('dividendType', '==', 'coupon')
-    .where('isAutoGenerated', '==', true)
-    .where('paymentDate', '>=', Timestamp.fromDate(now))
-    .get();
-
-  if (querySnapshot.empty) return;
-
-  const batch = adminDb.batch();
-  querySnapshot.docs.forEach(doc => batch.delete(doc.ref));
-  await batch.commit();
+  await deleteUpcomingLocalAutoDividendsForAsset(userId, assetId, 'coupon', now);
 }
 
 /**
  * Deletes all auto-generated finalPremium dividends for an asset.
- * Called before regenerating the final premium when bond details change.
- * No date filter: there is at most one finalPremium per asset.
  */
 export async function deleteUpcomingFinalPremiumForAsset(
   userId: string,
   assetId: string
 ): Promise<void> {
-  const querySnapshot = await adminDb
-    .collection(DIVIDENDS_COLLECTION)
-    .where('userId', '==', userId)
-    .where('assetId', '==', assetId)
-    .where('dividendType', '==', 'finalPremium')
-    .where('isAutoGenerated', '==', true)
-    .get();
-
-  if (querySnapshot.empty) return;
-
-  const batch = adminDb.batch();
-  querySnapshot.docs.forEach(doc => batch.delete(doc.ref));
-  await batch.commit();
+  await deleteUpcomingLocalAutoDividendsForAsset(userId, assetId, 'finalPremium');
 }

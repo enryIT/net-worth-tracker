@@ -161,6 +161,35 @@ npm test -- --run __tests__/localExpenseService.test.ts __tests__/localExpensesR
 
 Result: 5 test files, 37 tests passed.
 
+## Slice Notes - 2026-06-01 Dividend Service Admin Runtime Removal
+
+Changed:
+
+- Migrated `lib/services/dividendService.ts` away from Firebase Admin runtime imports (`@/lib/firebase/admin`, `firebase-admin/firestore`) while preserving legacy exported function signatures.
+- Replaced direct Firestore reads/writes with delegation to local server helpers in `lib/server/dividends/localDividendService.ts`.
+- Extended `lib/server/dividends/localDividendService.ts` with narrow helper exports for legacy wrapper compatibility:
+  - `getLocalDividendByIdAnyUser`
+  - `createLocalDividendFromLegacyInput` (supports deterministic auto-generated idempotency via `legacyFirebaseId` upsert)
+  - `updateLocalDividendById`
+  - `deleteLocalDividendById`
+  - `listUpcomingLocalDividends`
+  - `hasLocalDuplicateDividend`
+  - `deleteUpcomingLocalAutoDividendsForAsset`
+- Preserved `dividendService` currency-conversion flow and grouped/stat aggregation behavior while moving persistence to local helpers.
+
+Verified:
+
+- RED boundary test (before implementation) failed as expected:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-fix.cjs' npm test -- --run __tests__/dividendServiceFirebaseAdminMigration.test.ts`
+  - Failure included forbidden Firebase Admin import assertions and missing local-helper delegation calls.
+- GREEN boundary test (after implementation) passed:
+  - `npm test -- --run __tests__/dividendServiceFirebaseAdminMigration.test.ts`
+  - Result: 1 file, 4 tests passed.
+- Relevant dividend regression tests passed:
+  - `npm test -- --run __tests__/dividendServiceFirebaseAdminMigration.test.ts __tests__/localDividendService.test.ts __tests__/localDividendsRoutes.test.ts __tests__/dividendUseCase.test.ts __tests__/dividendProcessor.test.ts`
+  - Result: 5 files, 32 tests passed.
+- `npx tsc --noEmit --incremental false` passed.
+
 ## Slice Notes - 2026-05-22 Cost Centers Client Wrapper
 
 Changed:
