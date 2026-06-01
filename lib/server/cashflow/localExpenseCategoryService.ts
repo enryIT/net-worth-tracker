@@ -33,12 +33,32 @@ export async function listLocalExpenseCategories(
 
 export async function createLocalExpenseCategory(
   userId: string,
-  categoryData: ExpenseCategoryFormData
+  categoryData: ExpenseCategoryFormData & { legacyFirebaseId?: string }
 ): Promise<ExpenseCategory> {
+  const writeData = buildCategoryData(categoryData);
+
+  if (categoryData.legacyFirebaseId) {
+    const row = await prisma.expenseCategory.upsert({
+      where: {
+        userId_legacyFirebaseId: {
+          userId,
+          legacyFirebaseId: categoryData.legacyFirebaseId,
+        },
+      },
+      create: {
+        userId,
+        ...writeData,
+      },
+      update: omitLegacyFirebaseId(writeData),
+    });
+
+    return mapExpenseCategoryRow(row);
+  }
+
   const row = await prisma.expenseCategory.create({
     data: {
       userId,
-      ...buildCategoryData(categoryData),
+      ...writeData,
     },
   });
 
@@ -107,6 +127,7 @@ type LocalExpenseCategoryWriteData = {
   color?: string;
   icon?: string;
   subCategories: Prisma.InputJsonValue;
+  legacyFirebaseId?: string;
 };
 
 async function cascadeExpenseCategoryChanges(
@@ -156,14 +177,32 @@ function needsSignFlip(
 }
 
 function buildCategoryData(
-  categoryData: ExpenseCategoryFormData
+  categoryData: ExpenseCategoryFormData & { legacyFirebaseId?: string }
 ): LocalExpenseCategoryWriteData {
-  return {
+  const data: LocalExpenseCategoryWriteData = {
     name: categoryData.name,
     type: categoryData.type,
     color: categoryData.color,
     icon: categoryData.icon,
     subCategories: (categoryData.subCategories ?? []) as unknown as Prisma.InputJsonValue,
+  };
+
+  if (categoryData.legacyFirebaseId) {
+    data.legacyFirebaseId = categoryData.legacyFirebaseId;
+  }
+
+  return data;
+}
+
+function omitLegacyFirebaseId(
+  data: LocalExpenseCategoryWriteData
+): Omit<LocalExpenseCategoryWriteData, "legacyFirebaseId"> {
+  return {
+    name: data.name,
+    type: data.type,
+    color: data.color,
+    icon: data.icon,
+    subCategories: data.subCategories,
   };
 }
 

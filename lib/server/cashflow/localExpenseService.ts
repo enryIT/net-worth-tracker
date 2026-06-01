@@ -43,6 +43,7 @@ export type LocalExpenseInput = {
   attributionProfileId?: string;
   attributionProfileName?: string;
   attributionSplits?: OwnershipSplit[];
+  legacyFirebaseId?: string;
 };
 
 export type LocalExpenseListOptions = {
@@ -133,10 +134,30 @@ export async function createLocalExpense(
   userId: string,
   expenseData: LocalExpenseInput
 ): Promise<Expense> {
+  const writeData = buildExpenseData(expenseData);
+
+  if (expenseData.legacyFirebaseId) {
+    const row = await prisma.expense.upsert({
+      where: {
+        userId_legacyFirebaseId: {
+          userId,
+          legacyFirebaseId: expenseData.legacyFirebaseId,
+        },
+      },
+      create: {
+        userId,
+        ...writeData,
+      },
+      update: omitLegacyFirebaseId(writeData),
+    });
+
+    return mapExpenseRow(row);
+  }
+
   const row = await prisma.expense.create({
     data: {
       userId,
-      ...buildExpenseData(expenseData),
+      ...writeData,
     },
   });
 
@@ -311,10 +332,11 @@ type LocalExpenseWriteData = {
   costCenterId?: string | null;
   costCenterName?: string | null;
   metadata: Prisma.InputJsonObject;
+  legacyFirebaseId?: string;
 };
 
 function buildExpenseData(expenseData: LocalExpenseInput): LocalExpenseWriteData {
-  return {
+  const data: LocalExpenseWriteData = {
     type: expenseData.type,
     categoryId: expenseData.categoryId,
     categoryName: expenseData.categoryName,
@@ -328,6 +350,32 @@ function buildExpenseData(expenseData: LocalExpenseInput): LocalExpenseWriteData
     costCenterId: expenseData.costCenterId,
     costCenterName: expenseData.costCenterName,
     metadata: buildExpenseMetadata(expenseData),
+  };
+
+  if (expenseData.legacyFirebaseId) {
+    data.legacyFirebaseId = expenseData.legacyFirebaseId;
+  }
+
+  return data;
+}
+
+function omitLegacyFirebaseId(
+  data: LocalExpenseWriteData
+): Omit<LocalExpenseWriteData, "legacyFirebaseId"> {
+  return {
+    type: data.type,
+    categoryId: data.categoryId,
+    categoryName: data.categoryName,
+    subCategoryId: data.subCategoryId,
+    subCategoryName: data.subCategoryName,
+    amount: data.amount,
+    currency: data.currency,
+    date: data.date,
+    notes: data.notes,
+    link: data.link,
+    costCenterId: data.costCenterId,
+    costCenterName: data.costCenterName,
+    metadata: data.metadata,
   };
 }
 

@@ -21,6 +21,7 @@ export const expenseCategorySchema = z.object({
   color: z.string().trim().optional(),
   icon: z.string().trim().optional(),
   subCategories: z.array(subCategorySchema).optional(),
+  legacyFirebaseId: z.string().trim().min(1).optional(),
 });
 
 export async function GET() {

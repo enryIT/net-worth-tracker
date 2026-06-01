@@ -1,7 +1,5 @@
-import { collection, doc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import type { MonthlySnapshot } from '@/types/assets';
-import type { Expense, ExpenseCategory, ExpenseType } from '@/types/expenses';
+import type { ExpenseType } from '@/types/expenses';
 
 interface DummySnapshotParams {
   userId: string;
@@ -17,6 +15,29 @@ interface DummyAsset {
   name: string;
   assetClass: string;
 }
+
+interface DummyCategoryRecord {
+  id: string;
+  name: string;
+  type: ExpenseType;
+}
+
+type SnapshotWritePayload = {
+  year: number;
+  month: number;
+  isDummy: boolean;
+  totalNetWorth: number;
+  liquidNetWorth: number;
+  illiquidNetWorth: number;
+  byAssetClass: MonthlySnapshot['byAssetClass'];
+  byAsset: MonthlySnapshot['byAsset'];
+  assetAllocation: MonthlySnapshot['assetAllocation'];
+};
+
+const SNAPSHOTS_API_PATH = '/api/snapshots';
+const EXPENSE_CATEGORIES_API_PATH = '/api/expense-categories';
+const EXPENSES_API_PATH = '/api/expenses';
+const SNAPSHOT_GENERATION_ERROR = 'Errore durante la creazione degli snapshot fittizi.';
 
 // Dummy assets to use in snapshots
 const DUMMY_ASSETS: DummyAsset[] = [
@@ -59,21 +80,21 @@ export async function generateDummySnapshots(params: DummySnapshotParams): Promi
     averageMonthlyExpenses,
   } = params;
 
-  const snapshots: MonthlySnapshot[] = [];
+  const snapshots: SnapshotWritePayload[] = [];
   const currentDate = new Date();
 
   // Create dummy categories for expenses if income/expenses generation is enabled
-  let categoriesByType: Map<ExpenseType, ExpenseCategory[]> | undefined;
+  let categoriesByType: Map<ExpenseType, DummyCategoryRecord[]> | undefined;
   if (averageMonthlyIncome !== undefined && averageMonthlyExpenses !== undefined) {
     categoriesByType = await createDummyCategories(userId);
   }
 
   // Asset allocation percentages (constant throughout simulation)
-  const EQUITY_ALLOCATION = 0.60;   // 60%
-  const BONDS_ALLOCATION = 0.25;    // 25%
-  const CRYPTO_ALLOCATION = 0.08;   // 8%
+  const EQUITY_ALLOCATION = 0.60; // 60%
+  const BONDS_ALLOCATION = 0.25; // 25%
+  const CRYPTO_ALLOCATION = 0.08; // 8%
   const REALESTATE_ALLOCATION = 0.05; // 5%
-  const CASH_ALLOCATION = 0.02;     // 2%
+  const CASH_ALLOCATION = 0.02; // 2%
 
   // Calculate initial values for each asset class
   let equityValue = initialNetWorth * EQUITY_ALLOCATION;
@@ -142,79 +163,18 @@ export async function generateDummySnapshots(params: DummySnapshotParams): Promi
     const realestate = realEstateHistory[monthsFromStart];
     const cash = cashHistory[monthsFromStart];
 
-    // Calculate liquid/illiquid split
-    // Real estate is illiquid, others are liquid
-    const liquidNetWorth = equity + bonds + crypto + cash;
-    const illiquidNetWorth = realestate;
-
-    // Use pre-calculated values for each asset class
-    const byAssetClass = {
+    const snapshotPayload = buildSnapshotPayload({
+      year,
+      month,
+      totalNetWorth,
       equity,
       bonds,
       crypto,
       realestate,
       cash,
-      commodity: 0, // No commodity allocation in dummy data
-    };
-
-    // Calculate allocation percentages based on actual values (will vary over time)
-    const assetAllocation = {
-      equity: totalNetWorth > 0 ? (equity / totalNetWorth) * 100 : 0,
-      bonds: totalNetWorth > 0 ? (bonds / totalNetWorth) * 100 : 0,
-      crypto: totalNetWorth > 0 ? (crypto / totalNetWorth) * 100 : 0,
-      realestate: totalNetWorth > 0 ? (realestate / totalNetWorth) * 100 : 0,
-      cash: totalNetWorth > 0 ? (cash / totalNetWorth) * 100 : 0,
-      commodity: 0,
-    };
-
-    // Generate individual asset snapshots
-    const byAsset = DUMMY_ASSETS.map((asset, index) => {
-      const assetClassValue = byAssetClass[asset.assetClass as keyof typeof byAssetClass];
-      const numAssetsInClass = DUMMY_ASSETS.filter(a => a.assetClass === asset.assetClass).length;
-
-      // Distribute asset class value among assets in that class
-      const totalValue = assetClassValue / numAssetsInClass;
-
-      // Generate random but realistic price
-      let price: number;
-      if (asset.assetClass === 'crypto') {
-        price = Math.random() * 50000 + 10000; // Crypto: 10k-60k
-      } else if (asset.assetClass === 'equity') {
-        price = Math.random() * 200 + 50; // Stocks: 50-250
-      } else if (asset.assetClass === 'realestate') {
-        price = Math.random() * 100000 + 50000; // Real estate: 50k-150k
-      } else {
-        price = Math.random() * 100 + 50; // Others: 50-150
-      }
-
-      const quantity = totalValue / price;
-
-      return {
-        assetId: `dummy-asset-${index + 1}`,
-        ticker: asset.ticker,
-        name: asset.name,
-        quantity: Math.round(quantity * 100) / 100, // Round to 2 decimals
-        price: Math.round(price * 100) / 100,
-        totalValue: Math.round(totalValue * 100) / 100,
-      };
     });
 
-    // Create the snapshot
-    const snapshot: MonthlySnapshot = {
-      userId,
-      year,
-      month,
-      isDummy: true, // Mark as dummy/test data
-      totalNetWorth: Math.round(totalNetWorth * 100) / 100,
-      liquidNetWorth: Math.round(liquidNetWorth * 100) / 100,
-      illiquidNetWorth: Math.round(illiquidNetWorth * 100) / 100,
-      byAssetClass,
-      byAsset,
-      assetAllocation,
-      createdAt: Timestamp.now(),
-    };
-
-    snapshots.push(snapshot);
+    snapshots.push(snapshotPayload);
 
     // Generate expenses and income for this month if enabled
     if (categoriesByType && averageMonthlyIncome !== undefined && averageMonthlyExpenses !== undefined) {
@@ -229,14 +189,8 @@ export async function generateDummySnapshots(params: DummySnapshotParams): Promi
     }
   }
 
-  // Save all snapshots to Firebase
-  const snapshotsCollection = collection(db, 'monthly-snapshots');
-
   for (const snapshot of snapshots) {
-    const docId = `${snapshot.userId}-${snapshot.year}-${snapshot.month}`;
-    const docRef = doc(snapshotsCollection, docId);
-
-    await setDoc(docRef, snapshot, { merge: true });
+    await postLocalJson(SNAPSHOTS_API_PATH, snapshot);
   }
 }
 
@@ -267,26 +221,19 @@ const DUMMY_CATEGORIES: Array<{ name: string; type: ExpenseType; color: string }
 /**
  * Creates dummy expense categories if they don't exist
  */
-async function createDummyCategories(userId: string): Promise<Map<ExpenseType, ExpenseCategory[]>> {
-  const categoriesCollection = collection(db, 'expenseCategories');
-  const categoriesByType = new Map<ExpenseType, ExpenseCategory[]>();
+async function createDummyCategories(userId: string): Promise<Map<ExpenseType, DummyCategoryRecord[]>> {
+  const categoriesByType = new Map<ExpenseType, DummyCategoryRecord[]>();
 
   for (const categoryDef of DUMMY_CATEGORIES) {
-    const categoryId = `dummy-category-${categoryDef.type}-${categoryDef.name.toLowerCase().replace(/\s+/g, '-')}`;
+    const legacyCategoryId = `dummy-category-${categoryDef.type}-${slugifyCategoryName(categoryDef.name)}`;
 
-    const category: ExpenseCategory = {
-      id: categoryId,
-      userId,
+    const category = await postLocalJson<DummyCategoryRecord>(EXPENSE_CATEGORIES_API_PATH, {
       name: categoryDef.name,
       type: categoryDef.type,
       color: categoryDef.color,
       subCategories: [],
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    const docRef = doc(categoriesCollection, categoryId);
-    await setDoc(docRef, category, { merge: true });
+      legacyFirebaseId: legacyCategoryId,
+    });
 
     if (!categoriesByType.has(categoryDef.type)) {
       categoriesByType.set(categoryDef.type, []);
@@ -301,8 +248,8 @@ async function createDummyCategories(userId: string): Promise<Map<ExpenseType, E
  * Generates random amount with realistic variation
  */
 function generateRandomAmount(baseAmount: number, variationPercent: number): number {
-  const variation = (Math.random() - 0.5) * 2 * variationPercent / 100;
-  return Math.round((baseAmount * (1 + variation)) * 100) / 100;
+  const variation = ((Math.random() - 0.5) * 2 * variationPercent) / 100;
+  return Math.round(baseAmount * (1 + variation) * 100) / 100;
 }
 
 /**
@@ -312,12 +259,22 @@ async function generateMonthlyExpenses(
   userId: string,
   year: number,
   month: number,
-  categoriesByType: Map<ExpenseType, ExpenseCategory[]>,
+  categoriesByType: Map<ExpenseType, DummyCategoryRecord[]>,
   averageMonthlyIncome: number,
   averageMonthlyExpenses: number
 ): Promise<void> {
-  const expensesCollection = collection(db, 'expenses');
-  const expenses: Expense[] = [];
+  const expenses: Array<{
+    type: ExpenseType;
+    categoryId: string;
+    categoryName: string;
+    amount: number;
+    currency: string;
+    date: string;
+    notes: string;
+    isRecurring?: boolean;
+    recurringDay?: number;
+    legacyFirebaseId: string;
+  }> = [];
 
   // Generate income entries (1-3 per month)
   const incomeCategories = categoriesByType.get('income') || [];
@@ -326,29 +283,24 @@ async function generateMonthlyExpenses(
 
   for (let i = 0; i < numIncomeEntries && i < incomeCategories.length; i++) {
     const category = incomeCategories[i];
-    const amount = generateRandomAmount(incomePerEntry, 8); // ±8% variation
+    const amount = generateRandomAmount(incomePerEntry, 8); // +/-8% variation
     const dayOfMonth = Math.floor(Math.random() * 28) + 1;
 
-    const expense: Expense = {
-      id: `dummy-income-${userId}-${year}-${month}-${i}`,
-      userId,
+    expenses.push({
       type: 'income',
       categoryId: category.id,
       categoryName: category.name,
       amount: Math.abs(amount), // Income is positive
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth).toISOString(),
       notes: 'Entrata fittizia generata automaticamente',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    expenses.push(expense);
+      legacyFirebaseId: `dummy-income-${userId}-${year}-${month}-${i}`,
+    });
   }
 
   // Calculate expense distribution
   const fixedExpenses = averageMonthlyExpenses * 0.35; // 35% fixed
-  const variableExpenses = averageMonthlyExpenses * 0.50; // 50% variable
+  const variableExpenses = averageMonthlyExpenses * 0.5; // 50% variable
   const debtExpenses = averageMonthlyExpenses * 0.15; // 15% debt
 
   // Generate fixed expenses (constant with minimal variation)
@@ -357,24 +309,19 @@ async function generateMonthlyExpenses(
 
   for (let i = 0; i < fixedCategories.length; i++) {
     const category = fixedCategories[i];
-    const amount = generateRandomAmount(fixedPerCategory, 3); // ±3% variation
-    const dayOfMonth = (i * 7 + 5) % 28 + 1; // Spread throughout month
+    const amount = generateRandomAmount(fixedPerCategory, 3); // +/-3% variation
+    const dayOfMonth = ((i * 7 + 5) % 28) + 1; // Spread throughout month
 
-    const expense: Expense = {
-      id: `dummy-fixed-${userId}-${year}-${month}-${i}`,
-      userId,
+    expenses.push({
       type: 'fixed',
       categoryId: category.id,
       categoryName: category.name,
       amount: -Math.abs(amount), // Expenses are negative
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth).toISOString(),
       notes: 'Spesa fissa fittizia',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    expenses.push(expense);
+      legacyFirebaseId: `dummy-fixed-${userId}-${year}-${month}-${i}`,
+    });
   }
 
   // Generate variable expenses (high variation, multiple entries)
@@ -384,24 +331,19 @@ async function generateMonthlyExpenses(
 
   for (let i = 0; i < numVariableEntries; i++) {
     const category = variableCategories[Math.floor(Math.random() * variableCategories.length)];
-    const amount = generateRandomAmount(variablePerEntry, 40); // ±40% variation
+    const amount = generateRandomAmount(variablePerEntry, 40); // +/-40% variation
     const dayOfMonth = Math.floor(Math.random() * 28) + 1;
 
-    const expense: Expense = {
-      id: `dummy-variable-${userId}-${year}-${month}-${i}`,
-      userId,
+    expenses.push({
       type: 'variable',
       categoryId: category.id,
       categoryName: category.name,
       amount: -Math.abs(amount), // Expenses are negative
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth).toISOString(),
       notes: 'Spesa variabile fittizia',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    expenses.push(expense);
+      legacyFirebaseId: `dummy-variable-${userId}-${year}-${month}-${i}`,
+    });
   }
 
   // Generate debt expenses (constant)
@@ -410,49 +352,175 @@ async function generateMonthlyExpenses(
 
   for (let i = 0; i < debtCategories.length; i++) {
     const category = debtCategories[i];
-    const amount = generateRandomAmount(debtPerCategory, 1); // ±1% variation (almost constant)
+    const amount = generateRandomAmount(debtPerCategory, 1); // +/-1% variation (almost constant)
     const dayOfMonth = i === 0 ? 1 : 15; // 1st or 15th of month
 
-    const expense: Expense = {
-      id: `dummy-debt-${userId}-${year}-${month}-${i}`,
-      userId,
+    expenses.push({
       type: 'debt',
       categoryId: category.id,
       categoryName: category.name,
       amount: -Math.abs(amount), // Expenses are negative
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth).toISOString(),
       notes: 'Debito fittizio',
       isRecurring: true,
       recurringDay: dayOfMonth,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    };
-
-    expenses.push(expense);
+      legacyFirebaseId: `dummy-debt-${userId}-${year}-${month}-${i}`,
+    });
   }
 
-  // Save all expenses to Firebase
   for (const expense of expenses) {
-    const docRef = doc(expensesCollection, expense.id);
-    await setDoc(docRef, expense, { merge: true });
+    await postLocalJson(EXPENSES_API_PATH, expense);
   }
+}
+
+function buildSnapshotPayload(input: {
+  year: number;
+  month: number;
+  totalNetWorth: number;
+  equity: number;
+  bonds: number;
+  crypto: number;
+  realestate: number;
+  cash: number;
+}): SnapshotWritePayload {
+  const {
+    year,
+    month,
+    totalNetWorth,
+    equity,
+    bonds,
+    crypto,
+    realestate,
+    cash,
+  } = input;
+
+  // Real estate is illiquid, others are liquid
+  const liquidNetWorth = equity + bonds + crypto + cash;
+  const illiquidNetWorth = realestate;
+
+  // Use pre-calculated values for each asset class
+  const byAssetClass = {
+    equity,
+    bonds,
+    crypto,
+    realestate,
+    cash,
+    commodity: 0, // No commodity allocation in dummy data
+  };
+
+  // Calculate allocation percentages based on actual values (will vary over time)
+  const assetAllocation = {
+    equity: totalNetWorth > 0 ? (equity / totalNetWorth) * 100 : 0,
+    bonds: totalNetWorth > 0 ? (bonds / totalNetWorth) * 100 : 0,
+    crypto: totalNetWorth > 0 ? (crypto / totalNetWorth) * 100 : 0,
+    realestate: totalNetWorth > 0 ? (realestate / totalNetWorth) * 100 : 0,
+    cash: totalNetWorth > 0 ? (cash / totalNetWorth) * 100 : 0,
+    commodity: 0,
+  };
+
+  // Generate individual asset snapshots
+  const byAsset = DUMMY_ASSETS.map((asset, index) => {
+    const assetClassValue = byAssetClass[asset.assetClass as keyof typeof byAssetClass];
+    const numAssetsInClass = DUMMY_ASSETS.filter(a => a.assetClass === asset.assetClass).length;
+
+    // Distribute asset class value among assets in that class
+    const totalValue = assetClassValue / numAssetsInClass;
+
+    // Generate random but realistic price
+    let price: number;
+    if (asset.assetClass === 'crypto') {
+      price = Math.random() * 50000 + 10000; // Crypto: 10k-60k
+    } else if (asset.assetClass === 'equity') {
+      price = Math.random() * 200 + 50; // Stocks: 50-250
+    } else if (asset.assetClass === 'realestate') {
+      price = Math.random() * 100000 + 50000; // Real estate: 50k-150k
+    } else {
+      price = Math.random() * 100 + 50; // Others: 50-150
+    }
+
+    const quantity = totalValue / price;
+
+    return {
+      assetId: `dummy-asset-${index + 1}`,
+      ticker: asset.ticker,
+      name: asset.name,
+      quantity: Math.round(quantity * 100) / 100, // Round to 2 decimals
+      price: Math.round(price * 100) / 100,
+      totalValue: Math.round(totalValue * 100) / 100,
+    };
+  });
+
+  return {
+    year,
+    month,
+    isDummy: true,
+    totalNetWorth: Math.round(totalNetWorth * 100) / 100,
+    liquidNetWorth: Math.round(liquidNetWorth * 100) / 100,
+    illiquidNetWorth: Math.round(illiquidNetWorth * 100) / 100,
+    byAssetClass,
+    byAsset,
+    assetAllocation,
+  };
+}
+
+function slugifyCategoryName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '-');
+}
+
+async function postLocalJson<TResponse = unknown>(
+  url: string,
+  body: unknown
+): Promise<TResponse> {
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  return parseJsonResponse<TResponse>(response);
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: string }
+    | T
+    | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload &&
+        typeof payload === 'object' &&
+        'error' in payload &&
+        typeof payload.error === 'string'
+        ? payload.error
+        : SNAPSHOT_GENERATION_ERROR
+    );
+  }
+
+  return payload as T;
 }
 
 /**
  * Generates a single dummy snapshot for a specific month
  */
 export async function generateSingleDummySnapshot(
-  userId: string,
+  _userId: string,
   year: number,
   month: number,
   netWorth: number
 ): Promise<void> {
-  // Use the main function with 1 month and adjust the date
-  await generateDummySnapshots({
-    userId,
-    initialNetWorth: netWorth,
-    monthlyGrowthRate: 0,
-    numberOfMonths: 1,
+  const snapshot = buildSnapshotPayload({
+    year,
+    month,
+    totalNetWorth: netWorth,
+    equity: netWorth * 0.6,
+    bonds: netWorth * 0.25,
+    crypto: netWorth * 0.08,
+    realestate: netWorth * 0.05,
+    cash: netWorth * 0.02,
   });
+
+  await postLocalJson(SNAPSHOTS_API_PATH, snapshot);
 }

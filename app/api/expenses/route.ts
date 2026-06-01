@@ -62,6 +62,7 @@ export const expenseSchema = z.object({
   attributionProfileId: z.string().optional(),
   attributionProfileName: z.string().optional(),
   attributionSplits: z.array(attributionSplitSchema).optional(),
+  legacyFirebaseId: z.string().trim().min(1).optional(),
 });
 
 export async function GET(request?: NextRequest) {

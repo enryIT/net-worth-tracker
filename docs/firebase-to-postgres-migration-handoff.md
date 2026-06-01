@@ -1182,6 +1182,57 @@ Remaining:
   auth compatibility, dividend processing, and price updater paths. Rerun the
   residual search before selecting the next slice.
 
+## Slice Notes - 2026-06-01 Dummy Snapshot Generator Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/dummySnapshotGenerator.ts` from direct Firebase
+  client SDK writes to local authenticated API calls while preserving the legacy
+  exported `generateDummySnapshots(params)` and
+  `generateSingleDummySnapshot(userId, year, month, netWorth)` signatures used by
+  existing UI code.
+- Snapshot generation now posts dummy monthly snapshots to `/api/snapshots` with
+  `isDummy: true` instead of calling Firestore `setDoc`.
+- Optional generated cashflow now posts categories to `/api/expense-categories`
+  and expenses to `/api/expenses`, carrying deterministic legacy dummy markers
+  in `legacyFirebaseId` so the migrated dummy cleanup service can count/delete
+  those rows safely.
+- Added narrow route/service support for `legacyFirebaseId` on category and
+  expense creation. When present, local services use user-scoped Prisma upserts
+  on `(userId, legacyFirebaseId)` to preserve idempotent dummy generation without
+  exposing caller-supplied database primary keys.
+- Added client wrapper regression tests proving the generator has no active
+  Firebase runtime imports and delegates snapshot/category/expense creation to
+  local APIs.
+
+Verified:
+
+- `npm test -- --run __tests__/dummySnapshotGeneratorClientMigration.test.ts __tests__/localExpenseService.test.ts __tests__/localExpenseCategoryService.test.ts __tests__/localExpensesRoutes.test.ts __tests__/localExpenseCategoriesRoutes.test.ts`
+  passed: 5 files, 38 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- Residual Firebase search found no matches in
+  `lib/services/dummySnapshotGenerator.ts`; remaining hits for this slice are
+  only the new boundary/regression test mocks and assertions.
+- Full residual search count after this slice: 384 matching lines across app,
+  lib, components, types, and tests.
+
+Caveats:
+
+- The new expense/category upsert path intentionally uses `legacyFirebaseId` only
+  as a scoped idempotency key; existing route-created records without this key
+  keep the previous create behavior.
+- Generated dummy data is still session-scoped by the local API routes; the
+  legacy `userId` parameter remains only to preserve existing wrapper signatures
+  and deterministic dummy legacy IDs.
+
+Remaining:
+
+- Active Firebase runtime dependencies still remain outside this slice, notably
+  expenses, performance, dividends, dashboard overview compatibility services,
+  periodic email, assistant legacy store, API auth compatibility, dividend
+  processing, and price updater paths. Rerun the residual search before
+  selecting the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -1190,7 +1241,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 High-value next targets:
 
 - `lib/services/expenseService.ts`
-- `lib/services/dummySnapshotGenerator.ts`
 - `lib/services/snapshotService.ts`
 - `lib/services/performanceService.ts`
 - `lib/services/dashboardOverviewService.ts`
