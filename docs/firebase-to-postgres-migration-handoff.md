@@ -1346,6 +1346,42 @@ Per the Hermes coding workflow rule, application source-code changes for the
 next bounded coding slice were not made directly by Hermes after Codex became
 unavailable.
 
+## Slice Notes - 2026-06-01 Dashboard Overview Compatibility Wrapper Delegation
+
+Changed:
+
+- Replaced the legacy Firebase Admin compatibility layer in
+  `lib/services/dashboardOverviewService.ts` with a minimal delegation wrapper
+  to `getLocalDashboardOverview(userId)` in
+  `lib/server/dashboard/localDashboardOverviewService.ts`.
+- Preserved the public signature
+  `getDashboardOverview(userId): Promise<DashboardOverviewPayload>`.
+- Added a boundary regression in
+  `__tests__/dashboardOverviewService.test.ts` that:
+  - reads `lib/services/dashboardOverviewService.ts` and fails if
+    `firebase-admin/firestore`, `@/lib/firebase/admin`, `adminDb`, `Timestamp`,
+    or `FirebaseFirestore` symbols are present;
+  - verifies `getDashboardOverview(userId)` delegates to
+    `getLocalDashboardOverview(userId)`.
+- Previous Codex `401 Unauthorized` issue is now resolved by running Codex with
+  `HOME=/root` so the executor can access the expected auth/home configuration.
+
+Verified:
+
+- RED:
+  - `npx vitest run --config .tmp-vitest-host.config.ts --run __tests__/dashboardOverviewService.test.ts`
+  - failed with:
+    - forbidden Firebase Admin/Firestore source-pattern assertion;
+    - delegation assertion failing before wrapper migration.
+- GREEN:
+  - `npx vitest run --config .tmp-vitest-host.config.ts --run __tests__/dashboardOverviewService.test.ts`
+    passed: 1 file, 2 tests.
+- Targeted suite:
+  - `npx vitest run --config .tmp-vitest-host.config.ts --run __tests__/dashboardOverviewService.test.ts __tests__/localDashboardOverviewService.test.ts __tests__/localDashboardOverviewRoute.test.ts`
+    passed: 3 files, 6 tests.
+- Typecheck:
+  - `npx tsc --noEmit --incremental false` passed.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -1353,7 +1389,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 
 High-value next targets:
 
-- `lib/services/dashboardOverviewService.ts`
 - `lib/services/dividendService.ts`
 - `lib/services/dividendIncomeService.ts`
 - `lib/server/dividendUseCase.ts`
