@@ -514,7 +514,7 @@ export default function HistoryPage() {
         title="Storico"
         description="Analizza l'evoluzione del tuo patrimonio (lordo) nel tempo"
         actions={
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center">
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-end">
             {householdEnabled && (
               <HouseholdScopeSelect
                 value={selectedScopeKey}

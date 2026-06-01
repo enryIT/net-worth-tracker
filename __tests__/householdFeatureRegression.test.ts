@@ -43,6 +43,22 @@ describe('household feature regression guards', () => {
     expect(source).toContain('const displaySnapshots = householdEnabled ? scopedSnapshots : snapshots');
   });
 
+  it('applies household scope to the Analisi page datasets and selector', () => {
+    const source = readRepoFile('app/dashboard/analisi/page.tsx');
+
+    expect(source).toContain('useHouseholdScopeFilter');
+    expect(source).toContain('filterExpensesByAttributionScope');
+    expect(source).toContain('HouseholdScopeSelect');
+    expect(source).toContain('const displayExpenses = householdEnabled ? scopedExpenses : allExpenses');
+    expect(source).toContain('allExpenses={displayExpenses}');
+  });
+
+  it('keeps the History action row aligned on the same baseline', () => {
+    const source = readRepoFile('app/dashboard/history/page.tsx');
+
+    expect(source).toContain('className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-end"');
+  });
+
   it('exposes archive and restore actions for custom ownership profiles in settings', () => {
     const source = readRepoFile('app/dashboard/settings/page.tsx');
 
