@@ -5,6 +5,7 @@ import {
 } from "@/lib/server/auth/session";
 import {
   deleteLocalExpense,
+  getLocalExpenseById,
   updateLocalExpense,
 } from "@/lib/server/cashflow/localExpenseService";
 import {
@@ -15,6 +16,22 @@ import {
 type RouteContext = {
   params: Promise<{ expenseId: string }>;
 };
+
+export async function GET(_request: NextRequest, context: RouteContext) {
+  try {
+    const user = await requireUserSession();
+    const { expenseId } = await context.params;
+    const expense = await getLocalExpenseById(user.id, expenseId);
+
+    if (!expense) {
+      return NextResponse.json({ error: "Movimento non trovato." }, { status: 404 });
+    }
+
+    return NextResponse.json(expense);
+  } catch (error) {
+    return handleExpenseRouteError(error, "[LOCAL_EXPENSE_GET_ERROR]");
+  }
+}
 
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {

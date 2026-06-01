@@ -7,7 +7,11 @@ import {
 } from "@/lib/server/auth/session";
 import {
   createLocalExpense,
+  deleteLocalInstallmentExpenses,
+  deleteLocalRecurringExpenses,
   listLocalExpenses,
+  listLocalExpensesByInstallmentParentId,
+  listLocalExpensesByRecurringParentId,
   listLocalExpensesForCostCenter,
 } from "@/lib/server/cashflow/localExpenseService";
 
@@ -26,8 +30,22 @@ const expenseListQuerySchema = z.object({
   to: z.string().datetime().transform((value) => new Date(value)).optional(),
   type: z.enum(["fixed", "variable", "debt", "income"]).optional(),
   costCenterId: z.string().min(1).optional(),
+  recurringParentId: z.string().min(1).optional(),
+  installmentParentId: z.string().min(1).optional(),
   sort: z.enum(["asc", "desc"]).optional(),
 });
+
+const expenseSeriesDeleteQuerySchema = z
+  .object({
+    recurringParentId: z.string().min(1).optional(),
+    installmentParentId: z.string().min(1).optional(),
+  })
+  .refine(
+    (value) => Boolean(value.recurringParentId) !== Boolean(value.installmentParentId),
+    {
+      message: "Specificare recurringParentId oppure installmentParentId.",
+    }
+  );
 
 export const expenseSchema = z.object({
   type: z.enum(["fixed", "variable", "debt", "income"]),
@@ -77,13 +95,38 @@ export async function GET(request?: NextRequest) {
       );
     }
 
+    if (parsedQuery.data.recurringParentId && parsedQuery.data.installmentParentId) {
+      return NextResponse.json(
+        { error: "Filtri movimenti non validi." },
+        { status: 400 }
+      );
+    }
+
+    if (parsedQuery.data.recurringParentId) {
+      return NextResponse.json(
+        await listLocalExpensesByRecurringParentId(user.id, parsedQuery.data.recurringParentId)
+      );
+    }
+
+    if (parsedQuery.data.installmentParentId) {
+      return NextResponse.json(
+        await listLocalExpensesByInstallmentParentId(user.id, parsedQuery.data.installmentParentId)
+      );
+    }
+
     if (parsedQuery.data.costCenterId) {
       return NextResponse.json(
         await listLocalExpensesForCostCenter(user.id, parsedQuery.data.costCenterId)
       );
     }
 
-    const { costCenterId: _costCenterId, sort: _sort, ...listOptions } = parsedQuery.data;
+    const {
+      costCenterId: _costCenterId,
+      sort: _sort,
+      recurringParentId: _recurringParentId,
+      installmentParentId: _installmentParentId,
+      ...listOptions
+    } = parsedQuery.data;
     return NextResponse.json(await listLocalExpenses(user.id, listOptions));
   } catch (error) {
     return handleExpenseRouteError(error, "[LOCAL_EXPENSES_GET_ERROR]");
@@ -111,6 +154,30 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     return handleExpenseRouteError(error, "[LOCAL_EXPENSES_POST_ERROR]");
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const user = await requireUserSession();
+    assertWritableUser(user);
+
+    const parsedQuery = parseExpenseSeriesDeleteQuery(request);
+
+    if (!parsedQuery.success) {
+      return NextResponse.json(
+        { error: "Filtri movimenti non validi.", issues: parsedQuery.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const deletedCount = parsedQuery.data.recurringParentId
+      ? await deleteLocalRecurringExpenses(user.id, parsedQuery.data.recurringParentId)
+      : await deleteLocalInstallmentExpenses(user.id, parsedQuery.data.installmentParentId!);
+
+    return NextResponse.json({ deletedCount });
+  } catch (error) {
+    return handleExpenseRouteError(error, "[LOCAL_EXPENSES_DELETE_ERROR]");
   }
 }
 
@@ -142,6 +209,16 @@ function parseExpenseListQuery(request?: NextRequest) {
     to: searchParams.get("to") ?? undefined,
     type: searchParams.get("type") ?? undefined,
     costCenterId: searchParams.get("costCenterId") ?? undefined,
+    recurringParentId: searchParams.get("recurringParentId") ?? undefined,
+    installmentParentId: searchParams.get("installmentParentId") ?? undefined,
     sort: searchParams.get("sort") ?? undefined,
+  });
+}
+
+function parseExpenseSeriesDeleteQuery(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  return expenseSeriesDeleteQuerySchema.safeParse({
+    recurringParentId: searchParams.get("recurringParentId") ?? undefined,
+    installmentParentId: searchParams.get("installmentParentId") ?? undefined,
   });
 }

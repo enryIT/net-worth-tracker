@@ -118,6 +118,42 @@ export async function listLocalExpenses(
   return rows.map(mapExpenseRow);
 }
 
+export async function listLocalExpensesByRecurringParentId(
+  userId: string,
+  recurringParentId: string
+): Promise<Expense[]> {
+  const rows = await prisma.expense.findMany({
+    where: {
+      userId,
+      metadata: {
+        path: ["recurringParentId"],
+        equals: recurringParentId,
+      },
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+  });
+
+  return rows.map(mapExpenseRow);
+}
+
+export async function listLocalExpensesByInstallmentParentId(
+  userId: string,
+  installmentParentId: string
+): Promise<Expense[]> {
+  const rows = await prisma.expense.findMany({
+    where: {
+      userId,
+      metadata: {
+        path: ["installmentParentId"],
+        equals: installmentParentId,
+      },
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+  });
+
+  return rows.map(mapExpenseRow);
+}
+
 export async function listLocalExpensesForCostCenter(
   userId: string,
   costCenterId: string
@@ -128,6 +164,22 @@ export async function listLocalExpensesForCostCenter(
   });
 
   return rows.map(mapExpenseRow);
+}
+
+export async function getLocalExpenseById(
+  userId: string,
+  expenseId: string
+): Promise<Expense | null> {
+  const row = await prisma.expense.findUnique({
+    where: {
+      id_userId: {
+        id: expenseId,
+        userId,
+      },
+    },
+  });
+
+  return row ? mapExpenseRow(row) : null;
 }
 
 export async function createLocalExpense(
@@ -204,6 +256,40 @@ export async function deleteLocalExpense(
   return result.count > 0;
 }
 
+export async function deleteLocalRecurringExpenses(
+  userId: string,
+  recurringParentId: string
+): Promise<number> {
+  const result = await prisma.expense.deleteMany({
+    where: {
+      userId,
+      metadata: {
+        path: ["recurringParentId"],
+        equals: recurringParentId,
+      },
+    },
+  });
+
+  return result.count;
+}
+
+export async function deleteLocalInstallmentExpenses(
+  userId: string,
+  installmentParentId: string
+): Promise<number> {
+  const result = await prisma.expense.deleteMany({
+    where: {
+      userId,
+      metadata: {
+        path: ["installmentParentId"],
+        equals: installmentParentId,
+      },
+    },
+  });
+
+  return result.count;
+}
+
 export async function getLocalMonthlyExpenseSummary(
   userId: string,
   year: number,
@@ -235,6 +321,50 @@ export async function countLocalExpensesBySubCategory(
   return prisma.expense.count({
     where: { userId, categoryId, subCategoryId },
   });
+}
+
+export async function updateLocalExpensesCategoryName(
+  userId: string,
+  categoryId: string,
+  newCategoryName: string
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: { userId, categoryId },
+    data: { categoryName: newCategoryName },
+  });
+
+  return result.count;
+}
+
+export async function updateLocalExpensesSubCategoryName(
+  userId: string,
+  categoryId: string,
+  subCategoryId: string,
+  newSubCategoryName: string
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: { userId, categoryId, subCategoryId },
+    data: { subCategoryName: newSubCategoryName },
+  });
+
+  return result.count;
+}
+
+export async function updateLocalExpensesCategoryType(
+  userId: string,
+  categoryId: string,
+  oldType: ExpenseType,
+  newType: ExpenseType
+): Promise<number> {
+  const result = await prisma.expense.updateMany({
+    where: { userId, categoryId },
+    data: {
+      ...(needsSignFlip(oldType, newType) ? { amount: { multiply: -1 } } : {}),
+      type: newType,
+    },
+  });
+
+  return result.count;
 }
 
 export async function reassignLocalExpensesCategory(

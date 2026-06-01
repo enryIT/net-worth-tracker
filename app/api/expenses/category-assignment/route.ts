@@ -13,6 +13,9 @@ import {
   moveLocalExpensesToCategory,
   reassignLocalExpensesCategory,
   reassignLocalExpensesSubCategory,
+  updateLocalExpensesCategoryName,
+  updateLocalExpensesCategoryType,
+  updateLocalExpensesSubCategoryName,
 } from "@/lib/server/cashflow/localExpenseService";
 
 const expenseTypeSchema = z.enum(["fixed", "variable", "debt", "income"]);
@@ -66,6 +69,23 @@ const categoryAssignmentActionSchema = z.discriminatedUnion("action", [
     newType: expenseTypeSchema,
     newSubCategoryId: z.string().min(1).optional(),
     newSubCategoryName: z.string().trim().min(1).optional(),
+  }),
+  z.object({
+    action: z.literal("updateCategoryName"),
+    categoryId: z.string().min(1),
+    newCategoryName: z.string().trim().min(1),
+  }),
+  z.object({
+    action: z.literal("updateSubCategoryName"),
+    categoryId: z.string().min(1),
+    subCategoryId: z.string().min(1),
+    newSubCategoryName: z.string().trim().min(1),
+  }),
+  z.object({
+    action: z.literal("updateCategoryType"),
+    categoryId: z.string().min(1),
+    oldType: expenseTypeSchema,
+    newType: expenseTypeSchema,
   }),
 ]);
 
@@ -149,6 +169,35 @@ export async function POST(request: NextRequest) {
             newSubCategoryId: action.newSubCategoryId,
             newSubCategoryName: action.newSubCategoryName,
           }),
+        });
+      case "updateCategoryName":
+        assertWritableUser(user);
+        return NextResponse.json({
+          count: await updateLocalExpensesCategoryName(
+            user.id,
+            action.categoryId,
+            action.newCategoryName
+          ),
+        });
+      case "updateSubCategoryName":
+        assertWritableUser(user);
+        return NextResponse.json({
+          count: await updateLocalExpensesSubCategoryName(
+            user.id,
+            action.categoryId,
+            action.subCategoryId,
+            action.newSubCategoryName
+          ),
+        });
+      case "updateCategoryType":
+        assertWritableUser(user);
+        return NextResponse.json({
+          count: await updateLocalExpensesCategoryType(
+            user.id,
+            action.categoryId,
+            action.oldType,
+            action.newType
+          ),
         });
     }
   } catch (error) {

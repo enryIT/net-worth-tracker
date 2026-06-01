@@ -1,36 +1,10 @@
 /**
  * Expense Service
  *
- * Manages expense tracking for budgeting and cashflow analysis.
- *
- * Features:
- * - CRUD operations for expenses (create, read, update, delete)
- * - Recurring expenses (debts with monthly payments)
- * - Installment expenses (BNPL - Buy Now Pay Later)
- * - Monthly summaries and statistics with month-over-month comparison
- * - Category and subcategory management integration
- *
- * Amount sign convention:
- * - Expenses (fixed, variable, debt): stored as negative values
- * - Income: stored as positive values
- * This allows simple summing for net cashflow calculations.
+ * Client-side wrapper around local authenticated expense APIs.
  */
 
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  orderBy,
-  writeBatch
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
+import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { invalidateDashboardOverviewSummary } from '@/lib/services/dashboardOverviewInvalidation';
 import { appendHouseholdAuditEntrySafe } from '@/lib/services/householdService';
 import {
@@ -42,26 +16,158 @@ import {
 } from '@/types/expenses';
 import { getItalyMonthYear } from '@/lib/utils/dateHelpers';
 
-const EXPENSES_COLLECTION = 'expenses';
+type DateInput = Date | string | { toDate: () => Date } | null | undefined;
 
-/**
- * Remove undefined fields from an object to prevent Firebase errors
- *
- * Firestore rejects documents with undefined values. This helper ensures
- * only defined fields are included in create/update operations.
- *
- * @param obj - Object with potential undefined values
- * @returns Object with undefined fields removed
- */
-function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T> {
-  const cleaned: Partial<T> = {};
-  Object.keys(obj).forEach((key) => {
-    const value = obj[key];
-    if (value !== undefined) {
-      cleaned[key as keyof T] = value;
+function toDate(value: DateInput): Date {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && 'toDate' in value) {
+    return value.toDate();
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
     }
+  }
+
+  return new Date();
+}
+
+function mapExpense(input: Expense): Expense {
+  return {
+    ...input,
+    date: toDate(input.date as DateInput),
+    createdAt: toDate(input.createdAt as DateInput),
+    updatedAt: toDate(input.updatedAt as DateInput),
+  };
+}
+
+function mapExpenses(input: Expense[]): Expense[] {
+  return input.map(mapExpense);
+}
+
+function normalizeAmount(type: ExpenseType, amount: number): number {
+  const absoluteAmount = Math.abs(amount);
+  return type === 'income' ? absoluteAmount : -absoluteAmount;
+}
+
+function generateSeriesParentId(prefix: 'recurring' | 'installment'): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function getRecurringExpenseDate(startDate: Date, monthOffset: number, recurringDay: number): Date {
+  const year = startDate.getFullYear();
+  const month = startDate.getMonth() + monthOffset;
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const day = Math.min(recurringDay, lastDayOfMonth);
+  return new Date(year, month, day);
+}
+
+function buildExpenseByIdPath(expenseId: string): string {
+  return `/api/expenses/${encodeURIComponent(expenseId)}`;
+}
+
+function buildExpensesPath(params: Record<string, string | undefined>): string {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      searchParams.set(key, value);
+    }
+  }
+
+  const query = searchParams.toString();
+  return query.length > 0 ? `/api/expenses?${query}` : '/api/expenses';
+}
+
+async function parseJsonResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+  const payload = await response.json().catch(() => null) as { error?: string } | T | null;
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload === 'object' && 'error' in payload && payload.error
+        ? payload.error
+        : fallbackMessage
+    );
+  }
+
+  return payload as T;
+}
+
+async function postExpense(payload: Record<string, unknown>): Promise<Expense> {
+  const response = await authenticatedFetch('/api/expenses', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
   });
-  return cleaned;
+
+  const createdExpense = await parseJsonResponse<Expense>(response, 'Failed to create expense');
+  return mapExpense(createdExpense);
+}
+
+function buildExpensePayload(
+  expenseData: ExpenseFormData,
+  categoryName: string,
+  subCategoryName?: string
+): Record<string, unknown> {
+  return {
+    ...expenseData,
+    categoryName,
+    subCategoryName,
+  };
+}
+
+function buildUpdatePayload(
+  expense: Expense,
+  updates: Partial<ExpenseFormData>,
+  categoryName?: string,
+  subCategoryName?: string
+): Record<string, unknown> {
+  const nextType = updates.type ?? expense.type;
+  const nextAmount = normalizeAmount(nextType, updates.amount ?? expense.amount);
+
+  return {
+    type: nextType,
+    categoryId: updates.categoryId ?? expense.categoryId,
+    categoryName: categoryName ?? expense.categoryName,
+    subCategoryId: updates.subCategoryId ?? expense.subCategoryId,
+    subCategoryName: subCategoryName ?? expense.subCategoryName,
+    amount: nextAmount,
+    currency: updates.currency ?? expense.currency,
+    date: (updates.date ?? toDate(expense.date as DateInput)),
+    notes: updates.notes ?? expense.notes,
+    link: updates.link ?? expense.link,
+    isRecurring: updates.isRecurring ?? expense.isRecurring,
+    recurringDay: updates.recurringDay ?? expense.recurringDay,
+    recurringParentId: expense.recurringParentId,
+    isInstallment: updates.isInstallment ?? expense.isInstallment,
+    installmentParentId: expense.installmentParentId,
+    installmentNumber: expense.installmentNumber,
+    installmentTotal: expense.installmentTotal,
+    installmentTotalAmount: expense.installmentTotalAmount,
+    linkedCashAssetId: updates.linkedCashAssetId ?? expense.linkedCashAssetId,
+    linkedInvestmentAssetId: updates.linkedInvestmentAssetId ?? expense.linkedInvestmentAssetId,
+    linkedInvestmentAssetName: updates.linkedInvestmentAssetName ?? expense.linkedInvestmentAssetName,
+    linkedInvestmentQuantityDelta:
+      updates.linkedInvestmentQuantityDelta ?? expense.linkedInvestmentQuantityDelta,
+    investmentOperationId: updates.investmentOperationId ?? expense.investmentOperationId,
+    investmentOperationType: updates.investmentOperationType ?? expense.investmentOperationType,
+    investmentOperationPricePerUnit:
+      updates.investmentOperationPricePerUnit ?? expense.investmentOperationPricePerUnit,
+    investmentOperationFees: updates.investmentOperationFees ?? expense.investmentOperationFees,
+    investmentOperationTaxes: updates.investmentOperationTaxes ?? expense.investmentOperationTaxes,
+    costCenterId: updates.costCenterId ?? expense.costCenterId,
+    costCenterName: updates.costCenterName ?? expense.costCenterName,
+    attributionProfileId: updates.attributionProfileId ?? expense.attributionProfileId,
+    attributionProfileName: updates.attributionProfileName ?? expense.attributionProfileName,
+    attributionSplits: updates.attributionSplits ?? expense.attributionSplits,
+  };
 }
 
 /**
@@ -69,26 +175,14 @@ function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T
  */
 export async function getAllExpenses(userId: string): Promise<Expense[]> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      orderBy('date', 'desc')
-    );
+    const response = await authenticatedFetch('/api/expenses', {
+      method: 'GET',
+    });
 
-    const querySnapshot = await getDocs(q);
-
-    const expenses = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: doc.data().date?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Expense[];
-
-    return expenses;
+    const expenses = await parseJsonResponse<Expense[]>(response, 'Failed to fetch expenses');
+    return mapExpenses(expenses);
   } catch (error) {
-    console.error('Error getting expenses:', error);
+    console.error('Error getting expenses:', { userId, error });
     throw new Error('Failed to fetch expenses');
   }
 }
@@ -103,30 +197,11 @@ export async function getExpensesByMonth(
 ): Promise<Expense[]> {
   try {
     const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+    const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('date', '>=', Timestamp.fromDate(startDate)),
-      where('date', '<=', Timestamp.fromDate(endDate)),
-      orderBy('date', 'desc')
-    );
-
-    const querySnapshot = await getDocs(q);
-
-    const expenses = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: doc.data().date?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Expense[];
-
-    return expenses;
+    return await getExpensesByDateRange(userId, startDate, endDate);
   } catch (error) {
-    console.error('Error getting expenses by month:', error);
+    console.error('Error getting expenses by month:', { userId, year, month, error });
     throw new Error('Failed to fetch expenses by month');
   }
 }
@@ -140,28 +215,19 @@ export async function getExpensesByDateRange(
   endDate: Date
 ): Promise<Expense[]> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('date', '>=', Timestamp.fromDate(startDate)),
-      where('date', '<=', Timestamp.fromDate(endDate)),
-      orderBy('date', 'desc')
-    );
+    const path = buildExpensesPath({
+      from: startDate.toISOString(),
+      to: endDate.toISOString(),
+    });
 
-    const querySnapshot = await getDocs(q);
+    const response = await authenticatedFetch(path, {
+      method: 'GET',
+    });
 
-    const expenses = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: doc.data().date?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Expense[];
-
-    return expenses;
+    const expenses = await parseJsonResponse<Expense[]>(response, 'Failed to fetch expenses by date range');
+    return mapExpenses(expenses);
   } catch (error) {
-    console.error('Error getting expenses by date range:', error);
+    console.error('Error getting expenses by date range:', { userId, startDate, endDate, error });
     throw new Error('Failed to fetch expenses by date range');
   }
 }
@@ -171,41 +237,24 @@ export async function getExpensesByDateRange(
  */
 export async function getExpenseById(expenseId: string): Promise<Expense | null> {
   try {
-    const expenseRef = doc(db, EXPENSES_COLLECTION, expenseId);
-    const expenseDoc = await getDoc(expenseRef);
+    const response = await authenticatedFetch(buildExpenseByIdPath(expenseId), {
+      method: 'GET',
+    });
 
-    if (!expenseDoc.exists()) {
+    if (response.status === 404) {
       return null;
     }
 
-    return {
-      id: expenseDoc.id,
-      ...expenseDoc.data(),
-      date: expenseDoc.data().date?.toDate() || new Date(),
-      createdAt: expenseDoc.data().createdAt?.toDate() || new Date(),
-      updatedAt: expenseDoc.data().updatedAt?.toDate() || new Date(),
-    } as Expense;
+    const expense = await parseJsonResponse<Expense>(response, 'Failed to fetch expense');
+    return mapExpense(expense);
   } catch (error) {
-    console.error('Error getting expense:', error);
+    console.error('Error getting expense:', { expenseId, error });
     throw new Error('Failed to fetch expense');
   }
 }
 
 /**
  * Create a new expense (single, recurring, or installment)
- *
- * Handles three creation modes based on form data:
- * 1. Installment (BNPL): Creates multiple expenses spread over months with defined amounts
- * 2. Recurring (debts): Creates multiple expenses with same amount each month
- * 3. Single: Creates one expense
- *
- * Priority: Installment > Recurring > Single (installments checked first)
- *
- * @param userId - User ID
- * @param expenseData - Form data with expense details and mode flags
- * @param categoryName - Category name for display
- * @param subCategoryName - Optional subcategory name
- * @returns Single expense ID or array of IDs (for recurring/installments)
  */
 export async function createExpense(
   userId: string,
@@ -214,78 +263,33 @@ export async function createExpense(
   subCategoryName?: string
 ): Promise<string | string[]> {
   try {
-    const now = Timestamp.now();
-
-    // Priority 1: Check installment first (BNPL payments with varying amounts)
-    // Installments have priority over recurring since they're more specific
     if (expenseData.isInstallment && expenseData.installmentCount && expenseData.installmentCount > 1) {
       return await createInstallmentExpenses(userId, expenseData, categoryName, subCategoryName);
     }
 
-    // Priority 2: Recurring expenses (debts with fixed monthly payments)
     if (expenseData.isRecurring && expenseData.recurringMonths && expenseData.recurringMonths > 0) {
       return await createRecurringExpenses(userId, expenseData, categoryName, subCategoryName);
     }
 
-    // Priority 3: Create single expense
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
+    const createdExpense = await postExpense(buildExpensePayload(expenseData, categoryName, subCategoryName));
 
-    // Apply amount sign convention: expenses negative, income positive
-    // This allows simple sum() for net cashflow without conditional logic
-    let amount = Math.abs(expenseData.amount);
-    if (expenseData.type !== 'income') {
-      amount = -amount;
-    }
-
-    const cleanedData = removeUndefinedFields({
-      userId,
-      type: expenseData.type,
-      categoryId: expenseData.categoryId,
-      categoryName,
-      subCategoryId: expenseData.subCategoryId,
-      subCategoryName,
-      amount,
-      currency: expenseData.currency,
-      date: Timestamp.fromDate(expenseData.date),
-      notes: expenseData.notes,
-      link: expenseData.link,
-      isRecurring: false,
-      linkedCashAssetId: expenseData.linkedCashAssetId,
-      linkedInvestmentAssetId: expenseData.linkedInvestmentAssetId,
-      linkedInvestmentAssetName: expenseData.linkedInvestmentAssetName,
-      linkedInvestmentQuantityDelta: expenseData.linkedInvestmentQuantityDelta,
-      investmentOperationId: expenseData.investmentOperationId,
-      investmentOperationType: expenseData.investmentOperationType,
-      investmentOperationPricePerUnit: expenseData.investmentOperationPricePerUnit,
-      investmentOperationFees: expenseData.investmentOperationFees,
-      investmentOperationTaxes: expenseData.investmentOperationTaxes,
-      costCenterId: expenseData.costCenterId,
-      costCenterName: expenseData.costCenterName,
-      attributionProfileId: expenseData.attributionProfileId,
-      attributionProfileName: expenseData.attributionProfileName,
-      attributionSplits: expenseData.attributionSplits,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const docRef = await addDoc(expensesRef, cleanedData);
     await invalidateDashboardOverviewSummary(userId, 'expense_created');
     appendHouseholdAuditEntrySafe(userId, {
       entityType: 'expense',
-      entityId: docRef.id,
+      entityId: createdExpense.id,
       action: 'create',
       summary: `Cashflow creato: ${categoryName}`,
       after: {
         categoryName,
-        amount,
+        amount: normalizeAmount(expenseData.type, expenseData.amount),
         attributionProfileId: expenseData.attributionProfileId,
         attributionProfileName: expenseData.attributionProfileName,
       },
     });
 
-    return docRef.id;
+    return createdExpense.id;
   } catch (error) {
-    console.error('Error creating expense:', error);
+    console.error('Error creating expense:', { userId, error });
     throw new Error('Failed to create expense');
   }
 }
@@ -300,75 +304,35 @@ async function createRecurringExpenses(
   subCategoryName?: string
 ): Promise<string[]> {
   try {
-    const batch = writeBatch(db);
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
     const createdIds: string[] = [];
-    const now = Timestamp.now();
-
-    // Create parent expense ID for reference
-    const parentId = `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Ensure amount is negative for debts
-    const amount = -Math.abs(expenseData.amount);
-
+    const recurringMonths = expenseData.recurringMonths || 1;
     const recurringDay = expenseData.recurringDay || expenseData.date.getDate();
-    const startDate = new Date(expenseData.date);
+    const parentId = generateSeriesParentId('recurring');
 
-    // Create expense for each month
-    for (let i = 0; i < (expenseData.recurringMonths || 1); i++) {
-      const expenseDate = new Date(
-        startDate.getFullYear(),
-        startDate.getMonth() + i,
-        recurringDay
-      );
-
-      // If the day doesn't exist in the month (e.g., 31st in February), use last day of month
-      if (expenseDate.getDate() !== recurringDay) {
-        expenseDate.setDate(0); // Set to last day of previous month
-        expenseDate.setMonth(expenseDate.getMonth() + 1); // Move to correct month
-      }
-
-      const docRef = doc(expensesRef);
-      const cleanedData = removeUndefinedFields({
-        userId,
-        type: expenseData.type,
-        categoryId: expenseData.categoryId,
-        categoryName,
-        subCategoryId: expenseData.subCategoryId,
-        subCategoryName,
-        amount,
-        currency: expenseData.currency,
-        date: Timestamp.fromDate(expenseDate),
-        notes: expenseData.notes,
-        link: expenseData.link,
+    for (let index = 0; index < recurringMonths; index++) {
+      const expenseDate = getRecurringExpenseDate(expenseData.date, index, recurringDay);
+      const payload = {
+        ...buildExpensePayload(expenseData, categoryName, subCategoryName),
+        amount: normalizeAmount(expenseData.type, expenseData.amount),
+        date: expenseDate,
         isRecurring: true,
         recurringDay,
         recurringParentId: parentId,
-        // Only store on the first entry — balance update applies to current payment only,
-        // not to future-dated recurring instances.
-        linkedCashAssetId: i === 0 ? expenseData.linkedCashAssetId : undefined,
-        linkedInvestmentAssetId: i === 0 ? expenseData.linkedInvestmentAssetId : undefined,
-        linkedInvestmentAssetName: i === 0 ? expenseData.linkedInvestmentAssetName : undefined,
-        linkedInvestmentQuantityDelta: i === 0 ? expenseData.linkedInvestmentQuantityDelta : undefined,
-        investmentOperationId: i === 0 ? expenseData.investmentOperationId : undefined,
-        investmentOperationType: i === 0 ? expenseData.investmentOperationType : undefined,
-        investmentOperationPricePerUnit: i === 0 ? expenseData.investmentOperationPricePerUnit : undefined,
-        investmentOperationFees: i === 0 ? expenseData.investmentOperationFees : undefined,
-        investmentOperationTaxes: i === 0 ? expenseData.investmentOperationTaxes : undefined,
-        costCenterId: expenseData.costCenterId,
-        costCenterName: expenseData.costCenterName,
-        attributionProfileId: expenseData.attributionProfileId,
-        attributionProfileName: expenseData.attributionProfileName,
-        attributionSplits: expenseData.attributionSplits,
-        createdAt: now,
-        updatedAt: now,
-      });
+        linkedCashAssetId: index === 0 ? expenseData.linkedCashAssetId : undefined,
+        linkedInvestmentAssetId: index === 0 ? expenseData.linkedInvestmentAssetId : undefined,
+        linkedInvestmentAssetName: index === 0 ? expenseData.linkedInvestmentAssetName : undefined,
+        linkedInvestmentQuantityDelta: index === 0 ? expenseData.linkedInvestmentQuantityDelta : undefined,
+        investmentOperationId: index === 0 ? expenseData.investmentOperationId : undefined,
+        investmentOperationType: index === 0 ? expenseData.investmentOperationType : undefined,
+        investmentOperationPricePerUnit: index === 0 ? expenseData.investmentOperationPricePerUnit : undefined,
+        investmentOperationFees: index === 0 ? expenseData.investmentOperationFees : undefined,
+        investmentOperationTaxes: index === 0 ? expenseData.investmentOperationTaxes : undefined,
+      };
 
-      batch.set(docRef, cleanedData);
-      createdIds.push(docRef.id);
+      const createdExpense = await postExpense(payload);
+      createdIds.push(createdExpense.id);
     }
 
-    await batch.commit();
     await invalidateDashboardOverviewSummary(userId, 'expense_created');
     appendHouseholdAuditEntrySafe(userId, {
       entityType: 'expense',
@@ -385,27 +349,13 @@ async function createRecurringExpenses(
 
     return createdIds;
   } catch (error) {
-    console.error('Error creating recurring expenses:', error);
+    console.error('Error creating recurring expenses:', { userId, error });
     throw new Error('Failed to create recurring expenses');
   }
 }
 
 /**
- * Create installment expenses (for BNPL - Buy Now Pay Later payments)
- *
- * Supports two modes:
- * 1. Auto mode: Divides total amount evenly across installments
- *    - Rounds each installment down to 2 decimals
- *    - Last installment gets remainder to match exact total (prevents rounding errors)
- * 2. Manual mode: Uses user-provided amounts for each installment
- *
- * All installments are linked via a shared parentId for bulk operations.
- *
- * @param userId - User ID
- * @param expenseData - Form data with installment configuration
- * @param categoryName - Category name for display
- * @param subCategoryName - Optional subcategory name
- * @returns Array of created expense IDs
+ * Create installment expenses (for BNPL - Buy Now Pay Later)
  */
 async function createInstallmentExpenses(
   userId: string,
@@ -414,101 +364,63 @@ async function createInstallmentExpenses(
   subCategoryName?: string
 ): Promise<string[]> {
   try {
-    const batch = writeBatch(db);
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
     const createdIds: string[] = [];
-    const now = Timestamp.now();
+    const parentId = generateSeriesParentId('installment');
 
-    // Generate unique parent ID for linking all installments together
-    // This allows bulk operations like "delete all installments in this series"
-    const parentId = `installment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    const installmentCount = expenseData.installmentCount!;
+    const installmentCount = expenseData.installmentCount || 1;
     const startDate = expenseData.installmentStartDate || expenseData.date;
 
-    // Calculate amounts based on mode
     let installmentAmounts: number[];
     let totalAmount: number;
 
     if (expenseData.installmentMode === 'auto') {
-      // Auto-calculation: divide total amount evenly across installments
-      totalAmount = expenseData.installmentTotalAmount!;
+      totalAmount = expenseData.installmentTotalAmount || 0;
       const perInstallment = totalAmount / installmentCount;
-      const baseAmount = Math.floor(perInstallment * 100) / 100; // Round down to 2 decimals
+      const baseAmount = Math.floor(perInstallment * 100) / 100;
       const remainder = totalAmount - (baseAmount * installmentCount);
 
-      // All installments get base amount except last one
-      // Last installment gets base + remainder to ensure total matches exactly
-      // (e.g., €100 / 3 = €33.33 + €33.33 + €33.34)
       installmentAmounts = Array(installmentCount - 1).fill(baseAmount);
       installmentAmounts.push(baseAmount + remainder);
     } else {
-      // Manual mode: use user-provided amounts (for irregular payment schedules)
-      installmentAmounts = expenseData.installmentAmounts!;
-      totalAmount = installmentAmounts.reduce((sum, amt) => sum + amt, 0);
+      installmentAmounts = expenseData.installmentAmounts || [];
+      totalAmount = installmentAmounts.reduce((sum, amount) => sum + amount, 0);
     }
 
-    // Ensure amounts are negative for expenses (positive for income)
-    const isExpense = expenseData.type !== 'income';
-    if (isExpense) {
-      installmentAmounts = installmentAmounts.map(amt => -Math.abs(amt));
-      totalAmount = -Math.abs(totalAmount);
-    }
+    const isIncome = expenseData.type === 'income';
+    installmentAmounts = installmentAmounts.map((amount) => normalizeAmount(expenseData.type, amount));
+    totalAmount = isIncome ? Math.abs(totalAmount) : -Math.abs(totalAmount);
 
-    // Create one expense document per installment
-    for (let i = 0; i < installmentCount; i++) {
+    for (let index = 0; index < installmentCount; index++) {
       const installmentDate = new Date(startDate);
-      installmentDate.setMonth(installmentDate.getMonth() + i);
+      installmentDate.setMonth(installmentDate.getMonth() + index);
 
-      const docRef = doc(expensesRef);
-      const cleanedData = removeUndefinedFields({
-        userId,
-        type: expenseData.type,
-        categoryId: expenseData.categoryId,
-        categoryName,
-        subCategoryId: expenseData.subCategoryId,
-        subCategoryName,
-        amount: installmentAmounts[i],
-        currency: expenseData.currency,
-        date: Timestamp.fromDate(installmentDate),
+      const payload = {
+        ...buildExpensePayload(expenseData, categoryName, subCategoryName),
+        amount: installmentAmounts[index],
+        date: installmentDate,
         notes: expenseData.notes
-          ? `${expenseData.notes} (Installment ${i + 1}/${installmentCount})`
-          : `Installment ${i + 1}/${installmentCount}`,
-        link: expenseData.link,
-
-        // Installment-specific fields
+          ? `${expenseData.notes} (Installment ${index + 1}/${installmentCount})`
+          : `Installment ${index + 1}/${installmentCount}`,
         isInstallment: true,
         installmentParentId: parentId,
-        installmentNumber: i + 1,
+        installmentNumber: index + 1,
         installmentTotal: installmentCount,
         installmentTotalAmount: totalAmount,
+        linkedCashAssetId: index === 0 ? expenseData.linkedCashAssetId : undefined,
+        linkedInvestmentAssetId: index === 0 ? expenseData.linkedInvestmentAssetId : undefined,
+        linkedInvestmentAssetName: index === 0 ? expenseData.linkedInvestmentAssetName : undefined,
+        linkedInvestmentQuantityDelta: index === 0 ? expenseData.linkedInvestmentQuantityDelta : undefined,
+        investmentOperationId: index === 0 ? expenseData.investmentOperationId : undefined,
+        investmentOperationType: index === 0 ? expenseData.investmentOperationType : undefined,
+        investmentOperationPricePerUnit: index === 0 ? expenseData.investmentOperationPricePerUnit : undefined,
+        investmentOperationFees: index === 0 ? expenseData.investmentOperationFees : undefined,
+        investmentOperationTaxes: index === 0 ? expenseData.investmentOperationTaxes : undefined,
+      };
 
-        // Only store on the first installment — balance update applies to the immediate
-        // payment only, not to future-dated installments.
-        linkedCashAssetId: i === 0 ? expenseData.linkedCashAssetId : undefined,
-        linkedInvestmentAssetId: i === 0 ? expenseData.linkedInvestmentAssetId : undefined,
-        linkedInvestmentAssetName: i === 0 ? expenseData.linkedInvestmentAssetName : undefined,
-        linkedInvestmentQuantityDelta: i === 0 ? expenseData.linkedInvestmentQuantityDelta : undefined,
-        investmentOperationId: i === 0 ? expenseData.investmentOperationId : undefined,
-        investmentOperationType: i === 0 ? expenseData.investmentOperationType : undefined,
-        investmentOperationPricePerUnit: i === 0 ? expenseData.investmentOperationPricePerUnit : undefined,
-        investmentOperationFees: i === 0 ? expenseData.investmentOperationFees : undefined,
-        investmentOperationTaxes: i === 0 ? expenseData.investmentOperationTaxes : undefined,
-        costCenterId: expenseData.costCenterId,
-        costCenterName: expenseData.costCenterName,
-        attributionProfileId: expenseData.attributionProfileId,
-        attributionProfileName: expenseData.attributionProfileName,
-        attributionSplits: expenseData.attributionSplits,
-
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      batch.set(docRef, cleanedData);
-      createdIds.push(docRef.id);
+      const createdExpense = await postExpense(payload);
+      createdIds.push(createdExpense.id);
     }
 
-    await batch.commit();
     await invalidateDashboardOverviewSummary(userId, 'expense_created');
     appendHouseholdAuditEntrySafe(userId, {
       entityType: 'expense',
@@ -523,41 +435,26 @@ async function createInstallmentExpenses(
       },
     });
 
-    console.log(`Created ${installmentCount} installment expenses with parent ID: ${parentId}`);
     return createdIds;
   } catch (error) {
-    console.error('Error creating installment expenses:', error);
+    console.error('Error creating installment expenses:', { userId, error });
     throw new Error('Failed to create installment expenses');
   }
 }
 
 /**
  * Delete all expenses in an installment series
- * @param installmentParentId - The parent ID linking all installments
  */
 export async function deleteInstallmentExpenses(installmentParentId: string): Promise<void> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('installmentParentId', '==', installmentParentId)
+    const response = await authenticatedFetch(
+      buildExpensesPath({ installmentParentId }),
+      { method: 'DELETE' }
     );
 
-    const querySnapshot = await getDocs(q);
-    const batch = writeBatch(db);
-    const userId = querySnapshot.docs[0]?.data()?.userId as string | undefined;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      batch.delete(docSnapshot.ref);
-    });
-
-    await batch.commit();
-    if (userId) {
-      await invalidateDashboardOverviewSummary(userId, 'expense_deleted');
-    }
-    console.log(`Deleted ${querySnapshot.size} installment expenses with parent ID: ${installmentParentId}`);
+    await parseJsonResponse<{ deletedCount: number }>(response, 'Failed to delete installment expenses');
   } catch (error) {
-    console.error('Error deleting installment expenses:', error);
+    console.error('Error deleting installment expenses:', { installmentParentId, error });
     throw new Error('Failed to delete installment expenses');
   }
 }
@@ -572,62 +469,41 @@ export async function updateExpense(
   subCategoryName?: string
 ): Promise<void> {
   try {
-    const expenseRef = doc(db, EXPENSES_COLLECTION, expenseId);
-    const existingExpense = await getDoc(expenseRef);
+    const existingExpense = await getExpenseById(expenseId);
 
-    // If amount is being updated, ensure correct sign
-    let updatedAmount = updates.amount;
-    if (updatedAmount !== undefined && updates.type) {
-      updatedAmount = Math.abs(updatedAmount);
-      if (updates.type !== 'income') {
-        updatedAmount = -updatedAmount;
-      }
+    if (!existingExpense) {
+      throw new Error('Expense not found');
     }
 
-    const cleanedUpdates = removeUndefinedFields({
-      ...updates,
-      amount: updatedAmount,
-      categoryName,
-      subCategoryName,
-      date: updates.date ? Timestamp.fromDate(updates.date) : undefined,
-      linkedCashAssetId: updates.linkedCashAssetId,
-      linkedInvestmentAssetId: updates.linkedInvestmentAssetId,
-      linkedInvestmentAssetName: updates.linkedInvestmentAssetName,
-      linkedInvestmentQuantityDelta: updates.linkedInvestmentQuantityDelta,
-      investmentOperationId: updates.investmentOperationId,
-      investmentOperationType: updates.investmentOperationType,
-      investmentOperationPricePerUnit: updates.investmentOperationPricePerUnit,
-      investmentOperationFees: updates.investmentOperationFees,
-      investmentOperationTaxes: updates.investmentOperationTaxes,
-      costCenterId: updates.costCenterId,
-      costCenterName: updates.costCenterName,
-      attributionProfileId: updates.attributionProfileId,
-      attributionProfileName: updates.attributionProfileName,
-      attributionSplits: updates.attributionSplits,
-      updatedAt: Timestamp.now(),
+    const response = await authenticatedFetch(buildExpenseByIdPath(expenseId), {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(
+        buildUpdatePayload(existingExpense, updates, categoryName, subCategoryName)
+      ),
     });
 
-    await updateDoc(expenseRef, cleanedUpdates);
-    const userId = existingExpense.data()?.userId as string | undefined;
-    if (userId) {
-      await invalidateDashboardOverviewSummary(userId, 'expense_updated');
-      appendHouseholdAuditEntrySafe(userId, {
-        entityType: 'expense',
-        entityId: expenseId,
-        action: 'update',
-        summary: `Cashflow aggiornato: ${categoryName ?? existingExpense.data()?.categoryName ?? expenseId}`,
-        before: {
-          attributionProfileId: existingExpense.data()?.attributionProfileId,
-          attributionProfileName: existingExpense.data()?.attributionProfileName,
-        },
-        after: {
-          attributionProfileId: updates.attributionProfileId,
-          attributionProfileName: updates.attributionProfileName,
-        },
-      });
-    }
+    await parseJsonResponse<Expense>(response, 'Failed to update expense');
+
+    await invalidateDashboardOverviewSummary(existingExpense.userId, 'expense_updated');
+    appendHouseholdAuditEntrySafe(existingExpense.userId, {
+      entityType: 'expense',
+      entityId: expenseId,
+      action: 'update',
+      summary: `Cashflow aggiornato: ${categoryName ?? existingExpense.categoryName ?? expenseId}`,
+      before: {
+        attributionProfileId: existingExpense.attributionProfileId,
+        attributionProfileName: existingExpense.attributionProfileName,
+      },
+      after: {
+        attributionProfileId: updates.attributionProfileId,
+        attributionProfileName: updates.attributionProfileName,
+      },
+    });
   } catch (error) {
-    console.error('Error updating expense:', error);
+    console.error('Error updating expense:', { expenseId, error });
     throw new Error('Failed to update expense');
   }
 }
@@ -637,27 +513,31 @@ export async function updateExpense(
  */
 export async function deleteExpense(expenseId: string): Promise<void> {
   try {
-    const expenseRef = doc(db, EXPENSES_COLLECTION, expenseId);
-    const existingExpense = await getDoc(expenseRef);
-    await deleteDoc(expenseRef);
-    const userId = existingExpense.data()?.userId as string | undefined;
-    if (userId) {
-      await invalidateDashboardOverviewSummary(userId, 'expense_deleted');
-      appendHouseholdAuditEntrySafe(userId, {
+    const existingExpense = await getExpenseById(expenseId);
+
+    const response = await authenticatedFetch(buildExpenseByIdPath(expenseId), {
+      method: 'DELETE',
+    });
+
+    await parseJsonResponse<{ success: boolean }>(response, 'Failed to delete expense');
+
+    if (existingExpense) {
+      await invalidateDashboardOverviewSummary(existingExpense.userId, 'expense_deleted');
+      appendHouseholdAuditEntrySafe(existingExpense.userId, {
         entityType: 'expense',
         entityId: expenseId,
         action: 'delete',
-        summary: `Cashflow eliminato: ${existingExpense.data()?.categoryName ?? expenseId}`,
+        summary: `Cashflow eliminato: ${existingExpense.categoryName ?? expenseId}`,
         before: {
-          categoryName: existingExpense.data()?.categoryName,
-          amount: existingExpense.data()?.amount,
-          attributionProfileId: existingExpense.data()?.attributionProfileId,
-          attributionProfileName: existingExpense.data()?.attributionProfileName,
+          categoryName: existingExpense.categoryName,
+          amount: existingExpense.amount,
+          attributionProfileId: existingExpense.attributionProfileId,
+          attributionProfileName: existingExpense.attributionProfileName,
         },
       });
     }
   } catch (error) {
-    console.error('Error deleting expense:', error);
+    console.error('Error deleting expense:', { expenseId, error });
     throw new Error('Failed to delete expense');
   }
 }
@@ -667,26 +547,14 @@ export async function deleteExpense(expenseId: string): Promise<void> {
  */
 export async function deleteRecurringExpenses(recurringParentId: string): Promise<void> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('recurringParentId', '==', recurringParentId)
+    const response = await authenticatedFetch(
+      buildExpensesPath({ recurringParentId }),
+      { method: 'DELETE' }
     );
 
-    const querySnapshot = await getDocs(q);
-    const batch = writeBatch(db);
-    const userId = querySnapshot.docs[0]?.data()?.userId as string | undefined;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      batch.delete(docSnapshot.ref);
-    });
-
-    await batch.commit();
-    if (userId) {
-      await invalidateDashboardOverviewSummary(userId, 'expense_deleted');
-    }
+    await parseJsonResponse<{ deletedCount: number }>(response, 'Failed to delete recurring expenses');
   } catch (error) {
-    console.error('Error deleting recurring expenses:', error);
+    console.error('Error deleting recurring expenses:', { recurringParentId, error });
     throw new Error('Failed to delete recurring expenses');
   }
 }
@@ -700,52 +568,16 @@ export async function getMonthlyExpenseSummary(
   month: number
 ): Promise<MonthlyExpenseSummary> {
   try {
-    const expenses = await getExpensesByMonth(userId, year, month);
-
-    const summary: MonthlyExpenseSummary = {
-      year,
-      month,
-      totalIncome: 0,
-      totalExpenses: 0,
-      netBalance: 0,
-      byCategory: {},
-      byType: {
-        fixed: { total: 0, count: 0 },
-        variable: { total: 0, count: 0 },
-        debt: { total: 0, count: 0 },
-        income: { total: 0, count: 0 },
-      },
-    };
-
-    expenses.forEach(expense => {
-      // Update totals
-      if (expense.type === 'income') {
-        summary.totalIncome += expense.amount;
-      } else {
-        summary.totalExpenses += Math.abs(expense.amount);
-      }
-
-      // Update by category
-      if (!summary.byCategory[expense.categoryId]) {
-        summary.byCategory[expense.categoryId] = {
-          categoryName: expense.categoryName,
-          total: 0,
-          count: 0,
-        };
-      }
-      summary.byCategory[expense.categoryId].total += expense.amount;
-      summary.byCategory[expense.categoryId].count += 1;
-
-      // Update by type
-      summary.byType[expense.type].total += Math.abs(expense.amount);
-      summary.byType[expense.type].count += 1;
+    const response = await authenticatedFetch(`/api/expenses/summary?year=${year}&month=${month}`, {
+      method: 'GET',
     });
 
-    summary.netBalance = summary.totalIncome - summary.totalExpenses;
-
-    return summary;
+    return await parseJsonResponse<MonthlyExpenseSummary>(
+      response,
+      'Failed to calculate monthly expense summary'
+    );
   } catch (error) {
-    console.error('Error calculating monthly expense summary:', error);
+    console.error('Error calculating monthly expense summary:', { userId, year, month, error });
     throw new Error('Failed to calculate monthly expense summary');
   }
 }
@@ -757,7 +589,6 @@ export async function getExpenseStats(userId: string): Promise<ExpenseStats> {
   try {
     const { month: currentMonth, year: currentYear } = getItalyMonthYear();
 
-    // Calculate previous month
     let previousYear = currentYear;
     let previousMonth = currentMonth - 1;
     if (previousMonth === 0) {
@@ -770,7 +601,6 @@ export async function getExpenseStats(userId: string): Promise<ExpenseStats> {
       getMonthlyExpenseSummary(userId, previousYear, previousMonth),
     ]);
 
-    // Calculate deltas (percentage change)
     const incomeDelta = previousSummary.totalIncome > 0
       ? ((currentSummary.totalIncome - previousSummary.totalIncome) / previousSummary.totalIncome) * 100
       : 0;
@@ -801,7 +631,7 @@ export async function getExpenseStats(userId: string): Promise<ExpenseStats> {
       },
     };
   } catch (error) {
-    console.error('Error getting expense stats:', error);
+    console.error('Error getting expense stats:', { userId, error });
     throw new Error('Failed to get expense stats');
   }
 }
@@ -833,8 +663,6 @@ export function calculateNetBalance(expenses: Expense[]): number {
 
 /**
  * Calculate income to expense ratio
- * Returns the ratio of total income to total expenses
- * Returns null if total expenses is 0 (to avoid division by zero)
  */
 export function calculateIncomeExpenseRatio(expenses: Expense[]): number | null {
   const totalIncome = calculateTotalIncome(expenses);
@@ -851,17 +679,13 @@ async function postExpenseCategoryAssignmentAction(
   body: Record<string, unknown>,
   fallbackMessage: string
 ): Promise<number> {
-  const response = await fetch('/api/expenses/category-assignment', {
+  const response = await authenticatedFetch('/api/expenses/category-assignment', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 
-  if (!response.ok) {
-    throw new Error(fallbackMessage);
-  }
-
-  const payload = await response.json() as { count?: number };
+  const payload = await parseJsonResponse<{ count?: number }>(response, fallbackMessage);
   return payload.count ?? 0;
 }
 
@@ -911,31 +735,12 @@ export async function updateExpensesCategoryName(
   userId: string
 ): Promise<void> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId)
+    await postExpenseCategoryAssignmentAction(
+      { action: 'updateCategoryName', categoryId, newCategoryName },
+      'Failed to update expenses category name'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return; // No expenses to update
-    }
-
-    const batch = writeBatch(db);
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      batch.update(docSnapshot.ref, {
-        categoryName: newCategoryName,
-        updatedAt: Timestamp.now(),
-      });
-    });
-
-    await batch.commit();
   } catch (error) {
-    console.error('Error updating expenses category name:', error);
+    console.error('Error updating expenses category name:', { categoryId, userId, error });
     throw new Error('Failed to update expenses category name');
   }
 }
@@ -950,32 +755,17 @@ export async function updateExpensesSubCategoryName(
   userId: string
 ): Promise<void> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId),
-      where('subCategoryId', '==', subCategoryId)
+    await postExpenseCategoryAssignmentAction(
+      {
+        action: 'updateSubCategoryName',
+        categoryId,
+        subCategoryId,
+        newSubCategoryName,
+      },
+      'Failed to update expenses subcategory name'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return; // No expenses to update
-    }
-
-    const batch = writeBatch(db);
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      batch.update(docSnapshot.ref, {
-        subCategoryName: newSubCategoryName,
-        updatedAt: Timestamp.now(),
-      });
-    });
-
-    await batch.commit();
   } catch (error) {
-    console.error('Error updating expenses subcategory name:', error);
+    console.error('Error updating expenses subcategory name:', { categoryId, subCategoryId, userId, error });
     throw new Error('Failed to update expenses subcategory name');
   }
 }
@@ -1055,24 +845,7 @@ export async function reassignExpensesSubCategory(
 }
 
 /**
- * Check if a cross-type move requires flipping the amount sign.
- *
- * Sign convention: income = positive, expenses (fixed/variable/debt) = negative.
- * When moving between income ↔ expense types, the amount must be flipped.
- */
-function needsSignFlip(oldType: ExpenseType, newType: ExpenseType): boolean {
-  const isOldIncome = oldType === 'income';
-  const isNewIncome = newType === 'income';
-  return isOldIncome !== isNewIncome;
-}
-
-/**
  * Move all expenses from one category to another, updating type for cross-type moves.
- *
- * Unlike reassignExpensesCategory (used during deletion), this preserves the source
- * category and also updates the expense `type` field to match the destination category.
- * When moving between income ↔ expense types, flips the amount sign to maintain
- * the sign convention (income = positive, expenses = negative).
  */
 export async function moveExpensesToCategory(
   oldCategoryId: string,
@@ -1106,9 +879,6 @@ export async function moveExpensesToCategory(
 
 /**
  * Move all expenses from a specific subcategory to another category/subcategory.
- *
- * Supports cross-category and cross-type moves. Source subcategory is preserved.
- * When moving between income ↔ expense types, flips the amount sign.
  */
 export async function moveExpensesFromSubCategory(
   oldCategoryId: string,
@@ -1144,15 +914,6 @@ export async function moveExpensesFromSubCategory(
 
 /**
  * Batch-update the type of all expenses in a category when the category type changes.
- *
- * Keeps categoryId and categoryName unchanged — only updates the `type` field
- * and flips amount signs when crossing the income ↔ expense boundary.
- *
- * @param categoryId - The category whose expenses need updating
- * @param oldType - Previous category type
- * @param newType - New category type
- * @param userId - Owner of the expenses
- * @returns Number of expenses updated
  */
 export async function updateExpensesType(
   categoryId: string,
@@ -1161,96 +922,53 @@ export async function updateExpensesType(
   userId: string
 ): Promise<number> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(
-      expensesRef,
-      where('userId', '==', userId),
-      where('categoryId', '==', categoryId)
+    return await postExpenseCategoryAssignmentAction(
+      {
+        action: 'updateCategoryType',
+        categoryId,
+        oldType,
+        newType,
+      },
+      'Failed to update expense types'
     );
-
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      return 0;
-    }
-
-    const flipSign = needsSignFlip(oldType, newType);
-    const batch = writeBatch(db);
-    let count = 0;
-
-    querySnapshot.docs.forEach(docSnapshot => {
-      const updates: Record<string, unknown> = {
-        type: newType,
-        updatedAt: Timestamp.now(),
-      };
-
-      if (flipSign) {
-        const currentAmount = docSnapshot.data().amount as number;
-        updates.amount = -currentAmount;
-      }
-
-      batch.update(docSnapshot.ref, updates);
-      count++;
-    });
-
-    await batch.commit();
-    return count;
   } catch (error) {
-    console.error('Error updating expense types in category:', error);
+    console.error('Error updating expense types in category:', { categoryId, oldType, newType, userId, error });
     throw new Error('Failed to update expense types');
   }
 }
 
 /**
  * Fetch all expenses in a recurring series by parent ID.
- *
- * Used before deleting a series to identify which entries had a linked cash asset
- * so the asset balance can be reversed before deletion.
- *
- * @param recurringParentId - The shared parent ID of the recurring series
  */
 export async function getExpensesByRecurringParentId(recurringParentId: string): Promise<Expense[]> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(expensesRef, where('recurringParentId', '==', recurringParentId));
-    const snapshot = await getDocs(q);
+    const response = await authenticatedFetch(
+      buildExpensesPath({ recurringParentId }),
+      { method: 'GET' }
+    );
 
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: doc.data().date?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Expense[];
+    const expenses = await parseJsonResponse<Expense[]>(response, 'Failed to fetch recurring series expenses');
+    return mapExpenses(expenses);
   } catch (error) {
-    console.error('Error fetching recurring series expenses:', error);
+    console.error('Error fetching recurring series expenses:', { recurringParentId, error });
     throw new Error('Failed to fetch recurring series expenses');
   }
 }
 
 /**
  * Fetch all expenses in an installment series by parent ID.
- *
- * Used before deleting a series to identify which entries had a linked cash asset
- * so the asset balance can be reversed before deletion.
- *
- * @param installmentParentId - The shared parent ID of the installment series
  */
 export async function getExpensesByInstallmentParentId(installmentParentId: string): Promise<Expense[]> {
   try {
-    const expensesRef = collection(db, EXPENSES_COLLECTION);
-    const q = query(expensesRef, where('installmentParentId', '==', installmentParentId));
-    const snapshot = await getDocs(q);
+    const response = await authenticatedFetch(
+      buildExpensesPath({ installmentParentId }),
+      { method: 'GET' }
+    );
 
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: doc.data().date?.toDate() || new Date(),
-      createdAt: doc.data().createdAt?.toDate() || new Date(),
-      updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-    })) as Expense[];
+    const expenses = await parseJsonResponse<Expense[]>(response, 'Failed to fetch installment series expenses');
+    return mapExpenses(expenses);
   } catch (error) {
-    console.error('Error fetching installment series expenses:', error);
+    console.error('Error fetching installment series expenses:', { installmentParentId, error });
     throw new Error('Failed to fetch installment series expenses');
   }
 }

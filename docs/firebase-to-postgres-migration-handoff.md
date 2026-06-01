@@ -1233,6 +1233,62 @@ Remaining:
   processing, and price updater paths. Rerun the residual search before
   selecting the next slice.
 
+## Slice Notes - 2026-06-01 Expense Service Client Wrapper
+
+Changed:
+
+- Redirected `lib/services/expenseService.ts` from direct Firebase client SDK
+  reads/writes/batches to authenticated local API calls while preserving the
+  legacy exported function signatures used by cashflow, budget, investment, and
+  settings UI code.
+- Preserved single, recurring, and installment creation semantics by building
+  the series payloads client-side and posting them through `/api/expenses`, with
+  local API/session ownership replacing legacy client-supplied user ownership.
+- Added local expense item `GET` support under `/api/expenses/[expenseId]` so the
+  compatibility wrapper can fetch before update/delete for audit and payload
+  reconstruction.
+- Extended `/api/expenses` and `lib/server/cashflow/localExpenseService.ts` with
+  session-scoped recurring/installment series list and delete helpers.
+- Extended `/api/expenses/category-assignment` and the local expense server
+  service with category name, subcategory name, and category type cascade
+  actions, preserving sign flipping when moving across income/non-income types.
+- Added `__tests__/expenseServiceClientMigration.test.ts` as the RED/GREEN
+  client-wrapper boundary test covering list/month/date-range/item reads,
+  create/update/delete, recurring/installment create/list/delete, category
+  cascade helper calls, and no Firebase runtime imports/calls.
+
+Verified:
+
+- Red test failed before implementation because `expenseService.ts` still
+  imported `firebase/firestore` and `@/lib/firebase/config` and wrapper calls
+  reached the mocked Firestore helpers instead of `authenticatedFetch`.
+- `npm test -- --run __tests__/expenseServiceClientMigration.test.ts __tests__/localExpenseService.test.ts __tests__/localExpensesRoutes.test.ts __tests__/expenseCategoryAssignmentMigration.test.ts`
+  passed: 4 files, 41 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- Focused residual search over `lib/services/expenseService.ts` found no
+  remaining Firebase, Firestore, `Timestamp`, `adminDb`, `requireFirebaseAuth`,
+  or `lib/firebase` matches.
+- Full residual search count after this slice: 383 matching lines across app,
+  lib, components, types, and tests.
+
+Caveats:
+
+- The wrapper reconstructs update payloads from a local item `GET` plus the
+  submitted partial update because the local `PUT` route expects a full expense
+  payload. This preserves the public legacy wrapper signature without expanding
+  route semantics in this slice.
+- Recurring/installment series deletion is now a session-scoped local API delete
+  by parent ID; existing callers that need linked cash-asset reversal still read
+  the series first through the migrated list helpers.
+
+Remaining:
+
+- Active Firebase runtime dependencies still remain outside this slice, notably
+  performance, dividends, dashboard overview compatibility services, periodic
+  email, assistant legacy store, API auth compatibility, dividend processing,
+  and price updater paths. Rerun the residual search before selecting the next
+  slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -1240,7 +1296,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 
 High-value next targets:
 
-- `lib/services/expenseService.ts`
 - `lib/services/snapshotService.ts`
 - `lib/services/performanceService.ts`
 - `lib/services/dashboardOverviewService.ts`
