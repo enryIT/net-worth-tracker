@@ -14,9 +14,16 @@ describe('csv import preview UI', () => {
 
     expect(source).toContain('Anteprima import CSV');
     expect(source).toContain('/api/imports/validate');
+    expect(source).toContain('/api/imports/presets');
+    expect(source).toContain('Preset import');
+    expect(source).toContain('Salva preset');
+    expect(source).toContain('Carica preset');
+    expect(source).toContain('Aggiorna preset');
+    expect(source).toContain('Elimina preset');
     expect(source).toContain('Nessun movimento viene salvato in questa fase');
     expect(source).not.toContain('Conferma importazione');
     expect(source).not.toContain('Importa definitivamente');
     expect(source).not.toContain('Salva movimenti');
+    expect(source).not.toContain('/api/imports/commit');
   });
 });

@@ -388,6 +388,21 @@ Acceptance criteria:
 - No raw CSV rows are stored inside presets.
 - Tests cover ownership denial and malformed payloads.
 
+Release verification checklist (Milestone 2, preset persistence only):
+
+- [ ] `npm test -- --run __tests__/csvImportPresetService.test.ts __tests__/csvImportPresetRoutes.test.ts __tests__/csvImportPreviewUi.test.ts` passes.
+- [ ] `GET/POST /api/imports/presets` and `PATCH/DELETE /api/imports/presets/{presetId}` require Firebase bearer token.
+- [ ] Route handlers derive `userId` from Firebase token and reject client-supplied ownership fields.
+- [ ] Preset payload validation rejects malformed mapping/locale/rule shape and rejects raw CSV content fields.
+- [ ] `/dashboard/cashflow/import-csv` exposes preset UX (`Preset import`, `Salva preset`, `Carica preset`, `Aggiorna preset`, `Elimina preset`) while remaining preview-only (no commit action).
+
+Rollback checklist (Milestone 2, preset persistence only):
+
+- [ ] Hide preset controls from `/dashboard/cashflow/import-csv` while keeping preview validation available.
+- [ ] Disable preset API routes (`/api/imports/presets*`) or guard them behind a feature flag.
+- [ ] Delete persisted `csvImportPresets` documents if rollback requires full cleanup.
+- [ ] Re-run CSV import preview and API auth tests to confirm no regressions outside preset CRUD.
+
 ### Milestone 3: Preview and reconciliation UI
 
 Approach: add the user-facing import wizard without committing data yet. The preview must make classification, validation, duplicates, and unresolved references visible before any write.
