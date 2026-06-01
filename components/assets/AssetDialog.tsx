@@ -34,7 +34,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useForm, useFieldArray, useWatch } from 'react-hook-form';
+import { useForm, useFieldArray, useWatch, type SubmitErrorHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
@@ -222,8 +222,11 @@ function buildAssetFormDataFromValues(
   composition: AssetComposition[],
   isBondWithIsin: boolean
 ): AssetFormData {
+  const normalizedTicker = (data.ticker ?? '').trim();
+  const resolvedTicker = normalizedTicker.length > 0 ? normalizedTicker : data.name.trim();
+
   return {
-    ticker: data.ticker,
+    ticker: resolvedTicker,
     name: data.name,
     isin: data.isin && data.isin.trim() !== '' ? data.isin.trim().toUpperCase() : undefined,
     type: data.type,
@@ -366,7 +369,7 @@ const TYPE_CARDS: { type: AssetType; label: string; title: string; Icon: React.E
 // Zod validation schema for asset form
 // Note: .or(z.nan()) allows undefined values for optional numeric fields
 const assetSchema = z.object({
-  ticker: z.string().min(1, 'Ticker is required'),
+  ticker: z.string().optional(),
   name: z.string().min(1, 'Name is required'),
   isin: z.string().regex(/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/, 'Invalid ISIN format (example: IT0003128367)').optional().or(z.literal('')),
   type: z.enum(['stock', 'etf', 'bond', 'crypto', 'commodity', 'cash', 'realestate', 'pensionfund']),
@@ -405,6 +408,14 @@ const assetSchema = z.object({
   pensionExpectedRetirementDate: z.string().optional(),
   includeInHistoryTables: z.boolean().optional(),
   ownershipProfileId: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.type !== 'cash' && data.type !== 'realestate' && (data.ticker ?? '').trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ticker'],
+      message: 'Il ticker è obbligatorio per questo tipo di asset',
+    });
+  }
 });
 
 type AssetFormValues = z.infer<typeof assetSchema>;
@@ -936,7 +947,8 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
         currentPrice = resolveBondPrice(data.manualPrice, data.bondNominalValue, isBondWithIsin);
         toast.success(`Prezzo manuale impostato: ${currentPrice.toFixed(2)} ${data.currency}`);
       } else if (shouldUpdatePrice(data.type, data.subCategory)) {
-        const fetched = await fetchMarketPrice(data.ticker, data.isin, data.bondNominalValue, isBondWithIsin);
+        const tickerForFetch = (data.ticker ?? '').trim();
+        const fetched = await fetchMarketPrice(tickerForFetch, data.isin, data.bondNominalValue, isBondWithIsin);
         currentPrice = fetched.price;
         if (fetched.currency) data.currency = fetched.currency;
         fetchedCurrentPriceEur = fetched.priceEur;
@@ -992,6 +1004,18 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
     }
   };
 
+  const onInvalidSubmit: SubmitErrorHandler<AssetFormValues> = (formErrors) => {
+    const firstError = Object.values(formErrors).find(
+      (error) => typeof error?.message === 'string' && error.message.trim().length > 0
+    );
+
+    const errorMessage = typeof firstError?.message === 'string'
+      ? firstError.message
+      : "Controlla i campi obbligatori prima di salvare l'asset";
+
+    toast.error(errorMessage);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0">
@@ -1042,7 +1066,7 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
 
         {/* Step 2: form — edit mode OR create mode after type selection */}
         {(isEdit || step === 2) && (
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+        <form onSubmit={handleSubmit(onSubmit, onInvalidSubmit)} className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
 
           {/* Back to type picker — create mode only */}

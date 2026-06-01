@@ -16,13 +16,16 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useExpenses, useExpenseCategories } from '@/lib/hooks/useExpenses';
 import { getSettings } from '@/lib/services/assetAllocationService';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { AnalisiTab } from '@/components/cashflow/AnalisiTab';
+import { HouseholdScopeSelect } from '@/components/household/HouseholdScopeSelect';
+import { useHouseholdScopeFilter } from '@/lib/hooks/useHouseholdScopeFilter';
+import { filterExpensesByAttributionScope } from '@/lib/utils/householdUtils';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -31,6 +34,14 @@ function getErrorMessage(error: unknown): string {
 export default function AnalisiPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const {
+    householdConfig,
+    householdEnabled,
+    options: householdScopeOptions,
+    selectedScopeKey,
+    setSelectedScopeKey,
+    scope,
+  } = useHouseholdScopeFilter(user?.uid);
 
   const { data: allExpenses = [], isLoading: expensesLoading } = useExpenses(user?.uid);
   // Categories are loaded so AnalisiTab's sibling components (e.g. ExpenseTrackingTab)
@@ -73,24 +84,42 @@ export default function AnalisiPage() {
   };
 
   const loading = expensesLoading || categoriesLoading;
+  const scopedExpenses = useMemo(
+    () => filterExpensesByAttributionScope(allExpenses, householdConfig, scope),
+    [allExpenses, householdConfig, scope]
+  );
+  const displayExpenses = householdEnabled ? scopedExpenses : allExpenses;
 
   return (
     <div className="space-y-6 max-desktop:portrait:pb-20">
       {/* Header — standard dashboard page pattern */}
       <div className="border-b border-border pb-4">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-          Analisi
-        </p>
-        <h1 className="mt-1 text-2xl font-bold text-foreground sm:text-3xl">
-          Analisi Cashflow
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Distribuzione delle spese, pattern e trend nel tempo
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+              Analisi
+            </p>
+            <h1 className="mt-1 text-2xl font-bold text-foreground sm:text-3xl">
+              Analisi Cashflow
+            </h1>
+            <p className="mt-2 text-muted-foreground">
+              Distribuzione delle spese, pattern e trend nel tempo
+            </p>
+          </div>
+          {householdEnabled && (
+            <HouseholdScopeSelect
+              value={selectedScopeKey}
+              onValueChange={setSelectedScopeKey}
+              options={householdScopeOptions}
+              label="Vista analisi"
+              className="w-full sm:w-[240px]"
+            />
+          )}
+        </div>
       </div>
 
       <AnalisiTab
-        allExpenses={allExpenses}
+        allExpenses={displayExpenses}
         loading={loading}
         onRefresh={handleRefresh}
         historyStartYear={cashflowHistoryStartYear}
