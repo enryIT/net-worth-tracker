@@ -346,6 +346,22 @@ Acceptance criteria:
 - Dedupe keys are stable for semantically equivalent rows after normalization.
 - No financial records are created or modified in this milestone.
 
+Release verification checklist (Milestone 1, non-persistent):
+
+- [ ] `npm test -- --run __tests__/csvImportFoundation.test.ts __tests__/importsValidateRoute.test.ts __tests__/csvImportPreviewUi.test.ts` passes.
+- [ ] `POST /api/imports/validate` requires Firebase bearer token and rejects mismatched `userId`.
+- [ ] Route returns preview-only payload (`ok`, `data.summary`, row issues) and performs no writes.
+- [ ] `/dashboard/cashflow/import-csv` shows preview copy and does not expose commit/save actions.
+- [ ] Cashflow tab contains entrypoint link/button text `Importa CSV`.
+
+Rollback checklist (Milestone 1, non-persistent):
+
+- [ ] Hide/remove the `Importa CSV` entrypoint in `ExpenseTrackingTab`.
+- [ ] Disable or remove `/dashboard/cashflow/import-csv`.
+- [ ] Disable or remove `POST /api/imports/validate`.
+- [ ] Re-run the standard cashflow and API auth route tests to confirm no regressions.
+- [ ] No data rollback required because milestone does not persist CSV rows or create financial records.
+
 ### Milestone 2: Import presets
 
 Approach: persist reusable mapping and classification configuration separately from import execution. Presets should improve repeated imports while remaining user-owned and safe to delete.

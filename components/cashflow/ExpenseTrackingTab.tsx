@@ -18,6 +18,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
@@ -1360,7 +1361,10 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   return (
     <div className="space-y-6">
       {/* Desktop "Nuovo movimento" button — mobile uses FAB below */}
-      <div className="hidden desktop:flex justify-end">
+      <div className="hidden desktop:flex justify-end gap-2">
+        <Button asChild variant="outline">
+          <Link href="/dashboard/cashflow/import-csv">Importa CSV</Link>
+        </Button>
         <Button onClick={handleAddMovement} disabled={isDemo} title={isDemo ? 'Non disponibile in modalità demo' : undefined}>
           <Plus className="mr-2 h-4 w-4" />
           Nuovo movimento
