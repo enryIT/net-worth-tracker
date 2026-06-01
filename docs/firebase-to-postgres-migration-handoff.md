@@ -1296,7 +1296,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 
 High-value next targets:
 
-- `lib/services/snapshotService.ts`
 - `lib/services/performanceService.ts`
 - `lib/services/dashboardOverviewService.ts`
 - `lib/services/dividendService.ts`
