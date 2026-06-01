@@ -190,6 +190,36 @@ Verified:
   - Result: 5 files, 32 tests passed.
 - `npx tsc --noEmit --incremental false` passed.
 
+## Slice Notes - 2026-06-01 API Auth Local Session Compatibility
+
+Changed:
+
+- Migrated `lib/server/apiAuth.ts` away from Firebase Admin runtime imports (`firebase-admin/auth`, `@/lib/firebase/admin`) while preserving the legacy exported helper names used by old route families and tests.
+- Replaced Firebase bearer-token verification with local session resolution through `requireUserSession()` from `lib/server/auth/session.ts`.
+- Kept `requireFirebaseAuth(request)` as a compatibility adapter that returns a minimal UID-compatible token object:
+  - `uid: user.id`
+  - `email` and `name` when available
+- Preserved `assertSameUser()` and `assertResourceOwner()` error messages/status mapping.
+- Extended `getApiAuthErrorResponse()` to map local `AuthSessionError` values:
+  - `UNAUTHENTICATED` -> 401
+  - `DEMO_READONLY` -> 403
+- Added `__tests__/apiAuthLocalSessionMigration.test.ts` as the migration boundary test for the helper.
+
+Verified:
+
+- RED boundary test failed as expected before implementation:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-fix.cjs' npm test -- --run __tests__/apiAuthLocalSessionMigration.test.ts`
+  - Failure included forbidden Firebase Admin import assertions and missing local-session delegation.
+- GREEN/relevant auth tests passed:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-fix.cjs' npm test -- --run __tests__/apiAuthLocalSessionMigration.test.ts __tests__/localAuthService.test.ts __tests__/localAuthRegisterRoute.test.ts __tests__/localAssistantStreamRoute.test.ts __tests__/localAssistantMemoryRoute.test.ts`
+  - Result: 5 files, 26 tests passed.
+- `npx tsc --noEmit --incremental false` passed.
+- Touched-file Firebase Admin auth search is clean for `lib/server/apiAuth.ts`.
+
+Caveat:
+
+- `requireFirebaseAuth()` now returns a minimal compatibility token rather than full Firebase custom claims. Current repository search found no active app/lib callers outside `lib/server/apiAuth.ts` itself, but any hidden legacy caller expecting Firebase-specific claims must be migrated or extended explicitly.
+
 ## Slice Notes - 2026-06-01 Dividend Income Expense Link Runtime Removal
 
 Changed:

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DecodedIdToken } from 'firebase-admin/auth';
-import { adminAuth } from '@/lib/firebase/admin';
+import { AuthSessionError, requireUserSession } from '@/lib/server/auth/session';
 
 class ApiAuthError extends Error {
   status: number;
@@ -12,45 +11,48 @@ class ApiAuthError extends Error {
   }
 }
 
+type LegacyAuthToken = {
+  uid: string;
+  email?: string | null;
+  name?: string | null;
+};
+
 /**
- * Verify the Firebase ID token attached to a private API request.
+ * Resolve the authenticated user from local session auth and expose a
+ * uid-compatible token object for legacy API helpers.
  *
  * Why this exists:
- * - App Router route handlers use the Admin SDK, which bypasses Firestore rules
- * - Any route that trusts client-provided userId/resource IDs must authenticate first
- * - Centralizing this avoids slightly different auth checks across handlers
+ * - Legacy routes still consume `requireFirebaseAuth()` + uid checks
+ * - New auth comes from local server sessions, not bearer token verification
+ * - This adapter keeps route behavior stable during migration
  */
 export async function requireFirebaseAuth(
   request: NextRequest
-): Promise<DecodedIdToken> {
-  const authorization = request.headers.get('authorization');
+): Promise<LegacyAuthToken> {
+  void request;
 
-  if (!authorization?.startsWith('Bearer ')) {
-    throw new ApiAuthError(401, 'Missing Authorization bearer token');
+  const user = await requireUserSession();
+  const legacyToken: LegacyAuthToken = { uid: user.id };
+
+  if (typeof user.email !== 'undefined') {
+    legacyToken.email = user.email;
   }
 
-  const idToken = authorization.slice('Bearer '.length).trim();
-
-  if (!idToken) {
-    throw new ApiAuthError(401, 'Missing Firebase ID token');
+  if (typeof user.name !== 'undefined') {
+    legacyToken.name = user.name;
   }
 
-  try {
-    return await adminAuth.verifyIdToken(idToken);
-  } catch (error) {
-    console.error('[apiAuth] Failed to verify Firebase ID token:', error);
-    throw new ApiAuthError(401, 'Invalid or expired Firebase ID token');
-  }
+  return legacyToken;
 }
 
 /**
- * Enforce that the authenticated Firebase user matches the target userId.
+ * Enforce that the authenticated user matches the target userId.
  *
  * This closes the class of bugs where the client can swap userId in query/body
  * while still sending a valid token for a different account.
  */
 export function assertSameUser(
-  decodedToken: DecodedIdToken,
+  decodedToken: LegacyAuthToken,
   requestedUserId: string | null | undefined
 ): void {
   if (!requestedUserId) {
@@ -63,10 +65,10 @@ export function assertSameUser(
 }
 
 /**
- * Enforce resource ownership after loading a document through the Admin SDK.
+ * Enforce resource ownership on records loaded server-side.
  */
 export function assertResourceOwner(
-  decodedToken: DecodedIdToken,
+  decodedToken: LegacyAuthToken,
   ownerUserId: string | null | undefined
 ): void {
   if (!ownerUserId) {
@@ -81,6 +83,11 @@ export function assertResourceOwner(
 export function getApiAuthErrorResponse(error: unknown): NextResponse | null {
   if (error instanceof ApiAuthError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  if (error instanceof AuthSessionError) {
+    const status = error.code === 'DEMO_READONLY' ? 403 : 401;
+    return NextResponse.json({ error: error.message }, { status });
   }
 
   return null;
