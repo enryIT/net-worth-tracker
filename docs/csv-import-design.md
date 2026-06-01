@@ -1,248 +1,414 @@
 # CSV Import Design
 
-## Understanding Summary
+## Status
 
-- Build a CSV import feature for financial movements: expenses, income, dividends, investment operations, internal transfers, and settlements.
-- Support both initial historical migration and recurring imports, starting with a conservative and safe V1.
-- Use one Net Worth Tracker CSV format, not bank- or broker-specific exports.
-- Use one mixed CSV file with a `movement_type` column.
-- Provide preview and manual confirmation before any write.
-- Resolve references by readable names already present in the app. Missing or ambiguous names are blocking row errors.
-- Block duplicate rows before import.
-- Apply the same domain effects as existing forms: cash balances, investment quantities/average cost, dividend income sync where applicable, and internal cash transfers.
-- Treat settlements in V1 as internal transfers with purpose `settlement`.
-- Place the feature in Settings under an "Importazione dati" area, with CSV template download, example rows, and a column guide.
+Proposed design. No implementation has been completed yet.
 
-## Assumptions
+## Context
 
-- V1 supports up to 5,000 rows per CSV file.
-- Larger imports are split across multiple files.
-- CSV separator is only `;`.
-- CSV headers use stable technical English names.
-- Dates use ISO format: `YYYY-MM-DD`.
-- Amounts in the CSV are positive; the system applies the correct sign by movement type.
-- Parsing and first-pass validation happen client-side for preview.
-- Server-side validation is mandatory and authoritative before commit.
-- No write starts if any row has blocking errors or duplicate conflicts.
-- The original CSV file is not stored after upload/preview.
-- The feature is disabled in demo mode.
-- Private import endpoints verify Firebase UID server-side.
-- Each created record gets `importRunId`; rows may also carry optional `external_id`.
-- Import history is visible in the UI.
-- Rollback after technical failure is best-effort and uses an import journal.
+Net Worth Tracker already models multiple financial movement types:
 
-## Recommended Approach
+- ordinary cashflow entries for income and expenses;
+- internal cash transfers that do not affect income/expense savings metrics;
+- investment operations for buy/sell activity;
+- dividends and coupons;
+- taxes and fees associated with portfolio activity.
 
-Use client-side preview with server-side import orchestration.
+The CSV import feature should reduce manual entry while preserving the accounting semantics already present in the app. The design must also remain compatible with the Firebase-to-Postgres/local-runtime migration: route handlers stay thin, server-side business logic belongs in services/use-cases, and the app should not introduce new Firebase-specific runtime dependencies.
 
-The client reads the CSV, validates basic structure, and shows a preview. On confirmation, the server revalidates all rows against authenticated user data, checks duplicates, creates an import run, writes records, applies asset/cash effects, and updates import status. If a technical failure happens after partial writes, the server uses the import journal and `importRunId` to attempt cleanup.
+## Goals
 
-This avoids a server-side temporary CSV storage pipeline in V1 while still keeping security and domain consistency on the server.
+- Import CSV files from arbitrary banks and brokers through configurable column mapping.
+- Support all major movement families: cashflow, transfers, investment operations, dividends/coupons, taxes, and fees.
+- Provide a required preview/reconciliation step before writing data.
+- Allow users to save reusable mapping and classification presets.
+- Detect likely duplicates conservatively.
+- Track each import as a reversible batch.
+- Avoid persisting raw CSV files containing sensitive financial data.
 
-## CSV Format
+## Non-goals for the first implementation
 
-Common columns:
+- Broker-specific hardcoded importers as the primary architecture.
+- Blind automatic creation of assets, categories, subcategories, or accounts.
+- Updating existing financial records through CSV import.
+- Persisting raw CSV files for later reprocessing.
+- AI-based classification as a requirement for the first release.
 
-- `movement_type`
-- `date`
-- `amount`
-- `currency`
-- `description`
-- `cash_account`
-- `notes`
-- `external_id`
+## Confirmed product decisions
 
-Supported `movement_type` values:
+- Use a universal configurable importer instead of broker-specific templates.
+- Use hybrid classification: mapped source type when available, otherwise configurable rules and manual correction.
+- Target up to roughly 5,000 rows per import in the first release.
+- Process the raw CSV client-side where possible; send only normalized rows and confirmed import commands to the server.
+- Require an import preview before commit.
+- Persist import presets and import batches, not the raw CSV.
+- Support rollback for records created by a batch.
+- Implement support progressively by movement type even though the design supports all movement families.
 
-- `expense`
-- `income`
-- `dividend`
-- `investment`
-- `transfer`
-- `settlement`
+## Proposed architecture
 
-Cashflow-specific columns:
+### 1. Client parser and mapper
 
-- `category`
-- `subcategory`
-- `cost_center`
-- `attribution_profile`
+The browser reads the raw CSV file and performs the first-stage parse:
 
-Dividend-specific columns:
+- detect delimiter, headers, and basic shape;
+- normalize date, number, decimal separator, and currency formats;
+- let the user map source columns to canonical fields;
+- generate normalized rows without persisting the raw file.
 
-- `asset`
-- `ex_date`
-- `payment_date`
-- `dividend_per_share`
-- `quantity`
-- `gross_amount`
-- `tax_amount`
-- `net_amount`
-- `dividend_type`
+Important mapped fields include:
 
-Investment-specific columns:
+- date;
+- description;
+- amount, or debit/credit columns;
+- currency;
+- source movement type;
+- source account and destination account;
+- category and subcategory;
+- asset name, ticker, or ISIN;
+- quantity;
+- unit price;
+- fees;
+- taxes.
 
-- `asset`
-- `operation_type`
-- `quantity`
-- `price_per_unit`
-- `fees`
-- `taxes`
+### 2. Classification engine
 
-Transfer and settlement columns:
+The classification layer converts normalized rows into candidate domain movements.
 
-- `from_cash_account`
-- `to_cash_account`
-- `fees`
-- `transfer_purpose`
+Each row receives:
 
-Rows use only the columns relevant to their movement type. Unused columns may stay empty. The app should provide a downloadable template with examples for every movement type and an Italian UI guide explaining each column.
+- `movementKind`;
+- confidence level;
+- explanation for the classification;
+- validation issues;
+- dedupe key;
+- suggested links to existing app entities.
 
-## Validation And Deduplication
+Suggested `movementKind` values:
 
-Client validation catches fast feedback issues:
+- `cashflow`;
+- `transfer`;
+- `investmentOperation`;
+- `dividend`;
+- `fee`;
+- `tax`;
+- `unknown`.
 
-- Missing required headers.
-- Separator other than `;`.
-- Invalid ISO dates.
-- Invalid numbers.
-- Unsupported `movement_type`.
-- Missing required fields for a movement type.
+Classification inputs:
 
-Server validation repeats all structural checks and resolves names against the authenticated user's data:
+- mapped source type;
+- description keywords;
+- amount sign;
+- account names;
+- ticker/ISIN presence;
+- quantity and price presence;
+- saved user rules.
 
-- Categories and subcategories.
-- Assets.
-- Cash accounts.
-- Cost centers.
-- Household attribution profiles.
+Classification must remain explainable in the UI, for example: "Classificato come Cedola perché la descrizione contiene 'CEDOLA'."
 
-Zero matches or multiple matches are blocking errors. No record is written if any row fails validation.
+### 3. Preview and reconciliation UI
 
-Duplicate detection is blocking. Suggested keys:
+The preview step is mandatory and should support bulk correction for medium-size imports.
 
-- `expense` / `income`: type, date, normalized amount, category, subcategory, cash account, description/notes.
-- `dividend`: asset, payment date, ex date, gross/net/tax amount, dividend type.
-- `investment`: asset, operation type, date, quantity, price per unit, fees, taxes, cash account.
-- `transfer` / `settlement`: from account, to account, date, amount, fees, purpose.
+The UI should show:
 
-If `external_id` is present, it becomes the strongest deduplication key together with user and `movement_type`.
+- total rows;
+- rows ready to import;
+- duplicate candidates;
+- rows with errors;
+- rows needing reconciliation;
+- movement-type breakdown.
 
-## Architecture
+Useful filters:
 
-UI:
+- errors;
+- warnings;
+- duplicates;
+- unknown movement type;
+- missing asset/category/account;
+- movement kind.
 
-- Add an "Importazione dati" section in Settings.
-- Include template download, CSV upload, preview, error filtering, confirmation, and import history.
-- Preview shows row count, valid rows, blocking errors, duplicate conflicts, and breakdown by `movement_type`.
-- For 5,000 rows, paginated rendering is enough for V1.
+Rows should be editable before commit. Bulk edit is important for repeated classification fixes across many rows.
 
-Suggested endpoints:
+Missing entities are resolved through assisted creation or linking:
 
-- `POST /api/imports/csv/validate`
-- `POST /api/imports/csv/{runId}/commit`
+- create/link asset;
+- create/link cash account;
+- create/link category;
+- create/link subcategory;
+- assign cost center when applicable.
 
-The validate endpoint performs authoritative server-side checks and creates an import run in `validated` or `validation_failed` state. The commit endpoint revalidates the request/run consistency, writes data, records a journal, and updates final state.
+The importer must never create those entities silently without confirmation.
 
-## Write Flow And Rollback
+### 4. Server-side commit
 
-Commit flow:
+The commit API receives validated normalized rows or chunks, not the raw CSV file.
 
-1. Create or update `importRuns/{runId}` with status `running`.
-2. Write records in Firestore batches where appropriate.
-3. Apply asset/cash deltas through server-side domain logic.
-4. Add `importRunId` and optional `externalId` to created records.
-5. Record a journal of created record IDs and asset/cash deltas.
-6. Mark the run `completed`.
-7. Invalidate affected dashboard overview/materialized data.
+Route handlers should only handle:
 
-Failure handling:
+- authentication/session validation;
+- request schema validation;
+- demo-mode or authorization guards if needed;
+- delegation to server services/use-cases.
 
-- If a failure happens during writing, attempt best-effort rollback.
-- Rollback must delete created records and reverse asset/cash deltas.
-- If cleanup succeeds, status becomes `failed_rolled_back`.
-- If cleanup is incomplete, status becomes `failed_cleanup_needed`.
+Server services/use-cases should handle:
 
-This is not a global Firestore transaction. V1 relies on full prevalidation plus rollback best-effort because imports can exceed single transaction/batch limits.
+- final validation against authoritative user-owned data;
+- idempotency;
+- duplicate checks;
+- creation of domain records;
+- creation/update of the import batch;
+- rollback safety metadata.
 
-## Import History
+For 5,000-row imports, commit should be chunked, for example 250-500 rows per request.
 
-Use a private `importRuns` collection keyed by authenticated user.
+## Data model proposal
 
-Store:
+### `csvImportPreset`
 
-- `userId`
-- `fileName`
-- `fileSize`
-- `rowCount`
-- `validRowCount`
-- `errorCount`
-- `duplicateCount`
-- movement type breakdown
-- `status`
-- timestamps: `createdAt`, `validatedAt`, `startedAt`, `completedAt`, `failedAt`
-- `errorSummary`
-- optional `sourceHash`
+Stores reusable mapping and classification rules.
 
-Statuses:
+Fields:
 
-- `validating`
-- `validated`
-- `validation_failed`
-- `running`
-- `completed`
-- `failed_rolled_back`
-- `failed_cleanup_needed`
+- `id`;
+- `userId`;
+- `name`;
+- `sourceLabel`;
+- `columnMapping`;
+- `localeOptions`;
+- `classificationRules`;
+- `createdAt`;
+- `updatedAt`;
+- `lastUsedAt`.
 
-Do not store the full original CSV. Store metadata, hash, status, counts, and limited error summaries.
+Example `localeOptions`:
 
-## Testing Strategy
+```json
+{
+  "dateFormat": "dd/MM/yyyy",
+  "decimalSeparator": ",",
+  "thousandsSeparator": ".",
+  "defaultCurrency": "EUR",
+  "timezone": "Europe/Rome"
+}
+```
 
-Pure utility tests:
+### `importBatch`
 
-- CSV parser for `;`.
-- Header validation.
-- Movement type schema.
-- Required fields per type.
-- ISO date parsing.
-- Numeric parsing.
-- Deduplication key generation.
-- Name resolution ambiguity handling.
+Tracks an import operation and supports rollback.
 
-Route/use-case tests:
+Fields:
 
-- Missing or invalid auth.
-- Cross-user resource references rejected.
-- Missing names rejected.
-- Ambiguous names rejected.
-- Duplicate rows rejected.
-- Valid mixed import succeeds.
-- Technical failure triggers rollback journal.
-- Cleanup failure marks `failed_cleanup_needed`.
+- `id`;
+- `userId`;
+- `presetId`;
+- `status`: `draft | committing | committed | rolledBack | failed`;
+- `sourceFingerprint`;
+- `rowCount`;
+- `createdRecordCount`;
+- `duplicateCount`;
+- `errorCount`;
+- `createdRecords`;
+- `createdAt`;
+- `committedAt`;
+- `rolledBackAt`;
+- `rollbackReason`.
 
-## Risks
+`createdRecords` can be a compact list of records created by the batch:
 
-- 5,000 rows can still exceed a single Firestore batch, so imports require multiple writes.
-- Rollback must reverse asset/cash effects, not only delete imported records.
-- Name-based references are user-friendly but fragile when names are duplicated or renamed.
-- Server and client validation can drift unless schemas/utilities are shared.
-- Import history must avoid storing sensitive raw CSV contents.
+```json
+[
+  { "kind": "cashflow", "id": "...", "rowIndex": 12 },
+  { "kind": "investmentOperation", "id": "...", "rowIndex": 34 }
+]
+```
 
-## Decision Log
+### `NormalizedImportRow`
 
-- Use a V1 Net Worth Tracker CSV format instead of bank/broker-specific parsers.
-- Use one mixed CSV with `movement_type`.
-- Use preview and manual confirmation before writes.
-- Use readable names for references, not internal IDs.
-- Treat missing or ambiguous names as blocking errors.
-- Treat duplicates as blocking errors.
-- Apply the same side effects as existing forms.
-- Represent settlements as internal transfers with purpose `settlement`.
-- Put the feature in Settings under "Importazione dati".
-- Provide template download, example rows, and an Italian column guide.
-- Use English technical CSV headers.
-- Use only `;` as CSV separator.
-- Limit V1 to 5,000 rows per file.
-- Show import history in UI.
-- Use best-effort rollback on technical failure.
-- Recommend client-side preview plus server-side authenticated orchestration.
+This can be an in-memory/client-side structure unless server validation needs a temporary representation.
+
+Fields:
+
+- `rowIndex`;
+- `rawPreview`;
+- `canonicalFields`;
+- `movementKind`;
+- `confidence`;
+- `classificationReason`;
+- `issues`;
+- `dedupeKey`;
+- `resolvedRefs`.
+
+## API proposal
+
+### `POST /api/imports/validate`
+
+Optional validation endpoint before commit.
+
+Responsibilities:
+
+- validate normalized rows against server-side schemas;
+- check ownership of referenced entities;
+- return validation issues and duplicate candidates;
+- not write financial records.
+
+### `POST /api/imports/commit`
+
+Commits one import or one chunk of an import.
+
+Responsibilities:
+
+- create or continue an `importBatch`;
+- verify idempotency key;
+- create domain records;
+- store created record references;
+- return progress and final status.
+
+### `POST /api/imports/{batchId}/rollback`
+
+Rolls back a committed import batch when safe.
+
+Responsibilities:
+
+- load the batch for the authenticated user;
+- verify the batch is rollbackable;
+- delete records created by the batch;
+- mark the batch as `rolledBack`;
+- report any records that could not be safely rolled back.
+
+### Import preset routes
+
+Suggested CRUD routes:
+
+- `GET /api/import-presets`;
+- `POST /api/import-presets`;
+- `PUT /api/import-presets/{presetId}`;
+- `DELETE /api/import-presets/{presetId}`.
+
+## Deduplication strategy
+
+Use conservative deduplication. The importer should block or strongly warn only when a duplicate is highly likely.
+
+Potential dedupe keys:
+
+- cashflow: `userId + date + amount + normalizedDescription + categoryId? + accountId?`;
+- transfer: `userId + date + amount + fromAccountId + toAccountId + normalizedDescription`;
+- investment operation: `userId + date + assetId/ticker/isin + side + quantity + unitPrice + fees + taxes`;
+- dividend/coupon: `userId + paymentDate + assetId/isin + grossAmount/netAmount + currency + dividendType`;
+- fee/tax: `userId + date + amount + normalizedDescription + linkedMovementRef?`.
+
+Deduplication output should distinguish:
+
+- `duplicate`: high confidence, should not import by default;
+- `possibleDuplicate`: warning, user decides;
+- `unique`: no strong match found.
+
+## Rollback strategy
+
+First-release rollback should cover records created by the import batch only.
+
+Rules:
+
+- Do not update existing financial records in the first release.
+- Rollback deletes records created by the batch when they are still safe to delete.
+- If imported records were manually edited after import, rollback should either block those rows or require explicit confirmation.
+- Rollback should not delete assets, categories, or accounts created during reconciliation unless those entities were also explicitly marked as batch-created and still unused outside the batch.
+
+This intentionally avoids complex state restoration in the first implementation.
+
+## Suggested implementation slices
+
+### Slice 1: Pure import foundation
+
+- CSV parsing adapter.
+- Column mapping model.
+- Locale/date/number normalization.
+- `NormalizedImportRow` types.
+- Dedupe key generation helpers.
+- Basic classification rules.
+- Unit tests for parser, normalization, and classifier.
+
+No database writes in this slice.
+
+### Slice 2: Presets
+
+- `csvImportPreset` server model/service.
+- Authenticated preset API routes.
+- Tests for ownership and validation.
+- Minimal UI for save/load preset can come later if needed.
+
+### Slice 3: Preview UI
+
+- Import wizard shell.
+- Mapping screen.
+- Preview table with filters.
+- Inline correction for movement kind and key fields.
+- Bulk edit for repeated fixes.
+
+### Slice 4: Cashflow commit and rollback
+
+- Commit ordinary income/expense rows.
+- Create `importBatch`.
+- Track created records.
+- Rollback imported cashflow records.
+- Targeted route/use-case tests.
+
+### Slice 5: Transfers
+
+- Add transfer row validation and commit.
+- Preserve existing semantics: internal transfers do not affect income/expense savings metrics.
+- Extend rollback.
+
+### Slice 6: Investment operations
+
+- Add buy/sell operation import.
+- Validate asset link, quantity, unit price, fees, taxes, side.
+- Preserve existing investment operation semantics.
+
+### Slice 7: Dividends, coupons, fees, and taxes
+
+- Add dividend/coupon import.
+- Add fee/tax handling.
+- Decide whether fees/taxes are standalone movements or attached to buy/sell/dividend rows based on mapped CSV structure.
+
+## Risks and mitigations
+
+### Dirty data from ambiguous CSVs
+
+Mitigation: mandatory preview, confidence display, validation errors, bulk edit, and no silent entity creation.
+
+### Duplicate imports
+
+Mitigation: source fingerprint, dedupe keys, idempotency keys, and import batch history.
+
+### Rollback complexity
+
+Mitigation: first release only creates new records and rolls back those records. Existing-record updates are out of scope.
+
+### Performance with 5,000 rows
+
+Mitigation: client-side parsing, paginated or virtualized preview table, chunked server commits.
+
+### Privacy
+
+Mitigation: do not persist raw CSV files; persist only normalized rows after user confirmation and only as needed to create actual records/import metadata.
+
+### Scope creep
+
+Mitigation: design supports all movement types, but implementation proceeds by narrow vertical slices.
+
+## Testing strategy
+
+- Unit tests for CSV parsing, locale normalization, mapping, classification, and dedupe key generation.
+- Service/use-case tests for import commit and rollback.
+- API route tests for authentication, ownership, idempotency, and validation errors.
+- Regression tests ensuring transfers do not affect income/expense KPIs.
+- Regression tests ensuring investment operations are not modeled as ordinary expenses/income.
+- Rollback tests for full rollback, partial unsafe rollback, and duplicate rollback attempts.
+
+## Open questions
+
+- Should imported fee/tax rows be standalone records by default, or attached to related investment/dividend rows when possible?
+- Should import batch history be visible in Cashflow, Settings, or a dedicated Import page?
+- Should rollback be allowed after imported rows are manually edited, or blocked strictly?
+- Should AI-assisted classification be offered later as an optional layer on top of deterministic rules?
