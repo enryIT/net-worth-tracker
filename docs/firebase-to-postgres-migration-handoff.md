@@ -1326,6 +1326,26 @@ Remaining:
   assistant legacy store, API auth compatibility, dividend processing, and price
   updater paths. Rerun the residual search before selecting the next slice.
 
+## Blocker Note - 2026-06-01 Dashboard Overview Slice Not Started
+
+After committing the verified performance cache slice, the next selected target
+was `lib/services/dashboardOverviewService.ts`, which still imports Firebase
+Admin runtime symbols and can likely become a compatibility wrapper around
+`lib/server/dashboard/localDashboardOverviewService.ts`.
+
+Blocked before implementation because the required Codex executor was not
+available in this environment:
+
+- `codex exec --sandbox workspace-write --output-last-message .codex-result-dashboard.md ...`
+  failed with OpenAI API `401 Unauthorized: Missing bearer or basic authentication in header`.
+- Codex also reported the repo-local skill
+  `.agents/skills/api-auth-routes/SKILL.md` has invalid YAML at line 2 column
+  107, matching the previously observed skill metadata issue.
+
+Per the Hermes coding workflow rule, application source-code changes for the
+next bounded coding slice were not made directly by Hermes after Codex became
+unavailable.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
