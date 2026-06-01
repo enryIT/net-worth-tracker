@@ -190,6 +190,38 @@ Verified:
   - Result: 5 files, 32 tests passed.
 - `npx tsc --noEmit --incremental false` passed.
 
+## Slice Notes - 2026-06-01 Dividend Income Expense Link Runtime Removal
+
+Changed:
+
+- Migrated `lib/services/dividendIncomeService.ts` away from Firebase Admin runtime imports (`@/lib/firebase/admin`, `firebase-admin/firestore`) while preserving legacy exported function signatures.
+- Replaced direct `adminDb.collection('expenses')` create/update/delete calls with local Postgres-backed expense helpers from `lib/server/cashflow/localExpenseService.ts`:
+  - `createLocalExpense`
+  - `getLocalExpenseById`
+  - `updateLocalExpense`
+  - `deleteLocalExpense`
+- Preserved dividend-to-expense behavior:
+  - creates income entries scoped by `dividend.userId`;
+  - uses `netAmountEur` and `EUR` for non-EUR dividends when available;
+  - preserves the existing dividend note text format;
+  - updates the dividend `expenseId` after creating the linked expense;
+  - clears the dividend `expenseId` when deleting the linked expense.
+- Added `__tests__/dividendIncomeServiceFirebaseAdminMigration.test.ts` as a migration boundary test for the wrapper.
+
+Verified:
+
+- RED boundary test failed as expected before implementation:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-patch.cjs' npm test -- --run __tests__/dividendIncomeServiceFirebaseAdminMigration.test.ts`
+  - Failure included forbidden Firebase Admin import assertions and missing local-helper delegation calls.
+- GREEN/relevant dividend tests passed:
+  - `NODE_OPTIONS='--require /tmp/localhost-dns-fix.cjs' npm test -- --run __tests__/dividendIncomeServiceFirebaseAdminMigration.test.ts __tests__/dividendServiceFirebaseAdminMigration.test.ts __tests__/localDividendExpenseSyncRoute.test.ts __tests__/dividendUseCase.test.ts __tests__/dividendProcessor.test.ts __tests__/localDividendStatsRoute.test.ts __tests__/localDividendScrapeRoute.test.ts`
+  - Result: 7 files, 33 tests passed.
+- `npx tsc --noEmit --incremental false` passed.
+
+Caveat:
+
+- This environment still lacks a `localhost` entry in `/etc/hosts`; Vitest startup can fail with `getaddrinfo EAI_AGAIN localhost` unless a temporary Node DNS shim is used. This is an environment issue, not a repository change.
+
 ## Slice Notes - 2026-05-22 Cost Centers Client Wrapper
 
 Changed:

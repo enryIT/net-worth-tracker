@@ -1,10 +1,29 @@
 import 'server-only';
 
-import { Timestamp } from 'firebase-admin/firestore';
-import { adminDb } from '@/lib/firebase/admin';
 import { Dividend } from '@/types/dividend';
-import { updateDividend } from '@/lib/services/dividendService';
+import { getDividendById, updateDividend } from '@/lib/services/dividendService';
+import {
+  createLocalExpense,
+  deleteLocalExpense,
+  getLocalExpenseById,
+  updateLocalExpense,
+} from '@/lib/server/cashflow/localExpenseService';
 import { toDate } from '@/lib/utils/dateHelpers';
+
+function buildExpenseAmountAndCurrency(dividend: Dividend): { amount: number; currency: string; useEurAmount: boolean } {
+  const useEurAmount = dividend.currency.toUpperCase() !== 'EUR' && dividend.netAmountEur !== undefined;
+  return {
+    amount: useEurAmount ? dividend.netAmountEur! : dividend.netAmount,
+    currency: useEurAmount ? 'EUR' : dividend.currency,
+    useEurAmount,
+  };
+}
+
+function buildDividendExpenseNotes(dividend: Dividend, useEurAmount: boolean): string {
+  return `Dividendo ${dividend.assetTicker} - ${dividend.assetName}${
+    useEurAmount ? ` (${dividend.netAmount.toFixed(2)} ${dividend.currency} convertiti)` : ''
+  }${dividend.notes ? ` | ${dividend.notes}` : ''}`;
+}
 
 /**
  * Create an expense entry from a dividend
@@ -19,44 +38,31 @@ export async function createExpenseFromDividend(
   subCategoryName?: string
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
     const paymentDate = toDate(dividend.paymentDate);
 
-    // Determine amount and currency to use
-    // Prefer EUR-converted amount if available (for non-EUR dividends)
-    const useEurAmount = dividend.currency.toUpperCase() !== 'EUR' && dividend.netAmountEur !== undefined;
-    const expenseAmount = useEurAmount ? dividend.netAmountEur! : dividend.netAmount;
-    const expenseCurrency = useEurAmount ? 'EUR' : dividend.currency;
+    const { amount, currency, useEurAmount } = buildExpenseAmountAndCurrency(dividend);
 
-    // Create expense with dividend data using Admin SDK
-    const expenseData = {
-      userId: dividend.userId,
+    const createdExpense = await createLocalExpense(dividend.userId, {
       type: 'income',
       categoryId,
       categoryName,
-      subCategoryId: subCategoryId || null,
-      subCategoryName: subCategoryName || null,
-      amount: expenseAmount, // Use EUR amount if available, otherwise net amount
-      currency: expenseCurrency, // EUR if converted, otherwise original currency
-      date: Timestamp.fromDate(paymentDate),
-      notes: `Dividendo ${dividend.assetTicker} - ${dividend.assetName}${
-        useEurAmount ? ` (${dividend.netAmount.toFixed(2)} ${dividend.currency} convertiti)` : ''
-      }${dividend.notes ? ` | ${dividend.notes}` : ''}`,
+      subCategoryId,
+      subCategoryName,
+      amount,
+      currency,
+      date: paymentDate,
+      notes: buildDividendExpenseNotes(dividend, useEurAmount),
       linkedInvestmentAssetId: dividend.assetId,
       linkedInvestmentAssetName: dividend.assetName,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const expenseRef = await adminDb.collection('expenses').add(expenseData);
+    });
 
     // Update dividend with expense reference
     await updateDividend(dividend.id, {
-      expenseId: expenseRef.id,
+      expenseId: createdExpense.id,
     } as any);
 
-    console.log(`[dividendIncomeService] Created expense in ${expenseCurrency} (amount: ${expenseAmount.toFixed(2)})`);
-    return expenseRef.id;
+    console.log(`[dividendIncomeService] Created expense in ${currency} (amount: ${amount.toFixed(2)})`);
+    return createdExpense.id;
   } catch (error) {
     console.error('Error creating expense from dividend:', error);
     throw new Error('Failed to create expense from dividend');
@@ -76,28 +82,53 @@ export async function updateExpenseFromDividend(
   try {
     const paymentDate = toDate(dividend.paymentDate);
 
-    // Determine amount and currency to use
-    // Prefer EUR-converted amount if available (for non-EUR dividends)
-    const useEurAmount = dividend.currency.toUpperCase() !== 'EUR' && dividend.netAmountEur !== undefined;
-    const expenseAmount = useEurAmount ? dividend.netAmountEur! : dividend.netAmount;
-    const expenseCurrency = useEurAmount ? 'EUR' : dividend.currency;
+    const existingExpense = await getLocalExpenseById(dividend.userId, expenseId);
+    if (!existingExpense) {
+      throw new Error(`Expense not found: ${expenseId}`);
+    }
 
-    // Update expense using Admin SDK
-    await adminDb.collection('expenses').doc(expenseId).update({
-      amount: expenseAmount, // Use EUR amount if available, otherwise net amount
-      currency: expenseCurrency, // EUR if converted, otherwise original currency
-      date: Timestamp.fromDate(paymentDate),
-      notes: `Dividendo ${dividend.assetTicker} - ${dividend.assetName}${
-        useEurAmount ? ` (${dividend.netAmount.toFixed(2)} ${dividend.currency} convertiti)` : ''
-      }${dividend.notes ? ` | ${dividend.notes}` : ''}`,
+    const { amount, currency, useEurAmount } = buildExpenseAmountAndCurrency(dividend);
+    const updatedExpense = await updateLocalExpense(dividend.userId, expenseId, {
+      type: existingExpense.type,
+      categoryId: existingExpense.categoryId,
+      categoryName,
+      subCategoryId: existingExpense.subCategoryId,
+      subCategoryName,
+      amount,
+      currency,
+      date: paymentDate,
+      notes: buildDividendExpenseNotes(dividend, useEurAmount),
       linkedInvestmentAssetId: dividend.assetId,
       linkedInvestmentAssetName: dividend.assetName,
-      categoryName,
-      subCategoryName: subCategoryName || null,
-      updatedAt: Timestamp.now(),
+      // Preserve existing optional fields because local update is a full replacement write.
+      link: existingExpense.link,
+      isRecurring: existingExpense.isRecurring,
+      recurringDay: existingExpense.recurringDay,
+      recurringParentId: existingExpense.recurringParentId,
+      isInstallment: existingExpense.isInstallment,
+      installmentParentId: existingExpense.installmentParentId,
+      installmentNumber: existingExpense.installmentNumber,
+      installmentTotal: existingExpense.installmentTotal,
+      installmentTotalAmount: existingExpense.installmentTotalAmount,
+      linkedCashAssetId: existingExpense.linkedCashAssetId,
+      linkedInvestmentQuantityDelta: existingExpense.linkedInvestmentQuantityDelta,
+      investmentOperationId: existingExpense.investmentOperationId,
+      investmentOperationType: existingExpense.investmentOperationType,
+      investmentOperationPricePerUnit: existingExpense.investmentOperationPricePerUnit,
+      investmentOperationFees: existingExpense.investmentOperationFees,
+      investmentOperationTaxes: existingExpense.investmentOperationTaxes,
+      costCenterId: existingExpense.costCenterId,
+      costCenterName: existingExpense.costCenterName,
+      attributionProfileId: existingExpense.attributionProfileId,
+      attributionProfileName: existingExpense.attributionProfileName,
+      attributionSplits: existingExpense.attributionSplits,
     });
 
-    console.log(`[dividendIncomeService] Updated expense in ${expenseCurrency} (amount: ${expenseAmount.toFixed(2)})`);
+    if (!updatedExpense) {
+      throw new Error(`Expense not found during update: ${expenseId}`);
+    }
+
+    console.log(`[dividendIncomeService] Updated expense in ${currency} (amount: ${amount.toFixed(2)})`);
   } catch (error) {
     console.error('Error updating expense from dividend:', error);
     throw new Error('Failed to update expense from dividend');
@@ -113,8 +144,12 @@ export async function deleteExpenseForDividend(
   expenseId: string
 ): Promise<void> {
   try {
-    // Delete the expense using Admin SDK
-    await adminDb.collection('expenses').doc(expenseId).delete();
+    const dividend = await getDividendById(dividendId);
+    if (!dividend) {
+      throw new Error(`Dividend not found: ${dividendId}`);
+    }
+
+    await deleteLocalExpense(dividend.userId, expenseId);
 
     // Remove expense reference from dividend
     await updateDividend(dividendId, {
