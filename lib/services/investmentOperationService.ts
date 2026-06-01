@@ -25,6 +25,7 @@ import {
 import {
   calculateInternalTransferEffect,
   calculateInvestmentOperationEffect,
+  replayInvestmentOperationLedger,
 } from '@/lib/utils/investmentOperationUtils';
 
 const ASSETS_COLLECTION = 'assets';
@@ -288,6 +289,13 @@ export async function updateInvestmentOperation(
   input: InvestmentOperationFormData
 ): Promise<void> {
   const operationRef = doc(db, INVESTMENT_OPERATIONS_COLLECTION, operationId);
+  const operationsQuery = query(
+    collection(db, INVESTMENT_OPERATIONS_COLLECTION),
+    where('assetId', '==', input.assetId)
+  );
+  const operationsSnap = await getDocs(operationsQuery);
+  const prefetchedAssetOperations = operationsSnap.docs
+    .map(operationDoc => normalizeOperation(operationDoc.id, operationDoc.data()));
   let userId: string | undefined;
 
   await runTransaction(db, async transaction => {
@@ -312,31 +320,28 @@ export async function updateInvestmentOperation(
     if (asset.userId !== operation.userId || asset.assetClass === 'cash') {
       throw new Error('Asset does not belong to the operation owner');
     }
-    if (Math.abs((asset.quantity || 0) - operation.resultingQuantity) > 0.000001) {
-      throw new Error('Cannot update operation because the asset changed after it was recorded');
+
+    const assetOperations = prefetchedAssetOperations
+      .filter(assetOperation =>
+        assetOperation.userId === operation.userId
+        && assetOperation.assetId === operation.assetId
+      );
+    if (assetOperations.length === 0) {
+      throw new Error('Operation not found');
     }
 
-    const fees = input.fees ?? 0;
-    const taxes = input.taxes ?? 0;
-    const {
-      grossAmount,
-      resultingQuantity,
-      resultingAverageCost,
-      realizedGain,
-      realizedGainTax,
-      netCashEffect,
-    } = calculateInvestmentOperationEffect({
-      type: input.type,
-      previousQuantity: operation.previousQuantity,
-      previousAverageCost: operation.previousAverageCost,
-      quantity: input.quantity,
-      pricePerUnit: input.pricePerUnit,
-      fees,
-      taxes,
+    const replayResult = replayInvestmentOperationLedger({
+      operations: assetOperations,
+      editedOperationId: operationId,
+      editedOperation: input,
     });
 
     const cashRefs = new Map<string, { ref: ReturnType<typeof doc>; asset: Asset }>();
-    const cashIds = Array.from(new Set([operation.cashAssetId, input.cashAssetId].filter(Boolean))) as string[];
+    const cashIds = new Set(Object.keys(replayResult.cashDeltasByAssetId));
+    if (input.cashAssetId) {
+      cashIds.add(input.cashAssetId);
+    }
+
     for (const cashId of cashIds) {
       const cashRef = doc(db, ASSETS_COLLECTION, cashId);
       const cashSnap = await transaction.get(cashRef);
@@ -352,42 +357,59 @@ export async function updateInvestmentOperation(
 
     const now = Timestamp.now();
     transaction.update(assetRef, {
-      quantity: resultingQuantity,
-      averageCost: resultingAverageCost === undefined ? deleteField() : resultingAverageCost,
+      quantity: replayResult.finalQuantity,
+      averageCost: replayResult.finalAverageCost === undefined ? deleteField() : replayResult.finalAverageCost,
       updatedAt: now,
     });
 
-    for (const cashId of cashIds) {
+    for (const [cashId, delta] of Object.entries(replayResult.cashDeltasByAssetId)) {
+      if (Math.abs(delta) < 0.000001) continue;
       const cashEntry = cashRefs.get(cashId);
       if (!cashEntry) continue;
-      const oldDelta = operation.cashAssetId === cashId ? -operation.netCashEffect : 0;
-      const newDelta = input.cashAssetId === cashId ? netCashEffect : 0;
       transaction.update(cashEntry.ref, {
-        quantity: (cashEntry.asset.quantity || 0) + oldDelta + newDelta,
+        quantity: (cashEntry.asset.quantity || 0) + delta,
         updatedAt: now,
       });
     }
 
-    const newCashAsset = input.cashAssetId ? cashRefs.get(input.cashAssetId)?.asset : undefined;
-    transaction.update(operationRef, removeUndefinedFields({
-      type: input.type,
-      date: Timestamp.fromDate(input.date),
-      quantity: input.quantity,
-      pricePerUnit: input.pricePerUnit,
-      grossAmount,
-      fees,
-      taxes,
-      currency: input.currency || asset.currency || 'EUR',
-      cashAssetId: input.cashAssetId || deleteField(),
-      cashAssetName: newCashAsset?.name || deleteField(),
-      notes: input.notes || deleteField(),
-      resultingQuantity,
-      resultingAverageCost: resultingAverageCost === undefined ? deleteField() : resultingAverageCost,
-      realizedGain: realizedGain === undefined ? deleteField() : realizedGain,
-      realizedGainTax: realizedGainTax === undefined ? deleteField() : realizedGainTax,
-      netCashEffect,
-      updatedAt: now,
-    }));
+    for (const replayedOperation of replayResult.operations) {
+      if (replayedOperation.id !== operationId && !replayedOperation.hasChanges) {
+        continue;
+      }
+
+      const operationUpdateRef = doc(db, INVESTMENT_OPERATIONS_COLLECTION, replayedOperation.id);
+      const cashAsset = replayedOperation.cashAssetId ? cashRefs.get(replayedOperation.cashAssetId)?.asset : undefined;
+      const baseFields = {
+        previousQuantity: replayedOperation.previousQuantity,
+        previousAverageCost: replayedOperation.previousAverageCost === undefined ? deleteField() : replayedOperation.previousAverageCost,
+        resultingQuantity: replayedOperation.resultingQuantity,
+        resultingAverageCost: replayedOperation.resultingAverageCost === undefined ? deleteField() : replayedOperation.resultingAverageCost,
+        grossAmount: replayedOperation.grossAmount,
+        realizedGain: replayedOperation.realizedGain === undefined ? deleteField() : replayedOperation.realizedGain,
+        realizedGainTax: replayedOperation.realizedGainTax === undefined ? deleteField() : replayedOperation.realizedGainTax,
+        netCashEffect: replayedOperation.netCashEffect,
+        updatedAt: now,
+      };
+
+      if (replayedOperation.id === operationId) {
+        transaction.update(operationUpdateRef, removeUndefinedFields({
+          type: replayedOperation.type,
+          date: Timestamp.fromDate(replayedOperation.date),
+          quantity: replayedOperation.quantity,
+          pricePerUnit: replayedOperation.pricePerUnit,
+          fees: replayedOperation.fees,
+          taxes: replayedOperation.taxes,
+          currency: replayedOperation.currency || asset.currency || 'EUR',
+          cashAssetId: replayedOperation.cashAssetId || deleteField(),
+          cashAssetName: cashAsset?.name || deleteField(),
+          notes: replayedOperation.notes || deleteField(),
+          ...baseFields,
+        }));
+        continue;
+      }
+
+      transaction.update(operationUpdateRef, removeUndefinedFields(baseFields));
+    }
   });
 
   if (userId) {
