@@ -1,5 +1,3 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { MonthlySnapshot } from '@/types/assets';
 import { Expense } from '@/types/expenses';
 import {
@@ -11,17 +9,13 @@ import {
   PerformanceChartData,
   MonthlyReturnHeatmapData,
   UnderwaterDrawdownData,
-  PerformanceCacheDocument,
-  SerializedPerformanceData,
-  SerializedPerformanceMetrics,
-  SerializedCashFlowData,
-  SerializedRollingPeriodPerformance,
 } from '@/types/performance';
 import { getExpensesByDateRange } from './expenseService';
 import { getUserSnapshots } from './snapshotService';
 import { getSettings } from './assetAllocationService';
+import { authenticatedFetch } from '@/lib/utils/authFetch';
 
-const PERFORMANCE_CACHE_COLLECTION = 'performance-cache';
+const PERFORMANCE_CACHE_API_PATH = '/api/performance/cache';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -1427,51 +1421,115 @@ export async function calculatePerformanceForPeriod(
 
 // ===== PERFORMANCE CACHE HELPERS =====
 
-function serializeCashFlow(cf: CashFlowData): SerializedCashFlowData {
-  return { ...cf, date: Timestamp.fromDate(cf.date) };
+type IsoCashFlowData = Omit<CashFlowData, 'date'> & {
+  date: string;
+};
+
+type IsoPerformanceMetrics = Omit<
+  PerformanceMetrics,
+  'startDate' | 'endDate' | 'dividendEndDate' | 'cashFlows'
+> & {
+  startDate: string;
+  endDate: string;
+  dividendEndDate: string;
+  cashFlows: IsoCashFlowData[];
+};
+
+type IsoRollingPeriodPerformance = Omit<
+  RollingPeriodPerformance,
+  'periodStartDate' | 'periodEndDate'
+> & {
+  periodStartDate: string;
+  periodEndDate: string;
+};
+
+type IsoPerformanceData = {
+  ytd: IsoPerformanceMetrics;
+  oneYear: IsoPerformanceMetrics;
+  threeYear: IsoPerformanceMetrics;
+  fiveYear: IsoPerformanceMetrics;
+  allTime: IsoPerformanceMetrics;
+  rolling12M: IsoRollingPeriodPerformance[];
+  rolling36M: IsoRollingPeriodPerformance[];
+  lastUpdated: string;
+  snapshotCount: number;
+};
+
+type LocalPerformanceCacheDocument = {
+  cacheKey: string;
+  cachedAt: string;
+  data: IsoPerformanceData;
+};
+
+function serializeDate(date: Date): string {
+  return date.toISOString();
 }
 
-function deserializeCashFlow(cf: SerializedCashFlowData): CashFlowData {
-  return { ...cf, date: cf.date.toDate() };
+function parseDate(value: string, fieldName: string): Date {
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error(`Invalid date value for ${fieldName}: ${value}`);
+  }
+  return parsedDate;
 }
 
-function serializeMetrics(m: PerformanceMetrics): SerializedPerformanceMetrics {
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === 'object' && input !== null && !Array.isArray(input);
+}
+
+function isLocalPerformanceCacheDocument(input: unknown): input is LocalPerformanceCacheDocument {
+  if (!isRecord(input)) return false;
+  if (typeof input.cacheKey !== 'string' || input.cacheKey.trim().length === 0) return false;
+  if (typeof input.cachedAt !== 'string' || input.cachedAt.trim().length === 0) return false;
+  if (!isRecord(input.data)) return false;
+  return true;
+}
+
+function serializeCashFlow(cf: CashFlowData): IsoCashFlowData {
+  return { ...cf, date: serializeDate(cf.date) };
+}
+
+function deserializeCashFlow(cf: IsoCashFlowData): CashFlowData {
+  return { ...cf, date: parseDate(cf.date, 'cashFlows.date') };
+}
+
+function serializeMetrics(m: PerformanceMetrics): IsoPerformanceMetrics {
   return {
     ...m,
-    startDate: Timestamp.fromDate(m.startDate),
-    endDate: Timestamp.fromDate(m.endDate),
-    dividendEndDate: Timestamp.fromDate(m.dividendEndDate),
+    startDate: serializeDate(m.startDate),
+    endDate: serializeDate(m.endDate),
+    dividendEndDate: serializeDate(m.dividendEndDate),
     cashFlows: m.cashFlows.map(serializeCashFlow),
   };
 }
 
-function deserializeMetrics(m: SerializedPerformanceMetrics): PerformanceMetrics {
+function deserializeMetrics(m: IsoPerformanceMetrics): PerformanceMetrics {
   return {
     ...m,
-    startDate: m.startDate.toDate(),
-    endDate: m.endDate.toDate(),
-    dividendEndDate: m.dividendEndDate.toDate(),
+    startDate: parseDate(m.startDate, 'metrics.startDate'),
+    endDate: parseDate(m.endDate, 'metrics.endDate'),
+    dividendEndDate: parseDate(m.dividendEndDate, 'metrics.dividendEndDate'),
     cashFlows: m.cashFlows.map(deserializeCashFlow),
   };
 }
 
-function serializeRolling(r: RollingPeriodPerformance): SerializedRollingPeriodPerformance {
+function serializeRolling(r: RollingPeriodPerformance): IsoRollingPeriodPerformance {
   return {
     ...r,
-    periodStartDate: Timestamp.fromDate(r.periodStartDate),
-    periodEndDate: Timestamp.fromDate(r.periodEndDate),
+    periodStartDate: serializeDate(r.periodStartDate),
+    periodEndDate: serializeDate(r.periodEndDate),
   };
 }
 
-function deserializeRolling(r: SerializedRollingPeriodPerformance): RollingPeriodPerformance {
+function deserializeRolling(r: IsoRollingPeriodPerformance): RollingPeriodPerformance {
   return {
     ...r,
-    periodStartDate: r.periodStartDate.toDate(),
-    periodEndDate: r.periodEndDate.toDate(),
+    periodStartDate: parseDate(r.periodStartDate, 'rolling.periodStartDate'),
+    periodEndDate: parseDate(r.periodEndDate, 'rolling.periodEndDate'),
   };
 }
 
-function serializePerformanceData(data: PerformanceData): SerializedPerformanceData {
+function serializePerformanceData(data: PerformanceData): IsoPerformanceData {
   return {
     ytd: serializeMetrics(data.ytd),
     oneYear: serializeMetrics(data.oneYear),
@@ -1480,12 +1538,12 @@ function serializePerformanceData(data: PerformanceData): SerializedPerformanceD
     allTime: serializeMetrics(data.allTime),
     rolling12M: data.rolling12M.map(serializeRolling),
     rolling36M: data.rolling36M.map(serializeRolling),
-    lastUpdated: Timestamp.fromDate(data.lastUpdated),
+    lastUpdated: serializeDate(data.lastUpdated),
     snapshotCount: data.snapshotCount,
   };
 }
 
-function deserializePerformanceData(raw: SerializedPerformanceData): PerformanceData {
+function deserializePerformanceData(raw: IsoPerformanceData): PerformanceData {
   return {
     ytd: deserializeMetrics(raw.ytd),
     oneYear: deserializeMetrics(raw.oneYear),
@@ -1495,16 +1553,26 @@ function deserializePerformanceData(raw: SerializedPerformanceData): Performance
     custom: null,
     rolling12M: raw.rolling12M.map(deserializeRolling),
     rolling36M: raw.rolling36M.map(deserializeRolling),
-    lastUpdated: raw.lastUpdated.toDate(),
+    lastUpdated: parseDate(raw.lastUpdated, 'performance.lastUpdated'),
     snapshotCount: raw.snapshotCount,
   };
 }
 
-async function readPerformanceCache(userId: string): Promise<PerformanceCacheDocument | null> {
+async function readPerformanceCache(userId: string): Promise<LocalPerformanceCacheDocument | null> {
   try {
-    const snap = await getDoc(doc(db, PERFORMANCE_CACHE_COLLECTION, userId));
-    if (!snap.exists()) return null;
-    return snap.data() as PerformanceCacheDocument;
+    const response = await authenticatedFetch(PERFORMANCE_CACHE_API_PATH, {
+      method: 'GET',
+    });
+    if (!response.ok) {
+      throw new Error(`Cache read failed with status ${response.status}`);
+    }
+
+    const payload: unknown = await response.json();
+    if (!isLocalPerformanceCacheDocument(payload)) {
+      return null;
+    }
+
+    return payload;
   } catch (error) {
     // Cache read failure is non-fatal — fall through to full computation
     console.warn('Failed to read performance cache, falling back to live computation', {
@@ -1518,13 +1586,24 @@ async function readPerformanceCache(userId: string): Promise<PerformanceCacheDoc
 
 async function writePerformanceCache(userId: string, cacheKey: string, data: PerformanceData): Promise<void> {
   try {
-    const document: PerformanceCacheDocument = {
-      userId,
+    const document: LocalPerformanceCacheDocument = {
       cacheKey,
-      cachedAt: Timestamp.now(),
+      cachedAt: new Date().toISOString(),
       data: serializePerformanceData(data),
     };
-    await setDoc(doc(db, PERFORMANCE_CACHE_COLLECTION, userId), document);
+
+    const response = await authenticatedFetch(PERFORMANCE_CACHE_API_PATH, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cacheKey: document.cacheKey,
+        data: document.data,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Cache write failed with status ${response.status}`);
+    }
   } catch (error) {
     // Cache write failure is non-fatal — page still works with freshly computed data
     console.warn('Failed to write performance cache, keeping live result only', {
@@ -1557,7 +1636,7 @@ function buildCacheKey(snapshots: MonthlySnapshot[]): string {
  * - Rolling 12M and 36M periods
  *
  * On repeated visits with unchanged snapshots, returns cached data from
- * Firestore (performance-cache collection) to avoid re-reading all expenses.
+ * the local performance cache route to avoid re-reading all expenses.
  *
  * @param userId - User ID for fetching data
  * @param forceRefresh - Skip cache and recompute (used by the refresh button)
@@ -1582,16 +1661,35 @@ export async function getAllPerformanceData(userId: string, forceRefresh = false
     if (cached && cached.cacheKey === cacheKey) {
       // Expire cache after 6 hours so expense-only changes don't stay stale indefinitely.
       // Snapshot changes still invalidate immediately via cacheKey mismatch.
-      const ageMs = Date.now() - cached.cachedAt.toDate().getTime();
-      const maxAgeMs = 6 * 60 * 60 * 1000;
-      if (ageMs < maxAgeMs) {
-        return deserializePerformanceData(cached.data);
+      const cachedAt = new Date(cached.cachedAt);
+      if (Number.isNaN(cachedAt.getTime())) {
+        console.warn('Cached performance entry has invalid timestamp, recomputing live result', {
+          userId,
+          operation: 'validatePerformanceCacheTimestamp',
+          cacheKey,
+          cachedAt: cached.cachedAt,
+        });
+      } else {
+        const ageMs = Date.now() - cachedAt.getTime();
+        const maxAgeMs = 6 * 60 * 60 * 1000;
+        if (ageMs < maxAgeMs) {
+          try {
+            return deserializePerformanceData(cached.data);
+          } catch (error) {
+            console.warn('Failed to deserialize cached performance data, recomputing live result', {
+              userId,
+              operation: 'deserializePerformanceCache',
+              cacheKey,
+              error: getErrorMessage(error),
+            });
+          }
+        }
       }
     }
   }
 
   // ==== STEP 3: Pre-fetch all expenses once for entire history ====
-  // Single Firestore query, then filtered in-memory for each period calculation.
+  // Single expense query, then filtered in-memory for each period calculation.
   const sortedSnapshots = [...snapshots].sort((a, b) => {
     if (a.year !== b.year) return a.year - b.year;
     return a.month - b.month;
@@ -1615,7 +1713,7 @@ export async function getAllPerformanceData(userId: string, forceRefresh = false
     calculatePerformanceForPeriod(userId, snapshots, 'ALL', riskFreeRate, undefined, undefined, allExpenses, dividendCategoryId),
   ]);
 
-  // ==== STEP 5: Calculate rolling periods (reuse allExpenses — no extra Firestore queries) ====
+  // ==== STEP 5: Calculate rolling periods (reuse allExpenses — no extra expense queries) ====
   const rolling12M = await calculateRollingPeriods(userId, snapshots, 12, riskFreeRate, dividendCategoryId, allExpenses);
   const rolling36M = await calculateRollingPeriods(userId, snapshots, 36, riskFreeRate, dividendCategoryId, allExpenses);
 

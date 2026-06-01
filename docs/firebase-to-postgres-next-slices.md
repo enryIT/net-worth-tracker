@@ -1,13 +1,13 @@
 # Next Firebase Migration Slices
 
-Current residual count: 383 lines.
+Current residual count: 383 lines before the 2026-06-01 performance cache slice.
 
 Priority order:
-1. `lib/services/performanceService.ts`
-2. `lib/services/dashboardOverviewService.ts`
-3. `lib/services/dividendService.ts`
-4. `lib/services/dividendIncomeService.ts`
-5. `lib/server/apiAuth.ts`
+1. `lib/services/dashboardOverviewService.ts`
+2. `lib/services/dividendService.ts`
+3. `lib/services/dividendIncomeService.ts`
+4. `lib/server/apiAuth.ts`
+5. `lib/server/dividendUseCase.ts`
 
 For each slice:
 - add red boundary/regression test;

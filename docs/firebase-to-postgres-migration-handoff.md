@@ -1289,6 +1289,43 @@ Remaining:
   and price updater paths. Rerun the residual search before selecting the next
   slice.
 
+## Slice Notes - 2026-06-01 Performance Cache Local Route/Service
+
+Changed:
+
+- Finished migrating the remaining cache helpers in
+  `lib/services/performanceService.ts` from legacy Firestore reads/writes to the
+  local authenticated `/api/performance/cache` route.
+- Replaced provider-bound cache date serialization (`Timestamp`/`toDate()`) with
+  plain ISO-string serialization for cached payloads and explicit ISO-date
+  deserialization back to `Date` objects when loading cached metrics.
+- Preserved `getAllPerformanceData(userId, forceRefresh?)` public behavior,
+  including snapshot-key cache invalidation, 6-hour cache expiry, and non-fatal
+  fallback to live recomputation on cache read/write/parse errors.
+- Added route and server-service regression coverage into
+  `__tests__/performanceServiceClientMigration.test.ts` for:
+  - local cache route `GET`/`PUT` success and auth/validation branches
+  - local performance cache server-service read/write normalization and merge
+    behavior
+  - client wrapper serialization/deserialization boundary assertions
+
+Verified:
+
+- `npm test -- --run __tests__/performanceServiceClientMigration.test.ts`
+  passed: 1 file, 11 tests.
+- `npm test -- --run __tests__/performanceService.test.ts` passed: 1 file,
+  68 tests.
+- `npx tsc --noEmit --incremental false` passed.
+- `git diff --check -- docs/firebase-to-postgres-migration-handoff.md lib/services/performanceService.ts __tests__/performanceServiceClientMigration.test.ts app/api/performance/cache/route.ts lib/server/performance/localPerformanceCacheService.ts`
+  passed.
+
+Remaining:
+
+- Active Firebase runtime dependencies still remain outside this slice, notably
+  dividends, dashboard overview compatibility services, periodic email,
+  assistant legacy store, API auth compatibility, dividend processing, and price
+  updater paths. Rerun the residual search before selecting the next slice.
+
 ## Known Residual Firebase Runtime Areas
 
 The next agent should continue by reducing these remaining Firebase-dependent
@@ -1296,7 +1333,6 @@ paths. Do not assume this list is exhaustive; run `rg` before each slice.
 
 High-value next targets:
 
-- `lib/services/performanceService.ts`
 - `lib/services/dashboardOverviewService.ts`
 - `lib/services/dividendService.ts`
 - `lib/services/dividendIncomeService.ts`
