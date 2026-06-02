@@ -289,14 +289,28 @@ export async function updateInvestmentOperation(
   input: InvestmentOperationFormData
 ): Promise<void> {
   const operationRef = doc(db, INVESTMENT_OPERATIONS_COLLECTION, operationId);
+  const existingOperation = await runTransaction(db, async transaction => {
+    const operationSnap = await transaction.get(operationRef);
+    if (!operationSnap.exists()) {
+      throw new Error('Operation not found');
+    }
+
+    return normalizeOperation(operationSnap.id, operationSnap.data());
+  });
+  if (existingOperation.assetId !== input.assetId) {
+    throw new Error('Changing the linked asset is not supported. Delete and recreate the operation.');
+  }
+
+  const ownerUserId = existingOperation.userId;
   const operationsQuery = query(
     collection(db, INVESTMENT_OPERATIONS_COLLECTION),
-    where('assetId', '==', input.assetId)
+    where('assetId', '==', existingOperation.assetId),
+    where('userId', '==', ownerUserId)
   );
   const operationsSnap = await getDocs(operationsQuery);
   const prefetchedAssetOperations = operationsSnap.docs
     .map(operationDoc => normalizeOperation(operationDoc.id, operationDoc.data()));
-  let userId: string | undefined;
+  let userId: string | undefined = ownerUserId;
 
   await runTransaction(db, async transaction => {
     const operationSnap = await transaction.get(operationRef);

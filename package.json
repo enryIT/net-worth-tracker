@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:e2e": "playwright test --config e2e/playwright.config.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -50,6 +51,8 @@
     "postcss": "^8.5.14"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@puppeteer/browsers": "^3.0.4",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
