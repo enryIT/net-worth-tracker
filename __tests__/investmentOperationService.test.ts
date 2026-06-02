@@ -98,6 +98,18 @@ function executeQuery(reference: MockQueryReference) {
     .map(({ id, data }) => ({ id, data: () => data }));
 }
 
+function hasQueryConstraint(
+  reference: MockQueryReference,
+  field: string,
+  value: unknown
+): boolean {
+  return reference.constraints.some(constraint =>
+    constraint.field === field
+    && constraint.op === '=='
+    && constraint.value === value
+  );
+}
+
 function seedDoc(path: string, data: Record<string, unknown>) {
   firestoreState.docs.set(path, { ...data });
 }
@@ -261,6 +273,95 @@ describe('investment operation service regression guards', () => {
 });
 
 describe('updateInvestmentOperation historical edits', () => {
+  it('prefetches sibling operations with asset and user constraints before updating an existing operation', async () => {
+    const { updateInvestmentOperation } = await import('@/lib/services/investmentOperationService');
+
+    getDocsMock.mockImplementationOnce(async (reference: unknown) => {
+      if (!isMockQueryReference(reference)) {
+        throw new Error('Unsupported getDocs reference');
+      }
+
+      if (
+        reference.collectionName === 'investmentOperations'
+        && !hasQueryConstraint(reference, 'userId', 'user-1')
+      ) {
+        throw new Error('Missing or insufficient permissions');
+      }
+
+      return { docs: executeQuery(reference) };
+    });
+
+    seedDoc('assets/asset-1', {
+      userId: 'user-1',
+      assetClass: 'etf',
+      quantity: 10,
+      averageCost: 100,
+      currency: 'EUR',
+      name: 'ETF Europa',
+      ticker: 'ETF-EU',
+    });
+    seedDoc('investmentOperations/op-1', {
+      userId: 'user-1',
+      assetId: 'asset-1',
+      assetName: 'ETF Europa',
+      assetTicker: 'ETF-EU',
+      type: 'buy',
+      date: new Date('2026-01-10T00:00:00.000Z'),
+      quantity: 10,
+      pricePerUnit: 100,
+      grossAmount: 1000,
+      fees: 0,
+      taxes: 0,
+      currency: 'EUR',
+      previousQuantity: 0,
+      previousAverageCost: undefined,
+      resultingQuantity: 10,
+      resultingAverageCost: 100,
+      netCashEffect: -1000,
+      createdAt: new Date('2026-01-10T08:00:00.000Z'),
+      updatedAt: new Date('2026-01-10T08:00:00.000Z'),
+    });
+    seedDoc('investmentOperations/other-user-op', {
+      userId: 'user-2',
+      assetId: 'asset-1',
+      assetName: 'ETF Europa',
+      assetTicker: 'ETF-EU',
+      type: 'buy',
+      date: new Date('2026-01-11T00:00:00.000Z'),
+      quantity: 1,
+      pricePerUnit: 100,
+      grossAmount: 100,
+      fees: 0,
+      taxes: 0,
+      currency: 'EUR',
+      previousQuantity: 0,
+      resultingQuantity: 1,
+      resultingAverageCost: 100,
+      netCashEffect: -100,
+      createdAt: new Date('2026-01-11T08:00:00.000Z'),
+      updatedAt: new Date('2026-01-11T08:00:00.000Z'),
+    });
+
+    await expect(updateInvestmentOperation('op-1', {
+      assetId: 'asset-1',
+      type: 'buy',
+      date: new Date('2026-01-10T00:00:00.000Z'),
+      quantity: 10,
+      pricePerUnit: 100,
+      fees: 0,
+      taxes: 0,
+      currency: 'EUR',
+    })).resolves.toBeUndefined();
+
+    const siblingQuery = getDocsMock.mock.calls[0]?.[0];
+    expect(isMockQueryReference(siblingQuery)).toBe(true);
+    if (!isMockQueryReference(siblingQuery)) {
+      throw new Error('Expected investment operation sibling prefetch query');
+    }
+    expect(hasQueryConstraint(siblingQuery, 'assetId', 'asset-1')).toBe(true);
+    expect(hasQueryConstraint(siblingQuery, 'userId', 'user-1')).toBe(true);
+  });
+
   it('replays the ledger when editing a non-latest operation and updates asset and cash by delta', async () => {
     const { updateInvestmentOperation } = await import('@/lib/services/investmentOperationService');
 
