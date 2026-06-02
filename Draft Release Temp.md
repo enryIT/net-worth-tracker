@@ -8,6 +8,7 @@
 - Added a **total summary row** to all expense drill-down views in the Cashflow Analisi tab. When drilling into any Sankey node or pie chart category, a "Totale (N voci)" row now appears at the bottom of the transaction list showing the aggregated sum — so you can see the full amount at a glance without scrolling through every entry. Available on both desktop (table footer row) and mobile (summary block below the card list)
 - **Collapsible sidebar**: the desktop sidebar can now be collapsed to icon-only mode with a toggle button in the sidebar header; state persists across sessions
 - **Cashflow FAB**: a `+` button appears in the bottom navigation bar when you're on the Cashflow page — tap it to open the new expense dialog without scrolling to the top
+- **Account transfers** — a new "Trasferimento" transaction type lets you record moving money between your own cash accounts (e.g. checking → savings). Transfers are net-zero: they're automatically excluded from income, expenses, savings rate, budgets, and all performance metrics, so shuffling money around never distorts your stats. The origin account is debited and the destination credited automatically when you create, edit, or delete the transfer
 
 ## 🐛 Bug Fixes
 
@@ -20,6 +21,9 @@
 - Fixed: loading skeleton on the Overview page now includes the charts section, preventing a layout shift when data loads
 - Fixed: password mismatch error on Register now stays visible inline under the confirmation field (not just a disappearing toast)
 - Fixed: benchmark chart tooltip label was invisible in all dark themes — the date label used a hardcoded near-black color that disappeared on dark backgrounds. Now correctly uses the theme's foreground color token across all six themes
+- Fixed: a transfer between two accounts now updates both account balances together — the origin debit and destination credit are applied as a single atomic operation, so a network hiccup can no longer leave one account updated and the other not
+- Fixed: large amounts (e.g. full-year totals) no longer spill past the edges of the Cashflow summary cards — the value text now scales to fit its card
+- Fixed: the category filter inside the Cashflow filters panel could not be scrolled on tablets — the full category list is now reachable
 
 ## 🔧 Improvements
 
@@ -89,3 +93,7 @@
 - Improved: History page YoY variation chart now shows a color legend on mobile (positive year / negative year) — previously the chart legend was hidden on narrow screens with no replacement
 - Improved: History page monthly savings chart (Risparmio mensile view) now shows a color legend on mobile — the annual view already had one; the monthly view was missing it
 - Improved: History page Labor & Investments chart now shows a color legend on mobile (Guadagnato / Risparmiato / Investimenti) — the Recharts legend was previously shown but truncated the long Italian labels on narrow screens
+- Improved: the Cashflow summary KPIs (Income, Expenses, Net savings, Ratio) now fill the full width on desktop as a single row, and stack into a clean 2×2 grid on mobile and inside narrow columns — replacing the cramped horizontal carousel that left empty space on wide screens
+- Improved: the Cashflow filter controls (period picker, Filters, sort) are now centered on mobile instead of being pushed to one side
+- Improved: the category filter inside the Cashflow filters panel now opens as a full-width bottom sheet on tablet (previously a small, unscrollable popup) and hides its scrollbar for a cleaner look on both mobile and tablet
+- Improved: on phones and tablets in portrait orientation, the in-page "Aggiungi" button on the Cashflow list is now hidden when the bottom navigation bar's `+` button is available, removing the duplicate control; in landscape (where the bottom bar is hidden) the "Aggiungi" button remains

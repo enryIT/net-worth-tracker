@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { BudgetConfig, BudgetItem } from '@/types/budget';
 
@@ -56,7 +56,7 @@ export async function saveBudgetConfig(userId: string, items: BudgetItem[]): Pro
     await setDoc(docRef, {
       userId,
       items: cleanItems,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
   } catch (error) {
     console.error('Error saving budget config:', error);

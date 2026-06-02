@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { EmptyState } from '@/components/ui/EmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
 import { useDeleteAssistantMemory, useUpdateAssistantMemory } from '@/lib/hooks/useAssistantMemory';
 import { AssistantMemoryDocument, AssistantMemoryItem } from '@/types/assistant';
@@ -330,7 +330,7 @@ export function AssistantMemoryPanel({ userId, memory, isLoading, isOpen, onTogg
             <>
               {groupedItems.length === 0 ? (
                 <EmptyState
-                  icon={<Brain className="h-7 w-7" />}
+                  icon={Brain}
                   title={
                     filterTab === 'active'
                       ? 'Nessun ricordo attivo'

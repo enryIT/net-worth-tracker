@@ -477,6 +477,8 @@ function aggregateExpenses(
     const categoryName = data.categoryName ?? 'Altro';
 
     if (amount > 0) {
+      // Skip transfers — net-zero, not real income
+      if ((data as { type?: string }).type === 'transfer') continue;
       totalIncome += amount;
       if (!incomeCategoryTotals[key]) {
         incomeCategoryTotals[key] = { name: categoryName, amount: 0 };

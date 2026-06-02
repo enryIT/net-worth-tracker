@@ -20,7 +20,7 @@ export async function invalidateDashboardOverviewSummaryServer(
       {
         userId,
         sourceVersion: DASHBOARD_OVERVIEW_SOURCE_VERSION,
-        invalidatedAt: Timestamp.now(),
+        invalidatedAt: new Date(),
         lastInvalidationReason: reason,
       },
       { merge: true }

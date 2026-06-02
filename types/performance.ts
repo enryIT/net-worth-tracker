@@ -1,16 +1,15 @@
-import { MonthlySnapshot } from './assets';
 import { Timestamp } from 'firebase/firestore';
 
 // Time period types
 export type TimePeriod =
-  | 'YTD'       // Year-to-date (Jan 1 to today)
-  | '1Y'        // Last 12 months
-  | '3Y'        // Last 36 months
-  | '5Y'        // Last 60 months
-  | 'ALL'       // All available data
-  | 'ROLLING_12M'  // Rolling 12-month periods
-  | 'ROLLING_36M'  // Rolling 36-month periods
-  | 'CUSTOM';   // User-defined date range
+  | 'YTD' // Year-to-date (Jan 1 to today)
+  | '1Y' // Last 12 months
+  | '3Y' // Last 36 months
+  | '5Y' // Last 60 months
+  | 'ALL' // All available data
+  | 'ROLLING_12M' // Rolling 12-month periods
+  | 'ROLLING_36M' // Rolling 36-month periods
+  | 'CUSTOM'; // User-defined date range
 
 // Cashflow data for performance calculations.
 // Income and dividends are tracked separately because:
@@ -19,10 +18,10 @@ export type TimePeriod =
 // This distinction is critical for accurate ROI/TWR calculations (only external cash flows should impact TWR denominator).
 export interface CashFlowData {
   date: Date;
-  income: number;           // External income (salary, bonuses, gifts) - NO dividends
-  expenses: number;         // All expenses
-  dividendIncome: number;   // Dividend income (portfolio-generated returns)
-  netCashFlow: number;      // income - expenses (WITHOUT dividends)
+  income: number; // External income (salary, bonuses, gifts) - NO dividends
+  expenses: number; // All expenses
+  dividendIncome: number; // Dividend income (portfolio-generated returns)
+  netCashFlow: number; // income - expenses (WITHOUT dividends)
 }
 
 // Portfolio performance metrics calculated over a specific time period.
@@ -33,64 +32,64 @@ export interface PerformanceMetrics {
   timePeriod: TimePeriod;
   startDate: Date;
   endDate: Date;
-  dividendEndDate: Date;  // End date capped at today for dividend calculations
+  dividendEndDate: Date; // End date capped at today for dividend calculations
   startNetWorth: number;
   endNetWorth: number;
   cashFlows: CashFlowData[];
 
   // Calculated metrics
-  roi: number | null;                // Simple ROI (%)
-  cagr: number | null;               // Compound Annual Growth Rate (%)
+  roi: number | null; // Simple ROI (%)
+  cagr: number | null; // Compound Annual Growth Rate (%)
   timeWeightedReturn: number | null; // Time-weighted return (%) - preferred metric
   moneyWeightedReturn: number | null; // IRR / Money-weighted return (%)
-  sharpeRatio: number | null;        // Risk-adjusted return
-  volatility: number | null;         // Annualized volatility (%)
-  maxDrawdown: number | null;        // Maximum portfolio decline from peak to trough (as percentage)
-  drawdownDuration: number | null;   // Time from peak to recovery in months (null if not yet recovered)
-  recoveryTime: number | null;       // Time from trough to recovery in months (null if not yet recovered)
+  sharpeRatio: number | null; // Risk-adjusted return
+  volatility: number | null; // Annualized volatility (%)
+  maxDrawdown: number | null; // Maximum portfolio decline from peak to trough (as percentage)
+  drawdownDuration: number | null; // Time from peak to recovery in months (null if not yet recovered)
+  recoveryTime: number | null; // Time from trough to recovery in months (null if not yet recovered)
 
   // Temporal context for drawdown metrics
   // Dates use format "MM/YY" (e.g., "04/25") or "MM/YY - Presente" if ongoing
-  maxDrawdownDate?: string;          // Trough month (e.g., "04/25")
-  drawdownPeriod?: string;           // Peak to recovery range (e.g., "01/25 - 12/25" or "01/25 - Presente")
-  recoveryPeriod?: string;           // Trough to recovery range (e.g., "04/25 - 12/25" or "04/25 - Presente")
+  maxDrawdownDate?: string; // Trough month (e.g., "04/25")
+  drawdownPeriod?: string; // Peak to recovery range (e.g., "01/25 - 12/25" or "01/25 - Presente")
+  recoveryPeriod?: string; // Trough to recovery range (e.g., "04/25 - 12/25" or "04/25 - Presente")
 
   // Supporting data
-  riskFreeRate: number;              // From user settings
-  dividendCategoryId?: string;       // Category ID for dividend income (from settings)
-  totalContributions: number;        // Sum of positive net cash flows
-  totalWithdrawals: number;          // Sum of negative net cash flows
-  netCashFlow: number;               // Total contributions - withdrawals
-  totalIncome: number;               // Sum of all income in period (NO dividendi)
-  totalExpenses: number;             // Sum of all expenses in period
-  totalDividendIncome: number;       // Sum of all dividend income (rendimento portafoglio)
-  numberOfMonths: number;            // Number of months in period
+  riskFreeRate: number; // From user settings
+  dividendCategoryId?: string; // Category ID for dividend income (from settings)
+  totalContributions: number; // Sum of positive net cash flows
+  totalWithdrawals: number; // Sum of negative net cash flows
+  netCashFlow: number; // Total contributions - withdrawals
+  totalIncome: number; // Sum of all income in period (NO dividendi)
+  totalExpenses: number; // Sum of all expenses in period
+  totalDividendIncome: number; // Sum of all dividend income (rendimento portafoglio)
+  numberOfMonths: number; // Number of months in period
 
   // Yield on Cost (YOC) Metrics
   // YOC measures annualized dividend yield based on original cost basis (not current market value)
   // Formula: YOC% = (Annualized Dividends / Cost Basis) × 100
   // Annualization ensures comparability across different time periods
-  yocGross: number | null;           // YOC based on gross dividends
-  yocNet: number | null;             // YOC based on net dividends (after tax)
-  yocDividendsGross: number;         // Total gross dividends in period (not annualized)
-  yocDividendsNet: number;           // Total net dividends in period (not annualized)
-  yocCostBasis: number;              // Total cost basis of dividend-paying assets
-  yocAssetCount: number;             // Number of assets with dividends + cost basis
+  yocGross: number | null; // YOC based on gross dividends
+  yocNet: number | null; // YOC based on net dividends (after tax)
+  yocDividendsGross: number; // Total gross dividends in period (not annualized)
+  yocDividendsNet: number; // Total net dividends in period (not annualized)
+  yocCostBasis: number; // Total cost basis of dividend-paying assets
+  yocAssetCount: number; // Number of assets with dividends + cost basis
 
   // Current Yield Metrics
   // Current Yield measures annualized dividend yield based on current market value
   // Formula: CY% = (Annualized Dividends / Current Portfolio Value) × 100
   // Unlike YOC (which uses cost basis), CY uses current market prices
-  currentYield: number | null;              // Current yield percentage (gross)
-  currentYieldNet: number | null;           // Current yield percentage (net, after tax)
-  currentYieldDividends: number;            // Total gross dividends in period (not annualized)
-  currentYieldDividendsNet: number;         // Total net dividends in period (not annualized)
-  currentYieldPortfolioValue: number;       // Current market value of dividend-paying assets
-  currentYieldAssetCount: number;           // Number of assets with dividends
+  currentYield: number | null; // Current yield percentage (gross)
+  currentYieldNet: number | null; // Current yield percentage (net, after tax)
+  currentYieldDividends: number; // Total gross dividends in period (not annualized)
+  currentYieldDividendsNet: number; // Total net dividends in period (not annualized)
+  currentYieldPortfolioValue: number; // Current market value of dividend-paying assets
+  currentYieldAssetCount: number; // Number of assets with dividends
 
   // Data availability flags
-  hasInsufficientData: boolean;      // Less than 2 snapshots
-  errorMessage?: string;             // Error details if calculation failed
+  hasInsufficientData: boolean; // Less than 2 snapshots
+  errorMessage?: string; // Error details if calculation failed
 }
 
 // Rolling period performance (for trend analysis)
@@ -123,19 +122,19 @@ export interface PerformanceData {
 
 // Chart data for visualizations
 export interface PerformanceChartData {
-  date: string;           // MM/YYYY format
+  date: string; // MM/YYYY format
   netWorth: number;
-  contributions: number;  // Cumulative
-  returns: number;        // Returns portion (netWorth - contributions)
-  [key: string]: any;     // For Recharts compatibility
+  contributions: number; // Cumulative
+  returns: number; // Returns portion (netWorth - contributions)
+  [key: string]: any; // For Recharts compatibility
 }
 
 // Monthly returns heatmap data
 export interface MonthlyReturnHeatmapData {
   year: number;
   months: {
-    month: number;           // 1-12 (Gen to Dic)
-    return: number | null;   // % return for that month (null if no data)
+    month: number; // 1-12 (Gen to Dic)
+    return: number | null; // % return for that month (null if no data)
   }[];
 }
 
@@ -149,7 +148,10 @@ export interface FirestoreCashFlowData {
 }
 
 // Firestore-serialized version of PerformanceMetrics (Date fields → Timestamp)
-export interface FirestorePerformanceMetrics extends Omit<PerformanceMetrics, 'startDate' | 'endDate' | 'dividendEndDate' | 'cashFlows'> {
+export interface FirestorePerformanceMetrics extends Omit<
+  PerformanceMetrics,
+  'startDate' | 'endDate' | 'dividendEndDate' | 'cashFlows'
+> {
   startDate: Timestamp;
   endDate: Timestamp;
   dividendEndDate: Timestamp;
@@ -157,7 +159,10 @@ export interface FirestorePerformanceMetrics extends Omit<PerformanceMetrics, 's
 }
 
 // Firestore-serialized version of RollingPeriodPerformance
-export interface FirestoreRollingPeriodPerformance extends Omit<RollingPeriodPerformance, 'periodEndDate' | 'periodStartDate'> {
+export interface FirestoreRollingPeriodPerformance extends Omit<
+  RollingPeriodPerformance,
+  'periodEndDate' | 'periodStartDate'
+> {
   periodEndDate: Timestamp;
   periodStartDate: Timestamp;
 }
@@ -186,8 +191,8 @@ export interface PerformanceCacheDocument {
 
 // Underwater drawdown chart data
 export interface UnderwaterDrawdownData {
-  date: string;              // MM/YY format
-  drawdown: number;          // Always ≤ 0 (e.g., -15.5 for -15.5% drawdown)
+  date: string; // MM/YY format
+  drawdown: number; // Always ≤ 0 (e.g., -15.5 for -15.5% drawdown)
   year: number;
   month: number;
 }

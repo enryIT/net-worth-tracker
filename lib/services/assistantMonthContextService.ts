@@ -277,6 +277,8 @@ function aggregateCashflow(
   let totalDividends = 0;
 
   for (const expense of expenses) {
+    // Transfers are net-zero for metrics — skip entirely
+    if (expense.type === 'transfer') continue;
     if (expense.amount > 0) {
       if (dividendCategoryId && expense.categoryId === dividendCategoryId) {
         totalDividends += expense.amount;

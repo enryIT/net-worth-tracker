@@ -240,7 +240,7 @@ export async function updateHallOfFame(userId: string): Promise<void> {
         .sort((a, b) => b.totalExpenses - a.totalExpenses)
         .slice(0, MAX_YEARLY_RECORDS),
 
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     };
 
     // Preserve existing notes when recalculating rankings

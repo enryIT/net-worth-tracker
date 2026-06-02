@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { motion, useReducedMotion } from 'framer-motion';
 import { fastStaggerContainer, listItem, progressSettleTransition } from '@/lib/utils/motionVariants';
 import { hasCelebrated, markCelebrated, shouldReduceMotion } from '@/lib/utils/celebrationUtils';
-import { EmptyState, SeedlingIcon } from '@/components/ui/EmptyState';
+import { EmptyState, SeedlingIcon } from '@/components/ui/empty-state';
 
 // Module-level helpers — stable references, not recreated on every render.
 
@@ -116,7 +116,7 @@ export function DoublingMilestoneTimeline({
   if (allMilestones.length === 0) {
     return (
       <EmptyState
-        icon={<SeedlingIcon />}
+        icon={SeedlingIcon}
         title="Nessuna milestone ancora completata"
         description="Continua a costruire il tuo patrimonio!"
       />

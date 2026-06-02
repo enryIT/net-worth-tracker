@@ -143,6 +143,7 @@ const buildBudgetFlowData = (expenses: Expense[], isMobile: boolean): SankeyData
     const category = expense.categoryName;
     const type = expense.type;
 
+    if (type === 'transfer') return;
     if (type === 'income') {
       incomeMap.set(category, (incomeMap.get(category) || 0) + amount);
       totalIncome += amount;
@@ -180,6 +181,7 @@ const buildBudgetFlowData = (expenses: Expense[], isMobile: boolean): SankeyData
     variable: '#8b5cf6',  // violet
     debt: '#f59e0b',      // amber
     income: '#10b981',    // green (not used in expense flow)
+    transfer: '#6b7280',  // gray
   };
 
   // Build category list per type with mobile filtering
@@ -323,6 +325,7 @@ const buildBudgetFlowDataWithSubcategories = (expenses: Expense[], isMobile: boo
     const category = expense.categoryName;
     const type = expense.type;
 
+    if (type === 'transfer') return;
     if (type === 'income') {
       incomeMap.set(category, (incomeMap.get(category) || 0) + amount);
       totalIncome += amount;
@@ -367,6 +370,7 @@ const buildBudgetFlowDataWithSubcategories = (expenses: Expense[], isMobile: boo
     variable: '#8b5cf6',
     debt: '#f59e0b',
     income: '#10b981',
+    transfer: '#6b7280',
   };
 
   // Step 7: Build category and subcategory lists per type with mobile filtering
@@ -663,7 +667,7 @@ const buildDrillDownData = (
   // Step 1: Filter expenses for selected category
   const filteredExpenses = expenses.filter(e =>
     e.categoryName === categoryName &&
-    (isIncome ? e.type === 'income' : e.type !== 'income')
+    (isIncome ? e.type === 'income' : (e.type !== 'income' && e.type !== 'transfer'))
   );
 
   if (filteredExpenses.length === 0) {

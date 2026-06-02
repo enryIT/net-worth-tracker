@@ -651,6 +651,7 @@ export function TotalHistoryTab({ allExpenses, loading, historyStartYear = 2025 
       variable: '#8b5cf6',
       debt: '#f59e0b',
       income: '#10b981',
+      transfer: '#6b7280',
     };
 
     const data: ChartData[] = [];

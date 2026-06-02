@@ -6,7 +6,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Timestamp } from 'firebase/firestore';
 import { AssetClass } from '@/types/assets';
 import {
   InvestmentGoal,
@@ -134,7 +133,7 @@ export function GoalFormDialog({
 
     setSaving(true);
     try {
-      const now = Timestamp.now();
+      const now = new Date();
       const parsedTarget = targetAmount ? parseFloat(targetAmount) : undefined;
       const goalData: InvestmentGoal = {
         id: goal?.id || crypto.randomUUID(),
@@ -146,7 +145,7 @@ export function GoalFormDialog({
         recommendedAllocation:
           Object.keys(allocation).length > 0 ? allocation : undefined,
         notes: notes.trim() || undefined,
-        createdAt: goal?.createdAt || now,
+        createdAt: goal?.createdAt ?? now,
         updatedAt: now,
       };
       await onSave(goalData);

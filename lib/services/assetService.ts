@@ -12,7 +12,8 @@ import {
   limit,
   Timestamp,
   orderBy,
-  deleteField
+  deleteField,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { authenticatedFetch } from '@/lib/utils/authFetch';
@@ -177,7 +178,7 @@ export async function createAsset(
   assetData: AssetFormData
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
+    const now = new Date();
     const assetsRef = collection(db, ASSETS_COLLECTION);
 
     // Check if ISIN exists and we have historical dividends with that ISIN
@@ -269,7 +270,7 @@ export async function updateAsset(
     // cost-basis fields that the caller cleared (undefined → deleteField sentinel).
     const cleanedUpdates: Record<string, unknown> = removeUndefinedFields({
       ...updates,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
 
     if (updates.averageCost === undefined) cleanedUpdates.averageCost = deleteField();
@@ -305,8 +306,8 @@ export async function updateAssetPrice(
 
     await updateDoc(assetRef, {
       currentPrice: price,
-      lastPriceUpdate: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      lastPriceUpdate: new Date(),
+      updatedAt: new Date(),
     });
 
     const userId = existingAsset.data()?.userId;
@@ -355,7 +356,7 @@ export async function updateCashAssetBalance(assetId: string, signedDelta: numbe
     const assetRef = doc(db, ASSETS_COLLECTION, assetId);
     await updateDoc(assetRef, {
       quantity: newQuantity,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
     await invalidateDashboardOverviewSummary(asset.userId, 'cash_asset_balance_updated');
   } catch (error) {
@@ -366,6 +367,54 @@ export async function updateCashAssetBalance(assetId: string, signedDelta: numbe
       error: getErrorMessage(error),
     });
     throw new Error(`Failed to update cash asset balance for ${assetId}`, { cause: error });
+  }
+}
+
+/**
+ * Atomically update cash asset balances for multiple assets in a single Firestore transaction.
+ * Use this instead of multiple sequential updateCashAssetBalance calls to prevent
+ * partial-update corruption on network failure.
+ */
+export async function updateCashAssetBalancesAtomic(
+  updates: { assetId: string; signedDelta: number }[]
+): Promise<void> {
+  // Aggregate deltas per asset so a single ref is never read/written twice in the
+  // same transaction (e.g. a self-transfer where origin === destination nets to 0).
+  const aggregated = new Map<string, number>();
+  for (const { assetId, signedDelta } of updates) {
+    aggregated.set(assetId, (aggregated.get(assetId) ?? 0) + signedDelta);
+  }
+  const validUpdates = Array.from(aggregated.entries())
+    .map(([assetId, signedDelta]) => ({ assetId, signedDelta }))
+    .filter(u => u.signedDelta !== 0);
+  if (validUpdates.length === 0) return;
+
+  let userId: string | undefined;
+
+  await runTransaction(db, async (tx) => {
+    // Firestore transactions require ALL reads before ANY writes, so we read every
+    // asset first and only then issue the updates.
+    const refs = validUpdates.map(u => ({ ...u, ref: doc(db, ASSETS_COLLECTION, u.assetId) }));
+    const reads = [];
+    for (const r of refs) {
+      reads.push({ ...r, snap: await tx.get(r.ref) });
+    }
+    for (const { assetId, signedDelta, ref, snap } of reads) {
+      if (!snap.exists()) {
+        console.warn('Skipping balance update: asset not found', { assetId });
+        continue;
+      }
+      const data = snap.data();
+      if (!userId) userId = data.userId as string;
+      tx.update(ref, {
+        quantity: (data.quantity as number) + signedDelta,
+        updatedAt: new Date(),
+      });
+    }
+  });
+
+  if (userId) {
+    await invalidateDashboardOverviewSummary(userId, 'cash_asset_balance_updated');
   }
 }
 

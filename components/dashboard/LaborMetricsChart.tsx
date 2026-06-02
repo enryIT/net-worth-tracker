@@ -17,7 +17,7 @@ import {
 } from 'recharts';
 import { prepareMonthlyLaborMetricsData, formatCurrencyCompact } from '@/lib/services/chartService';
 import { fmtCurrency } from '@/lib/utils/chartUtils';
-import { EmptyState, ChartEmptyIcon } from '@/components/ui/EmptyState';
+import { EmptyState, ChartEmptyIcon } from '@/components/ui/empty-state';
 import { useChartColors } from '@/lib/hooks/useChartColors';
 
 interface LaborMetricsChartProps {
@@ -32,7 +32,7 @@ export default function LaborMetricsChart({ data, isMobile }: LaborMetricsChartP
   if (data.length === 0) {
     return (
       <EmptyState
-        icon={<ChartEmptyIcon />}
+        icon={ChartEmptyIcon}
         title="Nessun dato disponibile"
         description="Gli snapshot mensili verranno creati automaticamente."
       />

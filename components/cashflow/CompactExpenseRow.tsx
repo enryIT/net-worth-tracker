@@ -1,0 +1,114 @@
+'use client';
+
+import { Suspense } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
+import { getLazyIcon } from '@/components/expenses/IconPickerPopover';
+import type { Expense, ExpenseType } from '@/types/expenses';
+
+// Tailwind dot-color classes keyed by expense type.
+// All entries use semantic token references to stay theme-aware across all 6 colour themes.
+export const TYPE_DOT_CLASS: Record<ExpenseType, string> = {
+  income:   'bg-emerald-500 dark:bg-emerald-400',
+  fixed:    'bg-[var(--chart-2)]',
+  variable: 'bg-[var(--chart-4)]',
+  debt:     'bg-[var(--chart-3)]',
+  transfer: 'bg-[var(--chart-5)]',
+};
+
+export interface CompactExpenseRowProps {
+  expense: Expense;
+  onSelect: (expense: Expense) => void;
+  categoryIcon?: string;
+  categoryColor?: string;
+}
+
+/**
+ * Flat list row for mobile expense display (Trade Republic divide-y style).
+ *
+ * Tapping the row opens a detail bottom-sheet managed by the parent.
+ */
+export function CompactExpenseRow({
+  expense,
+  onSelect,
+  categoryIcon,
+  categoryColor,
+}: Readonly<CompactExpenseRowProps>) {
+  const isIncome = expense.type === 'income';
+  const isTransfer = expense.type === 'transfer';
+
+  const subtitle = [expense.categoryName, expense.subCategoryName || null]
+    .filter(Boolean)
+    .join(' · ');
+
+  const title = expense.notes?.trim() || expense.categoryName;
+
+  const amountLabel = `${isIncome ? '+' : isTransfer ? '' : ''}${cachedFormatCurrencyEUR(Math.abs(expense.amount))}`;
+
+  return (
+    <button
+      type="button"
+      className="w-full flex items-center gap-3 text-left py-1"
+      onClick={() => onSelect(expense)}
+      aria-label={`${title}, ${amountLabel}`}
+    >
+      {/* Category icon badge or type dot */}
+      {(() => {
+        const CatIcon = categoryIcon ? getLazyIcon(categoryIcon) : null;
+        if (CatIcon) {
+          return (
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: categoryColor ? `${categoryColor}20` : 'var(--muted)' }}
+            >
+              <Suspense fallback={<span className={cn('w-2 h-2 rounded-full', TYPE_DOT_CLASS[expense.type] ?? 'bg-muted-foreground')} />}>
+                <CatIcon className="w-3.5 h-3.5" style={{ color: categoryColor || 'var(--muted-foreground)' }} aria-hidden="true" />
+              </Suspense>
+            </div>
+          );
+        }
+        return (
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: categoryColor ? `${categoryColor}20` : 'var(--muted)' }}
+          >
+            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', TYPE_DOT_CLASS[expense.type] ?? 'bg-muted-foreground')} />
+          </div>
+        );
+      })()}
+
+      {/* Title + badges + subtitle */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[14px] font-medium text-foreground truncate">{title}</span>
+          {expense.isInstallment && expense.installmentNumber && expense.installmentTotal && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0">
+              {expense.installmentNumber}/{expense.installmentTotal}
+            </Badge>
+          )}
+          {expense.isRecurring && !expense.isInstallment && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0">
+              Ric.
+            </Badge>
+          )}
+        </div>
+        <p className="text-[12px] text-muted-foreground truncate mt-0.5">{subtitle}</p>
+      </div>
+
+      {/* Amount — emerald for income, destructive for expenses, muted for transfers */}
+      <span
+        className={cn(
+          'text-[14px] font-bold font-mono tabular-nums flex-shrink-0',
+          isIncome
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : isTransfer
+              ? 'text-muted-foreground'
+              : 'text-destructive',
+        )}
+      >
+        {amountLabel}
+      </span>
+    </button>
+  );
+}

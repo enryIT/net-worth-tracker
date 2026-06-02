@@ -99,8 +99,8 @@ const TOTAL_EXPENSES_KEY = '__total_expenses__';
 const TOTAL_INCOME_KEY = '__total_income__';
 
 // Only spending types for type-scope budget items (income is category-scope only)
-const BUDGET_EXPENSE_TYPES: Array<Exclude<ExpenseType, 'income'>> = ['fixed', 'variable', 'debt'];
-const BUDGET_TYPE_LABELS: Record<Exclude<ExpenseType, 'income'>, string> = {
+const BUDGET_EXPENSE_TYPES: Array<Exclude<ExpenseType, 'income' | 'transfer'>> = ['fixed', 'variable', 'debt'];
+const BUDGET_TYPE_LABELS: Record<Exclude<ExpenseType, 'income' | 'transfer'>, string> = {
   fixed: 'Spese Fisse',
   variable: 'Variabili',
   debt: 'Debiti',

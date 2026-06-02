@@ -417,10 +417,11 @@ export function prepareCashflowData(expenses: any[]): CashflowData {
     const amount = Math.abs(expense.amount);
 
     // Track unique months
-    const date = expense.date instanceof Date ? expense.date : expense.date.toDate();
+    const date = expense.date;
     const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
     monthsSet.add(monthKey);
 
+    if (expense.type === 'transfer') return;
     if (expense.type === 'income') {
       totalIncome += amount;
     } else {

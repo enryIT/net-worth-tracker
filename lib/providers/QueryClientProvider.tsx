@@ -45,7 +45,6 @@ export function QueryClientProvider({ children }: { children: React.ReactNode })
   return (
     <TanStackQueryClientProvider client={queryClient}>
       {children}
-      <ReactQueryDevtools initialIsOpen={false} />
     </TanStackQueryClientProvider>
   );
 }

@@ -1,4 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
 import { ExpenseType } from './expenses';
 
 // Budget feature types
@@ -16,8 +15,8 @@ export type BudgetScope = 'type' | 'category' | 'subcategory';
 export interface BudgetItem {
   id: string;
   scope: BudgetScope;
-  // Populated only for scope='type' — excludes 'income'
-  expenseType?: Exclude<ExpenseType, 'income'>;
+  // Populated only for scope='type' — excludes 'income' and 'transfer'
+  expenseType?: Exclude<ExpenseType, 'income' | 'transfer'>;
   // Populated for scope='category' | 'subcategory'
   categoryId?: string;
   categoryName?: string; // denormalized fallback if category is deleted
@@ -33,7 +32,7 @@ export interface BudgetItem {
 export interface BudgetConfig {
   userId: string;
   items: BudgetItem[];
-  updatedAt: Timestamp;
+  updatedAt: Date;
 }
 
 export type BudgetViewMode = 'annual' | 'monthly';

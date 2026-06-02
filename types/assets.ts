@@ -1,5 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
-
 // AssetType: Granular classification used in UI (stock, ETF, bond, crypto, etc.)
 // AssetClass: Broad financial categories for allocation analysis (equity, bonds, etc.)
 //
@@ -39,8 +37,8 @@ export interface CouponRateTier {
 export interface BondDetails {
   couponRate: number;          // Annual coupon rate as percentage (e.g. 4.0 for 4%). Fallback when no schedule.
   couponFrequency: CouponFrequency;
-  issueDate: Date | Timestamp; // Reference date for coupon schedule (first coupon = issueDate + 1 period)
-  maturityDate: Date | Timestamp; // Bond redemption date (no coupons generated after this)
+  issueDate: Date; // Reference date for coupon schedule (first coupon = issueDate + 1 period)
+  maturityDate: Date; // Bond redemption date (no coupons generated after this)
   nominalValue?: number;       // Face value per unit in currency (e.g. 1000 for a €1000 bond). Default: 1
   couponRateSchedule?: CouponRateTier[]; // Step-up tiers; overrides couponRate when present
   finalPremiumRate?: number;   // Bonus % of nominalValue paid at maturity (e.g. 0.8 for BTP Valore 0.8%)
@@ -79,9 +77,9 @@ export interface Asset {
   isPrimaryResidence?: boolean; // Indicates if this real estate is the primary residence (excluded from FIRE calculations based on user setting)
   isin?: string; // ISIN code for dividend scraping (optional)
   bondDetails?: BondDetails; // Optional bond-specific details for coupon scheduling
-  lastPriceUpdate: Date | Timestamp;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  lastPriceUpdate: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface AssetFormData {
@@ -265,14 +263,14 @@ export interface MonthlySnapshot {
   assetAllocation: {
     [assetClass: string]: number;
   };
-  createdAt: Date | Timestamp;
+  createdAt: Date;
   note?: string; // Optional note to document significant financial events (max 500 characters)
 }
 
 export interface PriceHistory {
   ticker: string;
   price: number;
-  date: Date | Timestamp;
+  date: Date;
   currency: string;
 }
 

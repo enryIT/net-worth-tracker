@@ -33,9 +33,9 @@ function makeExpense(overrides: Partial<Expense> & { amount: number; date: Date 
     ...overrides,
     amount: overrides.amount,
     currency: 'EUR',
-    date: overrides.date as unknown as import('firebase/firestore').Timestamp,
-    createdAt: overrides.date as unknown as import('firebase/firestore').Timestamp,
-    updatedAt: overrides.date as unknown as import('firebase/firestore').Timestamp,
+    date: overrides.date as Date,
+    createdAt: overrides.date as Date,
+    updatedAt: overrides.date as Date,
   } as Expense;
 }
 

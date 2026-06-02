@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { invalidateDashboardOverviewSummary } from '@/lib/services/dashboardOverviewInvalidation';
 import { Asset, AssetClass, AssetAllocationTarget, AssetAllocationSettings, AllocationResult, SubCategoryTarget, SpecificAssetAllocation, AllocationData } from '@/types/assets';
@@ -127,7 +127,7 @@ export async function setSettings(
         ...existingData, // Keep all existing fields
         userId,
         targets: settings.targets, // COMPLETELY REPLACE targets (not merge)
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       // Override with new values for defined fields
@@ -237,7 +237,7 @@ export async function setSettings(
       // No targets update, use normal merge behavior
       const docData: any = {
         userId,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       if (settings.userAge !== undefined) {

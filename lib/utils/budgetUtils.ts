@@ -42,6 +42,9 @@ export function budgetItemKey(item: Pick<BudgetItem, 'scope' | 'expenseType' | '
  * so income categories are tracked correctly alongside spending categories.
  */
 function expenseMatchesItem(expense: Expense, item: BudgetItem): boolean {
+  // Transfers are net-zero — never match any budget item
+  if (expense.type === 'transfer') return false;
+
   switch (item.scope) {
     case 'type':
       // Type-scope budgets are spending-only: skip income and positive amounts

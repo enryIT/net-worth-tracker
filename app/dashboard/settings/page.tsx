@@ -29,7 +29,8 @@
 
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
@@ -69,6 +70,7 @@ import { getExpenseCountByCategoryId, reassignExpensesCategory, clearExpensesCat
 import { CategoryManagementDialog } from '@/components/expenses/CategoryManagementDialog';
 import { CategoryDeleteConfirmDialog } from '@/components/expenses/CategoryDeleteConfirmDialog';
 import { CategoryMoveDialog } from '@/components/expenses/CategoryMoveDialog';
+import { getLazyIcon } from '@/components/expenses/IconPickerPopover';
 import { CreateDummySnapshotModal } from '@/components/CreateDummySnapshotModal';
 import { DeleteDummyDataDialog } from '@/components/DeleteDummyDataDialog';
 import { PageContainer } from '@/components/layout/PageContainer';
@@ -207,8 +209,15 @@ export default function SettingsPage() {
 
   // Tab navigation — lazy-loading pattern (same as Assets/Cashflow pages)
   type SettingsTabId = 'generale' | 'allocazione' | 'spese' | 'dividendi' | 'aspetto';
-  const [mountedTabs, setMountedTabs] = useState<Set<SettingsTabId>>(new Set(['allocazione']));
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('allocazione');
+  const VALID_TABS: SettingsTabId[] = ['generale', 'allocazione', 'spese', 'dividendi', 'aspetto'];
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const initialTab = (VALID_TABS.includes(searchParams.get('tab') as SettingsTabId)
+    ? searchParams.get('tab') as SettingsTabId
+    : 'allocazione');
+  const [mountedTabs, setMountedTabs] = useState<Set<SettingsTabId>>(new Set([initialTab]));
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const { colorTheme, setColorTheme } = useColorTheme();
   const [allocationBaselineKey, setAllocationBaselineKey] = useState('');
   const [generalBaselineKey, setGeneralBaselineKey] = useState('');
@@ -233,7 +242,14 @@ export default function SettingsPage() {
   const handleTabChange = (value: string) => {
     setActiveTab(value as SettingsTabId);
     setMountedTabs((prev) => new Set(prev).add(value as SettingsTabId));
+    router.replace(`${pathname}?tab=${value}`, { scroll: false });
   };
+
+  // Sync URL on mount so the initial tab is always reflected
+  useEffect(() => {
+    router.replace(`${pathname}?tab=${initialTab}`, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -2626,10 +2642,23 @@ export default function SettingsPage() {
                             className="flex items-center justify-between py-3 hover:bg-muted/30 transition-colors"
                           >
                             <div className="flex items-center gap-3">
-                              <div
-                                className="w-3 h-3 rounded-full border border-border"
-                                style={{ backgroundColor: category.color || '#3b82f6' }}
-                              />
+                              {(() => {
+                                const CatIcon = category.icon ? getLazyIcon(category.icon) : null;
+                                return (
+                                  <div
+                                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                                    style={{ backgroundColor: category.color ? `${category.color}20` : 'var(--muted)' }}
+                                  >
+                                    {CatIcon ? (
+                                      <Suspense fallback={<div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: category.color || '#3b82f6' }} />}>
+                                        <CatIcon className="w-3.5 h-3.5" style={{ color: category.color || 'var(--muted-foreground)' }} aria-hidden="true" />
+                                      </Suspense>
+                                    ) : (
+                                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color || '#3b82f6' }} />
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               <div>
                                 <p className="font-medium text-sm">{category.name}</p>
                                 {category.subCategories && category.subCategories.length > 0 && (
