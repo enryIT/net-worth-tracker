@@ -432,6 +432,22 @@ Acceptance criteria:
 - Bulk edit updates selected rows consistently and recomputes validation/classification where needed.
 - UI follows existing layout/styling patterns and uses `desktop:` rather than `lg:`.
 
+Release verification checklist (Milestone 3, preview and reconciliation only):
+
+- [ ] `npm test -- --run __tests__/csvImportPreviewUi.test.ts` passes.
+- [ ] `npx tsc --noEmit --incremental false` passes.
+- [ ] `/dashboard/cashflow/import-csv` renders the wizard shell, filters, row correction, bulk edit, and assisted linking copy while staying preview-only.
+- [ ] Manual row edits update only preview state and show `Correzione manuale applicata in anteprima`.
+- [ ] No commit/save action appears in the page.
+
+Rollback checklist (Milestone 3, preview and reconciliation only):
+
+- [ ] Hide/remove the Milestone 3 wizard shell from `/dashboard/cashflow/import-csv`.
+- [ ] Remove the client-side row correction, bulk edit, and assisted linking UI additions introduced in this milestone.
+- [ ] Keep validation and preset persistence behavior from earlier milestones unchanged.
+- [ ] No data rollback is required because this milestone does not persist CSV rows or create records.
+- [ ] Re-run `npm test -- --run __tests__/csvImportPreviewUi.test.ts` and `npx tsc --noEmit --incremental false`.
+
 ### Milestone 4: Cashflow commit and rollback
 
 Approach: commit the first narrow vertical slice end-to-end for ordinary income/expense rows only. This proves batch tracking, dedupe checks, idempotency, and rollback before adding more movement families.

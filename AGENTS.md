@@ -36,63 +36,42 @@ When a change affects durable guidance, update the docs above first, then keep
 ## Core Areas
 
 - App Router: `app/page.tsx`, `app/layout.tsx`, `app/dashboard/*`
-- APIs: `app/api/*`, especially `app/api/ai/assistant/*`, `app/api/dividends/*`, `app/api/portfolio/snapshot/*`
+- APIs: `app/api/*`, especially `app/api/ai/assistant/*`, `app/api/dividends/*`, `app/api/portfolio/snapshot/*`, `app/api/imports/*`, `app/api/data/*`
 - Services: `lib/services/*`, `lib/server/*`, `lib/helpers/priceUpdater.ts`
 - Types: `types/*`
 - Tests: `__tests__/*.test.ts` with `vitest.config.ts`
 
 ## Workflow Skills
 
-Codex does not automatically load repo-local skills. Treat `.agents/skills/*`
-as workflow playbooks: when a task matches one of these areas, read the matching
-`SKILL.md` before changing code. `.claude/skills/*` mirrors the same workflows
-for Claude Code.
-
-- React/Next.js feature work: `.agents/skills/react-nextjs-development/SKILL.md`
-- Frontend implementation guardrails: `.agents/skills/frontend-dev-guidelines/SKILL.md`
-- Backend/service/API guardrails: `.agents/skills/backend-dev-guidelines/SKILL.md`
-- Test-first feature and bugfix work: `.agents/skills/test-driven-development/SKILL.md`
-- Root-cause debugging: `.agents/skills/systematic-debugging/SKILL.md`
-- API auth / private routes: `.agents/skills/api-auth-routes/SKILL.md`
-- Vitest route tests: `.agents/skills/vitest-route-testing/SKILL.md`
-- Dividends, coupons, investment operations, internal transfers, unified
-  cashflow movements, and snapshot routes:
-  `.agents/skills/dividend-and-snapshot-workflows/SKILL.md`
-- Assistant SSE streaming, thread state, memory, and prompt context:
-  `.agents/skills/assistant-streaming/SKILL.md`
-- Caliber setup or missing Caliber binary:
-  `.agents/skills/setup-caliber/SKILL.md`
-- Searching available workflow guidance:
-  `.agents/skills/find-skills/SKILL.md`
-
-Do not duplicate skill content into `AGENTS.md`; keep this file as a short index
-and update the skill file itself when the detailed workflow changes. Keep the
-`.agents/skills` and `.claude/skills` copies aligned.
-
-## Commands
-
-```bash
-npm.cmd test -- --run __tests__/assistantRoutes.test.ts
-npm.cmd test -- --run __tests__/apiAuthRoutes.test.ts
-npm.cmd test
-```
-
-```bash
-npx tsc --noEmit
-npm.cmd run build
-```
-
-```bash
-git diff --check
-npm.cmd run lint
-```
+- Use the `api-auth-routes` skill for private `app/api/*` routes.
+- Use the `assistant-streaming` skill for `app/api/ai/assistant/*`.
+- Use the `dividend-and-snapshot-workflows` skill for dividends, snapshots, prices, cron, and unified cashflow movement flows.
+- Use the `vitest-route-testing` skill for `app/api/*`, `lib/services/*`, and `lib/server/*` tests.
+- Use the `test-driven-development` skill before implementation changes.
+- Use the `systematic-debugging` skill for bugs, regressions, and failing tests.
+- Use the `frontend-dev-guidelines` skill for React components and pages.
+- Use the `backend-dev-guidelines` skill for server routes, services, repositories, and Prisma.
+- Use the `prisma`, `prisma-client-api`, `prisma-cli`, `prisma-database-setup`, `prisma-expert`, and `prisma-postgres` skills for database work.
+- Use the `tailwindcss`, `recharts`, `shadcn`, and `react-pdf` skills for UI and visualization work.
+- Use `find-skills` when the task needs a specialized skill not already installed.
 
 ## Verification
 
-- Start with the narrowest `__tests__/*` file related to the change.
-- Broaden to `npm.cmd test`, then `npx tsc --noEmit`, then `npm.cmd run build`.
-- For docs-only edits, `git diff --check` is the minimum useful check.
-- `npm.cmd run lint` may still report historical repo issues.
+```bash
+npm.cmd test -- --run __tests__/apiAuthRoutes.test.ts
+npm.cmd test -- --run __tests__/assistantRoutes.test.ts
+npx tsc --noEmit
+```
+
+- Run focused tests first, then widen only when the change affects shared flows.
+- Broad cross-page changes may require `npm.cmd test` and `npm.cmd run build`.
+- Docs-only changes should use `git diff --check`.
+- `npm.cmd run lint` currently reports repo-wide historical issues; do not treat it as a clean regression signal until the baseline is fixed.
+
+## Cross-Agent Sync
+
+- Keep `AGENTS.md`, `CLAUDE.md`, `.claude/rules/*`, and `.agents/skills/*` aligned when a shared convention changes.
+- Preserve `docs/agent-memory.md` and `docs/project-status.md` as the durable detail layers.
 
 <!-- caliber:managed:pre-commit -->
 ## Before Committing
@@ -107,7 +86,7 @@ grep -q "caliber" .git/hooks/pre-commit 2>/dev/null && echo "hook-active" || ech
 - If **hook-active**: the hook handles sync automatically — just commit normally. Tell the user: "Caliber will sync your agent configs automatically via the pre-commit hook."
 - If **no-hook**: run Caliber manually before committing:
   1. Tell the user: "Caliber: Syncing agent configs with your latest changes..."
-  2. Run: `caliber refresh && git add CLAUDE.md .claude/ .cursor/ .cursorrules .github/copilot-instructions.md .github/instructions/ AGENTS.md CALIBER_LEARNINGS.md .agents/ .opencode/ 2>/dev/null`
+  2. Run: `caliber refresh && git add CALIBER_LEARNINGS.md CLAUDE.md .claude/ AGENTS.md .agents/ 2>/dev/null`
   3. After it completes, briefly tell the user what Caliber updated. Then proceed with the commit.
 
 **Valid `caliber refresh` options:** `--quiet` (suppress output) and `--dry-run` (preview without writing). Do not pass any other flags — options like `--auto-approve`, `--debug`, or `--force` do not exist and will cause errors.

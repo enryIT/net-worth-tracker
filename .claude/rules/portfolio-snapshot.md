@@ -4,6 +4,8 @@ paths:
   - app/api/prices/**
   - app/api/benchmarks/**
   - app/api/cron/**
+  - app/api/imports/**
+  - app/api/data/**
   - lib/services/**
   - lib/helpers/priceUpdater.ts
 ---
