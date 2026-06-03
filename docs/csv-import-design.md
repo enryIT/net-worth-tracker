@@ -318,6 +318,40 @@ This intentionally avoids complex state restoration in the first implementation.
 
 ## Milestones and acceptance criteria
 
+### Current implementation status after Milestones 1-5
+
+Milestones 1-5 are implemented and committed as narrow slices. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, and neutral internal transfer commit/rollback. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
+
+Implementation commits:
+
+| Milestone | Status | Commit | Notes |
+|---|---:|---|---|
+| 1. Pure import foundation | Implemented | `da3f8f5` | Parser, mapping validation, normalization, deterministic classification, dedupe helpers, preview route/tests. |
+| 2. Import presets | Implemented | `f4467bf` | Authenticated preset CRUD, ownership validation, preset UI controls/tests. |
+| 3. Preview and reconciliation UI | Implemented | `033520d` | Wizard shell, filters, inline correction, bulk edit, assisted linking copy, preview-only UI tests. |
+| 4. Cashflow commit and rollback | Implemented with M5 | `1a6e122` | Batch commit/rollback route, service, repository, cashflow created-record tracking, idempotency, tests. |
+| 5. Internal transfers | Implemented with M4 | `1a6e122` | Transfer validation, neutral internal transfers, mixed batch metadata, mixed rollback, tests. |
+
+The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, but manual release checks should still be executed before enabling the importer for real users. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
+
+#### Known deferred scope after Milestones 1-5
+
+The following items are intentionally not implemented yet:
+
+- Broker-specific templates and broker-specific settlement heuristics.
+- AI-assisted classification; classification remains deterministic and explainable.
+- Buy/sell investment operation import, including weighted-average-cost, realized gain, tax, and optional cash-account effects.
+- Dividend, coupon, standalone fee, and standalone tax commit/rollback.
+- Full import history UI for past batches, failed chunks, created-record drilldown, and rollback status.
+- Rollback UI from import history with explicit confirmation and detailed unsafe-rollback messaging.
+- Automatic creation of missing assets, accounts, categories, or subcategories; current reconciliation surfaces missing references and keeps creation/linking explicit.
+- Existing-record updates; first-release rollback only handles records created by the import batch.
+- Large fixture and UX/performance hardening around 5,000-row previews and chunked commits.
+- Virtualized or paginated preview hardening for very large CSVs.
+- Operational rollout documentation for supported mappings, limitations, dedupe behavior, and rollback behavior.
+
+These items are mapped to Milestones 6-8 below. Do not treat Milestones 1-5 as a full CSV importer release; treat them as the committed foundation and first durable movement families.
+
 ### Milestone 1: Pure import foundation
 
 Approach: build the deterministic import core before any database write or UI commit path. This keeps parsing, mapping, normalization, classification, and dedupe behavior testable without touching persisted financial data.
@@ -421,14 +455,14 @@ Action items:
 - [ ] Add table filters for errors, warnings, duplicates, unknown movement kind, missing references, and movement kind.
 - [ ] Add inline row correction for movement kind and key mapped fields.
 - [ ] Add bulk edit for repeated fixes across selected rows.
-- [ ] Add assisted linking/creation flows for missing assets, accounts, categories, and subcategories without silent creation.
+- [ ] Add assisted linking flows and explicit creation design for missing assets, accounts, categories, and subcategories without silent creation.
 
 Acceptance criteria:
 
 - The user can move from CSV upload to mapped preview without writing financial records.
 - Preview displays row-level issues and classification reasons in Italian user-facing text.
 - Rows with blocking errors cannot be marked ready for commit.
-- Missing entities require explicit user confirmation before being created or linked.
+- Missing entities require explicit user confirmation before being linked or before any future creation flow is allowed.
 - Bulk edit updates selected rows consistently and recomputes validation/classification where needed.
 - UI follows existing layout/styling patterns and uses `desktop:` rather than `lg:`.
 
@@ -470,7 +504,7 @@ Action items:
 
 Release / rollback checklist:
 
-- [ ] Confirm the commit action only enables cashflow ordinary rows with a resolved existing category.
+- [ ] For M4-only validation, confirm cashflow ordinary rows require a resolved existing category. After M5, the same commit action may also include ready internal transfer rows with resolved cash accounts.
 - [ ] Confirm the success panel shows batch ID and created record count after commit.
 - [ ] Confirm repeating the same payload with the same idempotency key returns the same batch instead of duplicating records.
 - [ ] Confirm rollback removes the batch-created records and surfaces the rolled-back state in the UI.

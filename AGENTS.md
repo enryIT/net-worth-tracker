@@ -40,39 +40,33 @@ When a change affects durable guidance, update the docs above first, then keep
 - Services: `lib/services/*`, `lib/server/*`, `lib/helpers/priceUpdater.ts`
 - Types: `types/*`
 - Tests: `__tests__/*.test.ts`
-- UI primitives: `components/ui/*`
-- Dashboard layout: `components/layout/*`
-- AI assistant: `lib/server/assistant/*`, `components/assistant/*`, `types/assistant.ts`
+- Shared UI: `components/layout/*`, `components/ui/*`
 
-## Current Feature Notes
-
-- Unified cashflow tracking lives in `components/cashflow/ExpenseTrackingTab.tsx`.
-- Investment operations stay inside `lib/services/investmentOperationService.ts` and `lib/utils/investmentOperationUtils.ts`.
-- Household scope logic must preserve the saved split metadata in snapshots, PDF export, emails, and AI context.
-- Portfolio snapshot workflows depend on `app/api/portfolio/snapshot/*` and `lib/helpers/priceUpdater.ts`.
-- Keep benchmark, assistant, and import route auth patterns aligned with their server helpers.
-
-## Workflow
+## Common Commands
 
 ```bash
 npm.cmd test -- --run __tests__/householdUtils.test.ts
+npm.cmd test -- --run __tests__/csvImportCommitRoutes.test.ts
 npx tsc --noEmit
+```
+
+```bash
+npm.cmd test
 npm.cmd run build
 ```
 
-- Use the narrowest relevant test file first, then widen if shared flows change.
-- Follow existing Vitest route patterns for `app/api/*` and server modules.
-- Verify auth-sensitive routes with mocked Firebase/admin boundaries.
-- Docs-only changes should still pass `git diff --check`.
+```bash
+git diff --check
+```
 
-## References
+## Working Notes
 
-- See `docs/agent-memory.md` for durable conventions and recurring pitfalls.
-- See `docs/project-status.md` for current architecture and active features.
-- See `.claude/rules/api-auth.md` for API auth expectations.
-- See `.claude/rules/portfolio-snapshot.md` for snapshot and import workflows.
-- See `.claude/rules/testing-patterns.md` for Vitest route and service patterns.
-- See `SETUP.md` for local setup and environment details.
+- Check `docs/agent-memory.md` before changing import, snapshot, or assistant
+  flows.
+- Check `docs/project-status.md` before changing dashboard or API architecture.
+- Keep shared route/auth patterns aligned with `.claude/rules/api-auth.md` and
+  `.claude/rules/testing-patterns.md`.
+- Use `SETUP.md` for environment and local setup details.
 
 <!-- caliber:managed:pre-commit -->
 ## Before Committing
