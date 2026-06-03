@@ -468,6 +468,14 @@ Action items:
 - [ ] Invalidate the same caches/derived views affected by manual cashflow mutations.
 - [ ] Verify with targeted route/use-case tests and `git diff --check`.
 
+Release / rollback checklist:
+
+- [ ] Confirm the commit action only enables cashflow ordinary rows with a resolved existing category.
+- [ ] Confirm the success panel shows batch ID and created record count after commit.
+- [ ] Confirm repeating the same payload with the same idempotency key returns the same batch instead of duplicating records.
+- [ ] Confirm rollback removes the batch-created records and surfaces the rolled-back state in the UI.
+- [ ] Confirm unresolved or duplicate rows remain outside the commit payload.
+
 Acceptance criteria:
 
 - Ready cashflow rows can be committed in chunks and are visible wherever manual cashflow entries are visible.
@@ -488,12 +496,23 @@ Scope:
 
 Action items:
 
-- [ ] Add transfer-specific canonical fields for source account, destination account, amount, date, and description.
-- [ ] Validate source and destination account references before commit.
-- [ ] Add transfer commit handling to the existing import batch pipeline.
-- [ ] Track transfer records in `importBatch.createdRecords`.
-- [ ] Extend rollback to transfer records.
-- [ ] Add regression tests proving imported transfers do not change income, expenses, or savings KPIs.
+- [x] Add transfer-specific canonical fields for source account, destination account, amount, date, and description.
+- [x] Validate source and destination account references before commit.
+- [x] Add transfer commit handling to the existing import batch pipeline.
+- [x] Track transfer records in `importBatch.createdRecords`.
+- [x] Extend rollback to transfer records.
+- [x] Add regression tests proving imported transfers do not change income, expenses, or savings KPIs.
+
+Release / rollback checklist:
+
+- [ ] Confirm the commit payload can include both ready `cashflow` rows and ready `transfer` rows.
+- [ ] Confirm transfer rows require existing cash accounts for source and destination and reject identical accounts.
+- [ ] Confirm imported transfer records are stored with `purpose: 'neutral_transfer'` and are tracked as `kind: 'internalTransfer'` in batch metadata.
+- [ ] Confirm imported transfers adjust source/destination cash balances exactly like manual internal transfers.
+- [ ] Confirm ordinary cashflow KPI totals remain unchanged by transfer-only imports.
+- [ ] Rollback plan: use `POST /api/imports/{batchId}/rollback` for the affected batch while imported records are unmodified.
+- [ ] Manual rollback fallback: delete only batch-created internal transfers, reverse their cash-account quantity deltas, and mark the import batch rolled back; do not touch unrelated manual transfers.
+- [ ] Stop rollout if rollback reports modified imported records, because manual edits make automatic reversal unsafe.
 
 Acceptance criteria:
 

@@ -39,39 +39,40 @@ When a change affects durable guidance, update the docs above first, then keep
 - APIs: `app/api/*`, especially `app/api/ai/assistant/*`, `app/api/dividends/*`, `app/api/portfolio/snapshot/*`, `app/api/imports/*`, `app/api/data/*`
 - Services: `lib/services/*`, `lib/server/*`, `lib/helpers/priceUpdater.ts`
 - Types: `types/*`
-- Tests: `__tests__/*.test.ts` with `vitest.config.ts`
+- Tests: `__tests__/*.test.ts`
+- UI primitives: `components/ui/*`
+- Dashboard layout: `components/layout/*`
+- AI assistant: `lib/server/assistant/*`, `components/assistant/*`, `types/assistant.ts`
 
-## Workflow Skills
+## Current Feature Notes
 
-- Use the `api-auth-routes` skill for private `app/api/*` routes.
-- Use the `assistant-streaming` skill for `app/api/ai/assistant/*`.
-- Use the `dividend-and-snapshot-workflows` skill for dividends, snapshots, prices, cron, and unified cashflow movement flows.
-- Use the `vitest-route-testing` skill for `app/api/*`, `lib/services/*`, and `lib/server/*` tests.
-- Use the `test-driven-development` skill before implementation changes.
-- Use the `systematic-debugging` skill for bugs, regressions, and failing tests.
-- Use the `frontend-dev-guidelines` skill for React components and pages.
-- Use the `backend-dev-guidelines` skill for server routes, services, repositories, and Prisma.
-- Use the `prisma`, `prisma-client-api`, `prisma-cli`, `prisma-database-setup`, `prisma-expert`, and `prisma-postgres` skills for database work.
-- Use the `tailwindcss`, `recharts`, `shadcn`, and `react-pdf` skills for UI and visualization work.
-- Use `find-skills` when the task needs a specialized skill not already installed.
+- Unified cashflow tracking lives in `components/cashflow/ExpenseTrackingTab.tsx`.
+- Investment operations stay inside `lib/services/investmentOperationService.ts` and `lib/utils/investmentOperationUtils.ts`.
+- Household scope logic must preserve the saved split metadata in snapshots, PDF export, emails, and AI context.
+- Portfolio snapshot workflows depend on `app/api/portfolio/snapshot/*` and `lib/helpers/priceUpdater.ts`.
+- Keep benchmark, assistant, and import route auth patterns aligned with their server helpers.
 
-## Verification
+## Workflow
 
 ```bash
-npm.cmd test -- --run __tests__/apiAuthRoutes.test.ts
-npm.cmd test -- --run __tests__/assistantRoutes.test.ts
+npm.cmd test -- --run __tests__/householdUtils.test.ts
 npx tsc --noEmit
+npm.cmd run build
 ```
 
-- Run focused tests first, then widen only when the change affects shared flows.
-- Broad cross-page changes may require `npm.cmd test` and `npm.cmd run build`.
-- Docs-only changes should use `git diff --check`.
-- `npm.cmd run lint` currently reports repo-wide historical issues; do not treat it as a clean regression signal until the baseline is fixed.
+- Use the narrowest relevant test file first, then widen if shared flows change.
+- Follow existing Vitest route patterns for `app/api/*` and server modules.
+- Verify auth-sensitive routes with mocked Firebase/admin boundaries.
+- Docs-only changes should still pass `git diff --check`.
 
-## Cross-Agent Sync
+## References
 
-- Keep `AGENTS.md`, `CLAUDE.md`, `.claude/rules/*`, and `.agents/skills/*` aligned when a shared convention changes.
-- Preserve `docs/agent-memory.md` and `docs/project-status.md` as the durable detail layers.
+- See `docs/agent-memory.md` for durable conventions and recurring pitfalls.
+- See `docs/project-status.md` for current architecture and active features.
+- See `.claude/rules/api-auth.md` for API auth expectations.
+- See `.claude/rules/portfolio-snapshot.md` for snapshot and import workflows.
+- See `.claude/rules/testing-patterns.md` for Vitest route and service patterns.
+- See `SETUP.md` for local setup and environment details.
 
 <!-- caliber:managed:pre-commit -->
 ## Before Committing

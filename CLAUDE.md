@@ -39,7 +39,32 @@ areas live in `app/dashboard/*`, `app/api/*`, `components/*`, `lib/services/*`,
 
 - User-facing strings stay Italian; code comments stay English.
 - Use `desktop:` for 1440px breakpoints; do not introduce `lg:`.
-- Use `formatCurrency()`, `formatDate()`, and `dateHelpers.ts` for dates.
+- Use `formatCurrency()`, `formatDate()`, and `dateHelpers.ts` helpers.
+- Keep settings fields synchronized across types, getters, and setters.
+- Prefer `useMemo` for derived collections; avoid `useEffect + setState`.
+- Private `app/api/*` routes must verify Firebase UID server-side.
+- Cron routes must validate `Authorization: Bearer ${process.env.CRON_SECRET}`.
+- Do not revert unrelated user changes or touch `Draft Release Temp.md` / `Temp.md`.
+
+## Core Feature Notes
+
+- Unified cashflow tracking lives in `components/cashflow/ExpenseTrackingTab.tsx`.
+- Investment operations stay inside `lib/services/investmentOperationService.ts` and `lib/utils/investmentOperationUtils.ts`.
+- Household scope logic must preserve the saved split metadata in snapshots, PDF export, emails, and AI context.
+- Portfolio snapshot and import workflows depend on `app/api/portfolio/snapshot/*`, `app/api/imports/*`, and `lib/helpers/priceUpdater.ts`.
+- AI assistant work stays in `app/api/ai/assistant/*`, `lib/server/assistant/*`, and `components/assistant/*`.
+
+## Verification
+
+```bash
+npm.cmd test -- --run __tests__/householdUtils.test.ts
+npx tsc --noEmit
+npm.cmd run build
+```
+
+- Use the narrowest relevant test file first, then widen if shared flows change.
+- Verify auth-sensitive routes with mocked Firebase/admin boundaries.
+- Docs-only changes should still pass `git diff --check`.
 
 <!-- caliber:managed:pre-commit -->
 ## Before Committing

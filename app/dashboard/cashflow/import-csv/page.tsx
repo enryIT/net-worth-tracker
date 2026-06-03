@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -11,14 +12,19 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
+import { useExpenseCategories } from '@/lib/hooks/useExpenses';
 import { authenticatedFetch } from '@/lib/utils/authFetch';
+import { queryKeys } from '@/lib/query/queryKeys';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { toDate } from '@/lib/utils/dateHelpers';
 import type { CsvImportPreviewResult, ImportDedupeStatus, ImportIssue, ImportMovementKind, NormalizedImportRow } from '@/lib/server/imports/types';
 import type { CsvImportPreset } from '@/lib/server/imports/presetTypes';
+import type { ExpenseCategory } from '@/types/expenses';
 
 const VALIDATE_ENDPOINT = '/api/imports/validate';
 const PRESET_ENDPOINT = '/api/imports/presets';
+const COMMIT_ENDPOINT = '/api/imports/commit';
+const ROLLBACK_ENDPOINT_PREFIX = '/api/imports';
 
 const DEFAULT_CSV = [
   'Data;Descrizione;Importo',
@@ -322,8 +328,94 @@ function getIssueSummary(row: DisplayRow): string[] {
   return issueMessages;
 }
 
+interface CommitBatchSummary {
+  batchId: string;
+  createdRecordCount: number;
+  wasIdempotent: boolean;
+  status: 'committed' | 'rolledBack';
+  removedRecordCount?: number;
+}
+
+interface CashflowCommitRowPayload {
+  rowIndex: number;
+  movementKind: 'cashflow' | 'transfer';
+  ready: boolean;
+  dedupeKey: string;
+  dedupeStatus: ImportDedupeStatus;
+  issues: ImportIssue[];
+  canonicalFields: NormalizedImportRow['canonicalFields'];
+  categoryId: string | null;
+  categoryName: string | null;
+  subCategoryId: string | null;
+  subCategoryName: string | null;
+}
+
+function normalizeCategoryMatch(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function resolveConfirmedCashflowCategory(
+  categoryLikeText: string,
+  categories: ExpenseCategory[]
+): {
+  categoryId: string;
+  categoryName: string;
+  subCategoryId: string | null;
+  subCategoryName: string | null;
+} | null {
+  const trimmedText = categoryLikeText.trim();
+  if (!trimmedText) {
+    return null;
+  }
+
+  const [rawCategoryName, ...rawSubCategoryParts] = trimmedText.split('/');
+  const categoryName = rawCategoryName.trim();
+  if (!categoryName) {
+    return null;
+  }
+
+  const matchedCategory = categories.find(
+    (category) => normalizeCategoryMatch(category.name) === normalizeCategoryMatch(categoryName)
+  );
+
+  if (!matchedCategory) {
+    return null;
+  }
+
+  const subCategoryName = rawSubCategoryParts.join('/').trim();
+  if (!subCategoryName) {
+    return {
+      categoryId: matchedCategory.id,
+      categoryName: matchedCategory.name,
+      subCategoryId: null,
+      subCategoryName: null,
+    };
+  }
+
+  const matchedSubCategory = matchedCategory.subCategories.find(
+    (subCategory) => normalizeCategoryMatch(subCategory.name) === normalizeCategoryMatch(subCategoryName)
+  );
+
+  if (!matchedSubCategory) {
+    return null;
+  }
+
+  return {
+    categoryId: matchedCategory.id,
+    categoryName: matchedCategory.name,
+    subCategoryId: matchedSubCategory.id,
+    subCategoryName: matchedSubCategory.name,
+  };
+}
+
 function ImportCsvPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { data: expenseCategories = [], isLoading: categoriesLoading } = useExpenseCategories(user?.uid);
   const [csvText, setCsvText] = useState(DEFAULT_CSV);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [dateColumn, setDateColumn] = useState('Data');
@@ -354,10 +446,19 @@ function ImportCsvPage() {
   const [showOnlyUnknownMovement, setShowOnlyUnknownMovement] = useState(false);
   const [showOnlyMissingReferences, setShowOnlyMissingReferences] = useState(false);
   const [movementKindFilter, setMovementKindFilter] = useState<MovementKindFilter>('all');
+  const commitIdempotencyKeyRef = useRef<string | null>(null);
+  const [isCommitting, setIsCommitting] = useState(false);
+  const [isRollingBack, setIsRollingBack] = useState(false);
+  const [commitBatchSummary, setCommitBatchSummary] = useState<CommitBatchSummary | null>(null);
+
   const selectedPreset = useMemo(
     () => presets.find((preset) => preset.id === selectedPresetId) ?? null,
     [presets, selectedPresetId]
   );
+
+  useEffect(() => {
+    commitIdempotencyKeyRef.current = null;
+  }, [expenseCategories, rowOverrides, selectedPresetId]);
 
   const loadPresets = useCallback(async () => {
     if (!user) {
@@ -605,6 +706,8 @@ function ImportCsvPage() {
       setRowOverrides({});
       setSelectedRowId(null);
       setSelectedRowIds([]);
+      setCommitBatchSummary(null);
+      commitIdempotencyKeyRef.current = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message);
@@ -620,6 +723,8 @@ function ImportCsvPage() {
     try {
       setIsValidating(true);
       setApiError(null);
+      setCommitBatchSummary(null);
+      commitIdempotencyKeyRef.current = null;
 
       const response = await authenticatedFetch(VALIDATE_ENDPOINT, {
         method: 'POST',
@@ -657,6 +762,7 @@ function ImportCsvPage() {
       setRowOverrides({});
       setSelectedRowId(null);
       setSelectedRowIds([]);
+      setCommitBatchSummary(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setApiError(message);
@@ -679,6 +785,76 @@ function ImportCsvPage() {
     () => buildDisplayRows(preview?.rows ?? [], rowOverrides),
     [preview, rowOverrides]
   );
+
+  const readyCommitRows = useMemo(
+    () => displayRows.filter((row) => (
+      (row.movementKind === 'cashflow' || row.movementKind === 'transfer') && row.ready
+    )),
+    [displayRows]
+  );
+
+  const cashflowCommitPreparation = useMemo(() => {
+    let unresolvedReadyCashflowRows = 0;
+    let unresolvedReadyTransferRows = 0;
+    let duplicateReadyCashflowRows = 0;
+    const rows: CashflowCommitRowPayload[] = [];
+
+    readyCommitRows.forEach((row) => {
+      if (row.dedupeStatus === 'duplicate') {
+        duplicateReadyCashflowRows += 1;
+        return;
+      }
+
+      if (row.movementKind === 'transfer') {
+        if (!row.canonicalFields.sourceAccount || !row.canonicalFields.destinationAccount) {
+          unresolvedReadyTransferRows += 1;
+          return;
+        }
+
+        rows.push({
+          rowIndex: row.rowIndex,
+          movementKind: 'transfer',
+          ready: row.ready,
+          dedupeKey: row.dedupeKey,
+          dedupeStatus: row.dedupeStatus,
+          issues: row.issues,
+          canonicalFields: row.canonicalFields,
+          categoryId: null,
+          categoryName: null,
+          subCategoryId: null,
+          subCategoryName: null,
+        });
+        return;
+      }
+
+      const confirmedCategory = resolveConfirmedCashflowCategory(row.categoryLikeText, expenseCategories);
+      if (!confirmedCategory) {
+        unresolvedReadyCashflowRows += 1;
+        return;
+      }
+
+      rows.push({
+        rowIndex: row.rowIndex,
+        movementKind: 'cashflow',
+        ready: row.ready,
+        dedupeKey: row.dedupeKey,
+        dedupeStatus: row.dedupeStatus,
+        issues: row.issues,
+        canonicalFields: row.canonicalFields,
+        categoryId: confirmedCategory.categoryId,
+        categoryName: confirmedCategory.categoryName,
+        subCategoryId: confirmedCategory.subCategoryId,
+        subCategoryName: confirmedCategory.subCategoryName,
+      });
+    });
+
+    return {
+      rows,
+      unresolvedReadyCashflowRows,
+      unresolvedReadyTransferRows,
+      duplicateReadyCashflowRows,
+    };
+  }, [displayRows, expenseCategories, readyCommitRows]);
 
   const filteredRows = useMemo(() => displayRows.filter((row) => {
     if (showOnlyErrors && !row.hasBlockingIssues) {
@@ -839,6 +1015,142 @@ function ImportCsvPage() {
 
     updateRowOverride(selectedRow.rowIndex, { ready: !selectedRow.ready });
   }, [selectedRow, updateRowOverride]);
+
+  const handleCommitCashflowRows = useCallback(async () => {
+    if (!user) {
+      toast.error('Utente non autenticato');
+      return;
+    }
+
+    if (cashflowCommitPreparation.rows.length === 0) {
+      toast.error('Nessuna riga cashflow o transfer pronta da importare');
+      return;
+    }
+
+    try {
+      setIsCommitting(true);
+
+      const idempotencyKey = commitIdempotencyKeyRef.current
+        ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `cashflow-import-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      commitIdempotencyKeyRef.current = idempotencyKey;
+
+      const response = await authenticatedFetch(COMMIT_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.uid,
+          idempotencyKey,
+          presetId: selectedPresetId || null,
+          sourceFingerprint: null,
+          rows: cashflowCommitPreparation.rows,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string'
+          ? payload.error
+          : 'Errore durante la conferma import CSV';
+        toast.error(message);
+        return;
+      }
+
+      const result = payload?.data as {
+        batch: { id: string };
+        createdRecordCount: number;
+        wasIdempotent: boolean;
+      };
+
+      setCommitBatchSummary({
+        batchId: result.batch.id,
+        createdRecordCount: result.createdRecordCount,
+        wasIdempotent: result.wasIdempotent,
+        status: 'committed',
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
+      ]);
+
+      toast.success(`Importazione cashflow e transfer confermata: batch ${result.batch.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+    } finally {
+      setIsCommitting(false);
+    }
+  }, [cashflowCommitPreparation.rows, queryClient, selectedPresetId, user]);
+
+  const handleRollbackCommittedBatch = useCallback(async () => {
+    if (!user) {
+      toast.error('Utente non autenticato');
+      return;
+    }
+
+    if (!commitBatchSummary || commitBatchSummary.status !== 'committed') {
+      toast.error('Nessun batch confermato da annullare');
+      return;
+    }
+
+    try {
+      setIsRollingBack(true);
+
+      const response = await authenticatedFetch(
+        `${ROLLBACK_ENDPOINT_PREFIX}/${commitBatchSummary.batchId}/rollback`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rollbackReason: 'annullamento manuale',
+          }),
+        }
+      );
+
+      const payload = await response.json();
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string'
+          ? payload.error
+          : 'Errore durante l\'annullamento del batch import CSV';
+        toast.error(message);
+        return;
+      }
+
+      const result = payload?.data as {
+        batch: { id: string };
+        removedRecordCount: number;
+      };
+
+      commitIdempotencyKeyRef.current = null;
+      setCommitBatchSummary({
+        batchId: result.batch.id,
+        createdRecordCount: commitBatchSummary.createdRecordCount,
+        wasIdempotent: commitBatchSummary.wasIdempotent,
+        status: 'rolledBack',
+        removedRecordCount: result.removedRecordCount,
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
+      ]);
+
+      toast.success(`Batch ${result.batch.id} annullato`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+    } finally {
+      setIsRollingBack(false);
+    }
+  }, [commitBatchSummary, queryClient, user]);
 
   const selectedRowTitle = selectedRow
     ? `Riga ${selectedRow.rowIndex}`
@@ -1143,6 +1455,75 @@ function ImportCsvPage() {
                   ))}
                 </div>
               </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4">
+                <div className="flex flex-col gap-4 desktop:flex-row desktop:items-start desktop:justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-amber-950">Conferma importazione cashflow e transfer</p>
+                    <p className="text-sm text-amber-900/80">
+                      I movimenti cashflow ordinari e i transfer interni pronti possono essere confermati in Milestone 5.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {cashflowCommitPreparation.rows.length > 0
+                        ? `${cashflowCommitPreparation.rows.length} righe pronte verranno confermate. ${cashflowCommitPreparation.unresolvedReadyCashflowRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyCashflowRows} righe cashflow richiedono una categoria esistente nel campo "Categoria / sottocategoria". ` : ''}${cashflowCommitPreparation.unresolvedReadyTransferRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyTransferRows} transfer richiedono conto origine e destinazione. ` : ''}${cashflowCommitPreparation.duplicateReadyCashflowRows > 0 ? `${cashflowCommitPreparation.duplicateReadyCashflowRows} righe duplicate restano escluse dalla commit.` : ''}`
+                        : categoriesLoading
+                          ? 'Caricamento categorie in corso...'
+                          : 'Compila categorie cashflow o conti dei transfer per abilitare la conferma.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      onClick={handleCommitCashflowRows}
+                      disabled={isCommitting || categoriesLoading || cashflowCommitPreparation.rows.length === 0}
+                    >
+                      {isCommitting ? 'Conferma in corso...' : 'Conferma importazione'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {commitBatchSummary && (
+                <div
+                  className={[
+                    'rounded-lg border p-4',
+                    commitBatchSummary.status === 'rolledBack'
+                      ? 'border-slate-200 bg-slate-50/70'
+                      : 'border-emerald-200 bg-emerald-50/70',
+                  ].join(' ')}
+                >
+                  <div className="flex flex-col gap-4 desktop:flex-row desktop:items-start desktop:justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">
+                        {commitBatchSummary.status === 'rolledBack'
+                          ? 'Importazione annullata'
+                          : 'Importazione confermata'}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Batch {commitBatchSummary.batchId} · {commitBatchSummary.createdRecordCount} record creati
+                        {commitBatchSummary.wasIdempotent ? ' · richiesta idempotente' : ''}
+                        {commitBatchSummary.status === 'rolledBack' && commitBatchSummary.removedRecordCount !== undefined
+                          ? ` · ${commitBatchSummary.removedRecordCount} record rimossi`
+                          : ''}
+                      </p>
+                    </div>
+
+                    {commitBatchSummary.status === 'committed' && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={handleRollbackCommittedBatch}
+                          disabled={isRollingBack}
+                        >
+                          {isRollingBack ? 'Annullamento in corso...' : 'Annulla importazione batch'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-4 rounded-lg border bg-background p-4">
                 <div className="grid grid-cols-1 gap-4 desktop:grid-cols-2">

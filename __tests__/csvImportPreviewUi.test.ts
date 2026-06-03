@@ -9,18 +9,28 @@ describe('csv import preview UI', () => {
     expect(source).toContain('/dashboard/cashflow/import-csv');
   });
 
-  it('exposes the M3 wizard shell, filters, row correction, and assisted linking copy', () => {
+  it('exposes the M5 commit and rollback action for ready cashflow rows and internal transfers', () => {
     const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
 
     expect(source).toContain('Anteprima import CSV');
     expect(source).toContain('/api/imports/validate');
     expect(source).toContain('/api/imports/presets');
+    expect(source).toContain('/api/imports/commit');
     expect(source).toContain('Preset import');
     expect(source).toContain('Salva preset');
     expect(source).toContain('Carica preset');
     expect(source).toContain('Aggiorna preset');
     expect(source).toContain('Elimina preset');
+    expect(source).toContain('I movimenti cashflow ordinari e i transfer interni pronti possono essere confermati in Milestone 5.');
+    expect(source).toContain('Conferma importazione cashflow e transfer');
+    expect(source).toContain('Conferma importazione');
+    expect(source).toContain('Annulla importazione batch');
     expect(source).toContain('Nessun movimento viene salvato in questa fase');
+  });
+
+  it('exposes the M3 wizard shell, filters, row correction, and assisted linking copy', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
     expect(source).toContain('Carica file CSV');
     expect(source).toContain('Il file grezzo viene elaborato nel browser e non viene salvato come CSV grezzo.');
     expect(source).toContain('Mappatura campi');
@@ -40,8 +50,5 @@ describe('csv import preview UI', () => {
     expect(source).toContain('Nessuna creazione automatica');
     expect(source).toContain('Le righe con errori bloccanti non possono essere marcate come pronte.');
     expect(source).toContain('processato nel browser');
-    expect(source).not.toContain('/api/imports/commit');
-    expect(source).not.toContain('Conferma importazione');
-    expect(source).not.toContain('Annulla importazione batch');
   });
 });
