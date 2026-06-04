@@ -13,6 +13,11 @@ export const queryKeys = {
     transfers: (userId: string) => ['assets', 'transfers', userId] as const,
   },
 
+  // Imports
+  imports: {
+    history: (userId: string) => ['imports', 'history', userId] as const,
+  },
+
   // Snapshots
   snapshots: {
     all: (userId: string) => ['snapshots', userId] as const,

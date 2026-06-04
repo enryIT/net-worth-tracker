@@ -30,6 +30,18 @@ describe('csv import preview UI', () => {
     expect(source).toContain("if (row.movementKind === 'cashflow' || row.movementKind === 'fee' || row.movementKind === 'tax') {");
   });
 
+  it('shows import history and explicit rollback confirmation on the CSV import page', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toContain('Storico import CSV');
+    expect(source).toContain('I batch confermati e annullati restano disponibili qui con stato, conteggi e record creati.');
+    expect(source).toContain('Annulla batch');
+    expect(source).toContain('L&apos;annullamento rimuove solo i record creati da questo batch.');
+    expect(source).toContain('Conferma annullamento');
+    expect(source).toContain('Annullato il');
+    expect(source).toContain('Record creati per tipo');
+  });
+
   it('exposes the M3 wizard shell, filters, row correction, and assisted linking copy', () => {
     const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
 

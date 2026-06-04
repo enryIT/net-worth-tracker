@@ -275,6 +275,11 @@ function createBatchRepository(
         (batch) => batch.userId === userId && batch.status === 'committed'
       );
     },
+    async listByUserId(userId: string) {
+      return Array.from(batches.values())
+        .filter((batch) => batch.userId === userId)
+        .sort((left, right) => right.committedAt.getTime() - left.committedAt.getTime());
+    },
     async getCashAssetById(assetId: string) {
       return assets.get(assetId) ?? null;
     },
@@ -1270,6 +1275,156 @@ describe('csv import cashflow commit service', () => {
       'user-1',
       'csv_import_cashflow_rolled_back'
     );
+  });
+
+  it('lists committed and rolledBack import batches for the authenticated user only', async () => {
+    const repository = createBatchRepository([
+      {
+        id: 'batch-rolled-back',
+        userId: 'user-1',
+        idempotencyKey: 'idempotency-history-1',
+        presetId: 'preset-1',
+        sourceFingerprint: 'fingerprint-1',
+        requestFingerprint: 'request-fingerprint-1',
+        status: 'rolledBack',
+        rowCount: 3,
+        createdRecordCount: 2,
+        duplicateCount: 1,
+        errorCount: 0,
+        createdRecords: [
+          {
+            kind: 'cashflow',
+            id: 'expense-1',
+            rowIndex: 1,
+            dedupeKey: 'cashflow|2026-06-01|10.000000|eur|test',
+            amount: 10,
+            currency: 'EUR',
+            type: 'income',
+            categoryId: 'income-salary',
+            categoryName: 'Stipendio',
+            subCategoryId: null,
+            subCategoryName: null,
+          },
+          {
+            kind: 'dividend',
+            id: 'dividend-1',
+            rowIndex: 2,
+            dedupeKey: 'dividend|2026-06-02|5.000000|eur|cedola test|asset-1|asset|5.000000|5.000000|coupon',
+            assetId: 'asset-1',
+            assetName: 'Asset test',
+            assetTicker: 'TEST',
+            assetIsin: null,
+            exDate: '2026-06-02',
+            paymentDate: '2026-06-02',
+            dividendPerShare: 1,
+            quantity: 5,
+            grossAmount: 5,
+            taxAmount: 0,
+            netAmount: 5,
+            currency: 'EUR',
+            dividendType: 'coupon',
+            costPerShare: 1,
+            linkedMovementReference: null,
+          },
+        ],
+        createdAt: new Date('2026-06-04T09:00:00.000Z'),
+        committedAt: new Date('2026-06-04T09:01:00.000Z'),
+        rolledBackAt: new Date('2026-06-04T10:15:00.000Z'),
+        rollbackReason: 'annullamento manuale',
+      },
+      {
+        id: 'batch-committed',
+        userId: 'user-1',
+        idempotencyKey: 'idempotency-history-2',
+        presetId: null,
+        sourceFingerprint: null,
+        requestFingerprint: 'request-fingerprint-2',
+        status: 'committed',
+        rowCount: 1,
+        createdRecordCount: 1,
+        duplicateCount: 0,
+        errorCount: 0,
+        createdRecords: [
+          {
+            kind: 'cashflow',
+            id: 'expense-2',
+            rowIndex: 1,
+            dedupeKey: 'cashflow|2026-06-03|20.000000|eur|test2',
+            amount: 20,
+            currency: 'EUR',
+            type: 'income',
+            categoryId: 'income-salary',
+            categoryName: 'Stipendio',
+            subCategoryId: null,
+            subCategoryName: null,
+          },
+        ],
+        createdAt: new Date('2026-06-04T08:00:00.000Z'),
+        committedAt: new Date('2026-06-04T08:01:00.000Z'),
+        rolledBackAt: null,
+        rollbackReason: null,
+      },
+      {
+        id: 'batch-foreign',
+        userId: 'user-2',
+        idempotencyKey: 'idempotency-history-foreign',
+        presetId: null,
+        sourceFingerprint: null,
+        requestFingerprint: 'request-fingerprint-foreign',
+        status: 'committed',
+        rowCount: 1,
+        createdRecordCount: 1,
+        duplicateCount: 0,
+        errorCount: 0,
+        createdRecords: [],
+        createdAt: new Date('2026-06-04T07:00:00.000Z'),
+        committedAt: new Date('2026-06-04T07:01:00.000Z'),
+        rolledBackAt: null,
+        rollbackReason: null,
+      },
+    ]);
+    const { service } = createStubbedCashflowCommitService({
+      repository,
+      categoryRepository: createCategoryRepository([]),
+    });
+
+    const history = await service.listImportBatches('user-1');
+
+    expect(history).toHaveLength(2);
+    expect(history.map((batch) => batch.id)).toEqual(['batch-rolled-back', 'batch-committed']);
+    expect(history).toEqual([
+      expect.objectContaining({
+        id: 'batch-rolled-back',
+        userId: 'user-1',
+        status: 'rolledBack',
+        rowCount: 3,
+        createdRecordCount: 2,
+        duplicateCount: 1,
+        errorCount: 0,
+        committedAt: new Date('2026-06-04T09:01:00.000Z'),
+        rolledBackAt: new Date('2026-06-04T10:15:00.000Z'),
+        rollbackReason: 'annullamento manuale',
+        createdRecords: expect.arrayContaining([
+          expect.objectContaining({ kind: 'cashflow', id: 'expense-1' }),
+          expect.objectContaining({ kind: 'dividend', id: 'dividend-1' }),
+        ]),
+      }),
+      expect.objectContaining({
+        id: 'batch-committed',
+        userId: 'user-1',
+        status: 'committed',
+        rowCount: 1,
+        createdRecordCount: 1,
+        duplicateCount: 0,
+        errorCount: 0,
+        committedAt: new Date('2026-06-04T08:01:00.000Z'),
+        rolledBackAt: null,
+        rollbackReason: null,
+        createdRecords: expect.arrayContaining([
+          expect.objectContaining({ kind: 'cashflow', id: 'expense-2' }),
+        ]),
+      }),
+    ]);
   });
 
   it('rolls back imported investment operations when the position is still safe to undo', async () => {

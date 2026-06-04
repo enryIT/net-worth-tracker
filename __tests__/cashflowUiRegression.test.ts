@@ -139,13 +139,15 @@ describe('cashflow UI regression guards', () => {
   it('invalidates asset and investment caches after CSV import commit and rollback', () => {
     const source = readRepoFile('app/dashboard/cashflow/import-csv/page.tsx');
     const commitStart = source.indexOf('const handleCommitCashflowRows = useCallback');
-    const rollbackStart = source.indexOf('const handleRollbackCommittedBatch = useCallback');
+    const rollbackStart = source.indexOf('const rollbackImportBatch = useCallback');
+    const rollbackWrapperStart = source.indexOf('const handleRollbackCommittedBatch = useCallback');
 
     expect(commitStart).toBeGreaterThanOrEqual(0);
-    expect(rollbackStart).toBeGreaterThan(commitStart);
+    expect(rollbackStart).toBeGreaterThanOrEqual(0);
+    expect(rollbackWrapperStart).toBeGreaterThan(commitStart);
 
-    const commitBlock = source.slice(commitStart, rollbackStart);
-    const rollbackBlock = source.slice(rollbackStart);
+    const commitBlock = source.slice(commitStart, rollbackWrapperStart);
+    const rollbackBlock = source.slice(rollbackStart, commitStart);
     const expectedInvalidations = [
       'queryKeys.expenses.all(user.uid)',
       'queryKeys.expenses.stats(user.uid)',
@@ -154,6 +156,7 @@ describe('cashflow UI regression guards', () => {
       'queryKeys.assets.realized(user.uid)',
       'queryKeys.assets.transfers(user.uid)',
       'queryKeys.dashboard.overview(user.uid)',
+      'queryKeys.imports.history(user.uid)',
     ];
 
     for (const invalidation of expectedInvalidations) {

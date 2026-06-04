@@ -5,10 +5,12 @@ const {
   verifyIdTokenMock,
   commitCsvImportCashflowBatchMock,
   rollbackCsvImportCashflowBatchMock,
+  listCsvImportCashflowBatchesMock,
 } = vi.hoisted(() => ({
   verifyIdTokenMock: vi.fn(),
   commitCsvImportCashflowBatchMock: vi.fn(),
   rollbackCsvImportCashflowBatchMock: vi.fn(),
+  listCsvImportCashflowBatchesMock: vi.fn(),
 }));
 
 vi.mock('@/lib/firebase/admin', () => ({
@@ -33,11 +35,13 @@ vi.mock('@/lib/server/imports/cashflowCommitService', () => {
     isCsvImportCashflowCommitServiceError: (error: unknown) => error instanceof CsvImportCashflowCommitServiceError,
     commitCsvImportCashflowBatch: commitCsvImportCashflowBatchMock,
     rollbackCsvImportCashflowBatch: rollbackCsvImportCashflowBatchMock,
+    listCsvImportCashflowBatches: listCsvImportCashflowBatchesMock,
   };
 });
 
 import { POST as commitRoute } from '@/app/api/imports/commit/route';
 import { POST as rollbackRoute } from '@/app/api/imports/[batchId]/rollback/route';
+import { GET as historyRoute } from '@/app/api/imports/history/route';
 
 function createJsonRequest(
   url: string,
@@ -80,6 +84,26 @@ describe('CSV import cashflow commit routes', () => {
       },
       removedRecordCount: 1,
     });
+    listCsvImportCashflowBatchesMock.mockResolvedValue([
+      {
+        id: 'batch-1',
+        userId: 'user-1',
+        idempotencyKey: 'idempotency-1',
+        presetId: 'preset-1',
+        sourceFingerprint: 'fingerprint-1',
+        requestFingerprint: 'request-fingerprint-1',
+        status: 'committed',
+        rowCount: 2,
+        createdRecordCount: 2,
+        duplicateCount: 0,
+        errorCount: 0,
+        createdRecords: [],
+        createdAt: '2026-06-03T09:00:00.000Z',
+        committedAt: '2026-06-03T09:01:00.000Z',
+        rolledBackAt: null,
+        rollbackReason: null,
+      },
+    ]);
   });
 
   it('returns 401 on commit without bearer token', async () => {
@@ -427,6 +451,104 @@ describe('CSV import cashflow commit routes', () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       error: 'Resource does not belong to authenticated user',
+    });
+  });
+
+  it('returns 401 on history without bearer token', async () => {
+    const response = await historyRoute(createJsonRequest('http://localhost/api/imports/history'));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Missing Authorization bearer token',
+    });
+    expect(listCsvImportCashflowBatchesMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the authenticated import history with committed and rolledBack batch metadata', async () => {
+    const history = [
+      {
+        id: 'batch-1',
+        userId: 'user-1',
+        idempotencyKey: 'idempotency-1',
+        presetId: 'preset-1',
+        sourceFingerprint: 'fingerprint-1',
+        requestFingerprint: 'request-fingerprint-1',
+        status: 'committed',
+        rowCount: 2,
+        createdRecordCount: 2,
+        duplicateCount: 0,
+        errorCount: 1,
+        createdRecords: [
+          {
+            kind: 'cashflow',
+            id: 'expense-1',
+            rowIndex: 1,
+            dedupeKey: 'cashflow|2026-06-01|10.000000|eur|test',
+            amount: 10,
+            currency: 'EUR',
+            type: 'income',
+            categoryId: 'income-salary',
+            categoryName: 'Stipendio',
+            subCategoryId: null,
+            subCategoryName: null,
+          },
+        ],
+        createdAt: '2026-06-03T09:00:00.000Z',
+        committedAt: '2026-06-03T09:01:00.000Z',
+        rolledBackAt: null,
+        rollbackReason: null,
+      },
+      {
+        id: 'batch-2',
+        userId: 'user-1',
+        idempotencyKey: 'idempotency-2',
+        presetId: null,
+        sourceFingerprint: null,
+        requestFingerprint: 'request-fingerprint-2',
+        status: 'rolledBack',
+        rowCount: 1,
+        createdRecordCount: 1,
+        duplicateCount: 0,
+        errorCount: 0,
+        createdRecords: [],
+        createdAt: '2026-06-02T09:00:00.000Z',
+        committedAt: '2026-06-02T09:01:00.000Z',
+        rolledBackAt: '2026-06-02T09:15:00.000Z',
+        rollbackReason: 'annullamento manuale',
+      },
+    ];
+    listCsvImportCashflowBatchesMock.mockResolvedValueOnce(history);
+
+    const response = await historyRoute(
+      createJsonRequest('http://localhost/api/imports/history', {
+        headers: {
+          Authorization: 'Bearer valid-token',
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      data: history,
+    });
+    expect(listCsvImportCashflowBatchesMock).toHaveBeenCalledWith('user-1');
+  });
+
+  it('returns a generic 500 response when history loading fails', async () => {
+    listCsvImportCashflowBatchesMock.mockRejectedValueOnce(new Error('history failed'));
+
+    const response = await historyRoute(
+      createJsonRequest('http://localhost/api/imports/history', {
+        headers: {
+          Authorization: 'Bearer valid-token',
+        },
+      })
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Errore durante il caricamento dello storico import CSV',
     });
   });
 });

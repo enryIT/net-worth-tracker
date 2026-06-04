@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. The document remains the design reference for the rest of the importer.
+Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. Milestone 8 is currently implemented as a narrower operational slice for import history and rollback UI: the page shows committed and `rolledBack` batches and supports explicit rollback confirmation, while large fixture/performance hardening and operational rollout docs remain deferred. The document remains the design reference for the rest of the importer.
 
 ## Context
 
@@ -318,9 +318,9 @@ This intentionally avoids complex state restoration in the first implementation.
 
 ## Milestones and acceptance criteria
 
-### Current implementation status after Milestones 1-7
+### Current implementation status after Milestones 1-8
 
-Milestones 1-7 are implemented as narrow slices. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, and dividend/coupon plus standalone fee/tax commit/rollback. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
+Milestones 1-7 are implemented as narrow slices. Milestone 8 currently has a narrow operational slice for import history and explicit rollback UI; large fixture/performance hardening and operational docs remain deferred. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, dividend/coupon plus standalone fee/tax commit/rollback, and import history with committed/`rolledBack` batches plus explicit rollback confirmation. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
 
 Implementation commits:
 
@@ -333,17 +333,18 @@ Implementation commits:
 | 5. Internal transfers | Implemented with M4 | `1a6e122` | Transfer validation, neutral internal transfers, mixed batch metadata, mixed rollback, tests. |
 | 6. Investment operations | Implemented | Current slice | Buy/sell validation, asset resolution by confirmed reference, weighted-average-cost/realized-gain semantics, optional cash-account impact, batch metadata, safe rollback, UI commit wiring, tests. |
 | 7. Dividends, coupons, fees, and taxes | Implemented | Current slice | Dividend/coupon rows plus standalone fee/tax rows, batch metadata, safe rollback, UI commit wiring, tests. |
+| 8. Import history, hardening, and rollout | Implemented as narrow slice | Current slice | Import history shows committed/`rolledBack` batches and rollback metadata; explicit rollback confirmation UI is in place. Large-fixture, performance, fixture-expansion, and operational-doc work remains deferred. |
 
-The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, but manual release checks should still be executed before enabling the importer for real users. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
+The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, and the current Milestone 8 history/rollback slice should still be manually release-checked before wider rollout. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
 
-#### Known deferred scope after Milestones 1-7
+#### Known deferred scope after the current Milestone 8 slice
 
 The following items are intentionally not implemented yet:
 
 - Broker-specific templates and broker-specific settlement heuristics.
 - AI-assisted classification; classification remains deterministic and explainable.
-- Full import history UI for past batches, failed chunks, created-record drilldown, and rollback status.
-- Rollback UI from import history with explicit confirmation and detailed unsafe-rollback messaging.
+- Expanded import history drilldown beyond committed/`rolledBack` batch listing, failed-chunk inspection, and created-record detail.
+- Additional rollback UX hardening beyond the current explicit rollback UI and unsafe-rollback messaging.
 - Automatic creation of missing assets, accounts, categories, or subcategories; current reconciliation surfaces missing references and keeps creation/linking explicit.
 - Existing-record updates; first-release rollback only handles records created by the import batch.
 - Large fixture and UX/performance hardening around 5,000-row previews and chunked commits.
@@ -625,31 +626,46 @@ Acceptance criteria:
 
 ### Milestone 8: Import history, hardening, and rollout
 
-Approach: make the importer operationally safe after all movement families are supported. This milestone focuses on auditability, performance, error recovery, and release readiness.
+Approach: make the importer operationally safe after all movement families are supported. The current narrow slice covers import history and explicit rollback; performance hardening and operational docs are deferred to later work.
 
 Scope:
 
-- In: import history UI, rollback entry point, performance validation, edge-case fixtures, documentation updates, broad regression checks.
-- Out: new movement families, AI classification, unrelated UI redesign.
+- In: import history showing committed/`rolledBack` batches, rollback entry point, explicit confirmation and unsafe-rollback messaging, authenticated history/rollback routes, targeted regression checks for the history/rollback slice.
+- Out: large-fixture/performance hardening, expanded edge-case fixture coverage, operational rollout documentation, new movement families, AI classification, unrelated UI redesign.
 
 Action items:
 
-- [ ] Add import history showing batch status, row counts, duplicate counts, created records, failed chunks, and rollback status.
-- [ ] Add rollback UI guarded by explicit confirmation and clear unsafe rollback messaging.
+- [x] Add import history showing batch status, row counts, duplicate counts, created records, failed chunks, and rollback status.
+- [x] Add rollback UI guarded by explicit confirmation and clear unsafe rollback messaging.
 - [ ] Add large-fixture validation around 5,000 rows.
 - [ ] Add fixture coverage for Italian date/number formats and common bank/broker CSV quirks.
 - [ ] Add operational docs for supported mapping fields, import limitations, and rollback behavior.
-- [ ] Run targeted tests for all import use-cases plus relevant cashflow, transfer, investment, dividend, and TypeScript checks.
+- [ ] Run targeted tests for the history/rollback slice plus relevant TypeScript checks.
 - [ ] Verify no raw CSV persistence and no forbidden broad writes.
 
 Acceptance criteria:
 
-- Users can inspect previous import batches and understand what was created.
+- Users can inspect previous import batches and understand which ones are `committed` or `rolledBack`.
 - Rollback is discoverable, explicit, and blocks or reports unsafe records.
-- A 5,000-row import remains usable in preview and commits in safe chunks.
-- Documentation explains mapping, dedupe, rollback, and limitations clearly.
-- Relevant tests pass, TypeScript passes, and `git diff --check` passes before release.
+- The history/rollback surface keeps ownership and authentication checks server-side.
 - The feature can be disabled or hidden safely if rollout needs to be staged.
+
+Release verification checklist (Milestone 8, history/rollback slice):
+
+- [ ] `npm test -- --run __tests__/csvImportCommitRoutes.test.ts __tests__/csvImportPreviewUi.test.ts __tests__/csvImportCashflowCommitService.test.ts` passes.
+- [ ] `npx tsc --noEmit` passes.
+- [ ] `GET /api/imports/history` requires a Firebase bearer token and returns only the authenticated user's `committed` and `rolledBack` batches.
+- [ ] `/dashboard/cashflow/import-csv` shows `Storico import CSV` with batch timestamps, row counts, duplicate counts, created-record counts, and rollback status.
+- [ ] The rollback confirmation flow is explicit, shows any rollback reason, and blocks unsafe rollback attempts with clear messaging.
+- [ ] `POST /api/imports/[batchId]/rollback` marks the batch `rolledBack` for the authenticated owner only.
+
+Rollback checklist (Milestone 8, history/rollback slice):
+
+- [ ] Hide or remove the `Storico import CSV` history block and rollback action from `/dashboard/cashflow/import-csv` if the slice must be withdrawn.
+- [ ] Disable or guard `GET /api/imports/history` and `POST /api/imports/[batchId]/rollback` behind the staged-release or feature flag.
+- [ ] Keep existing batch records readable only through the remaining authenticated surface, or remove the endpoints entirely if the slice is being reverted.
+- [ ] Re-run the history/rollback route and service tests after removal or guarding.
+- [ ] No CSV data backfill or record deletion is required for this slice rollback, because the change is limited to history/rollback presentation and controls.
 
 ## Risks and mitigations
 

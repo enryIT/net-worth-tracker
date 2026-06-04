@@ -1636,6 +1636,18 @@ export function createCsvImportCashflowCommitService(
       };
     },
 
+    async listImportBatches(userId: string): Promise<CsvImportCashflowBatch[]> {
+      ensureAuthenticatedUserId(userId);
+
+      const batches = await repository.listByUserId(userId);
+      return batches
+        .filter((batch) => batch.status === 'committed' || batch.status === 'rolledBack')
+        .sort((left, right) => (
+          right.committedAt.getTime() - left.committedAt.getTime()
+          || right.createdAt.getTime() - left.createdAt.getTime()
+        ));
+    },
+
     async rollbackBatch(
       userId: string,
       batchId: string,
@@ -1808,4 +1820,10 @@ export async function rollbackCsvImportCashflowBatch(
   rollbackReason?: string
 ): Promise<CsvImportCashflowRollbackResult> {
   return defaultCsvImportCashflowCommitService.rollbackBatch(userId, batchId, rollbackReason);
+}
+
+export async function listCsvImportCashflowBatches(
+  userId: string
+): Promise<CsvImportCashflowBatch[]> {
+  return defaultCsvImportCashflowCommitService.listImportBatches(userId);
 }

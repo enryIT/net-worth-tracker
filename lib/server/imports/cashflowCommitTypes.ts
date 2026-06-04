@@ -290,6 +290,7 @@ export interface CsvImportCashflowCategoryRecord {
 export interface CsvImportCashflowBatchRepository {
   getById(batchId: string): Promise<CsvImportCashflowBatch | null>;
   getByUserAndIdempotencyKey(userId: string, idempotencyKey: string): Promise<CsvImportCashflowBatch | null>;
+  listByUserId(userId: string): Promise<CsvImportCashflowBatch[]>;
   listCommittedByUserId(userId: string): Promise<CsvImportCashflowBatch[]>;
   getAssetById(assetId: string): Promise<CsvImportCashflowAssetRecord | null>;
   getCashAssetById(assetId: string): Promise<CsvImportCashflowAssetRecord | null>;

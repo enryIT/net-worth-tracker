@@ -239,6 +239,20 @@ export function createFirestoreCsvImportCashflowBatchRepository(): CsvImportCash
       return mapBatch(docSnapshot.id, docSnapshot.data() as Record<string, unknown>);
     },
 
+    async listByUserId(userId) {
+      const snapshot = await adminDb
+        .collection(BATCH_COLLECTION)
+        .where('userId', '==', userId)
+        .get();
+
+      return snapshot.docs
+        .map((doc) => mapBatch(doc.id, doc.data() as Record<string, unknown>))
+        .sort((left, right) => (
+          right.committedAt.getTime() - left.committedAt.getTime()
+          || right.createdAt.getTime() - left.createdAt.getTime()
+        ));
+    },
+
     async listCommittedByUserId(userId) {
       const snapshot = await adminDb
         .collection(BATCH_COLLECTION)
