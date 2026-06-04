@@ -9,7 +9,7 @@ describe('csv import preview UI', () => {
     expect(source).toContain('/dashboard/cashflow/import-csv');
   });
 
-  it('exposes the M5 commit and rollback action for ready cashflow rows and internal transfers', () => {
+  it('exposes the M7 commit and rollback action for ready dividend, fee, tax, cashflow, transfer, and investment rows', () => {
     const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
 
     expect(source).toContain('Anteprima import CSV');
@@ -21,11 +21,13 @@ describe('csv import preview UI', () => {
     expect(source).toContain('Carica preset');
     expect(source).toContain('Aggiorna preset');
     expect(source).toContain('Elimina preset');
-    expect(source).toContain('I movimenti cashflow ordinari e i transfer interni pronti possono essere confermati in Milestone 5.');
-    expect(source).toContain('Conferma importazione cashflow e transfer');
+    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti possono essere confermati in Milestone 7.');
     expect(source).toContain('Conferma importazione');
     expect(source).toContain('Annulla importazione batch');
     expect(source).toContain('Nessun movimento viene salvato in questa fase');
+    expect(source).toContain("row.movementKind !== 'unknown'");
+    expect(source).toContain("if (row.movementKind === 'dividend') {");
+    expect(source).toContain("if (row.movementKind === 'cashflow' || row.movementKind === 'fee' || row.movementKind === 'tax') {");
   });
 
   it('exposes the M3 wizard shell, filters, row correction, and assisted linking copy', () => {

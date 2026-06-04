@@ -18,7 +18,14 @@ export type CanonicalImportColumn =
   | 'quantity'
   | 'unitPrice'
   | 'fees'
-  | 'taxes';
+  | 'taxes'
+  | 'paymentDate'
+  | 'exDate'
+  | 'grossAmount'
+  | 'taxAmount'
+  | 'netAmount'
+  | 'dividendType'
+  | 'linkedMovementReference';
 
 export type ImportMovementKind =
   | 'cashflow'
@@ -95,6 +102,13 @@ export interface NormalizedCanonicalFields {
   unitPrice: number | null;
   fees: number | null;
   taxes: number | null;
+  paymentDate?: string | null;
+  exDate?: string | null;
+  grossAmount?: number | null;
+  taxAmount?: number | null;
+  netAmount?: number | null;
+  dividendType?: string | null;
+  linkedMovementReference?: string | null;
 }
 
 export interface NormalizedImportRow {

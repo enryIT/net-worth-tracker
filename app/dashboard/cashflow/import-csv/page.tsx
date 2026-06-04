@@ -43,6 +43,7 @@ const MOVEMENT_KIND_LABELS: Record<ImportMovementKind, string> = {
 };
 
 type MovementKindFilter = 'all' | ImportMovementKind;
+type CashflowCommitMovementKind = Exclude<ImportMovementKind, 'unknown'>;
 
 interface RowOverride {
   movementKind?: ImportMovementKind;
@@ -176,7 +177,8 @@ function buildLocalDedupeKey(
 
 function buildMissingReferences(
   movementKind: ImportMovementKind,
-  canonicalFields: NormalizedImportRow['canonicalFields']
+  canonicalFields: NormalizedImportRow['canonicalFields'],
+  categoryLikeText: string
 ): string[] {
   const missingReferences: string[] = [];
 
@@ -190,12 +192,13 @@ function buildMissingReferences(
     }
   }
 
-  if (
-    movementKind === 'investmentOperation'
-    || movementKind === 'dividend'
-    || movementKind === 'fee'
-    || movementKind === 'tax'
-  ) {
+  if (movementKind === 'cashflow' || movementKind === 'fee' || movementKind === 'tax') {
+    if (categoryLikeText.trim().length === 0) {
+      missingReferences.push('categoria / sottocategoria');
+    }
+  }
+
+  if (movementKind === 'investmentOperation' || movementKind === 'dividend') {
     if (!canonicalFields.assetName && !canonicalFields.assetTicker && !canonicalFields.assetIsin) {
       missingReferences.push('asset');
     }
@@ -297,7 +300,7 @@ function buildDisplayRows(
 
     const hasBlockingIssues = issues.some((issue) => issue.severity === 'blocking');
     const hasWarningIssues = issues.some((issue) => issue.severity === 'warning');
-    const missingReferences = buildMissingReferences(row.movementKind, row.canonicalFields);
+    const missingReferences = buildMissingReferences(row.movementKind, row.canonicalFields, row.categoryLikeText);
     const ready = !hasBlockingIssues && row.ready;
     const statusLabel = hasBlockingIssues
       ? 'Bloccata'
@@ -338,7 +341,7 @@ interface CommitBatchSummary {
 
 interface CashflowCommitRowPayload {
   rowIndex: number;
-  movementKind: 'cashflow' | 'transfer' | 'investmentOperation';
+  movementKind: CashflowCommitMovementKind;
   ready: boolean;
   dedupeKey: string;
   dedupeStatus: ImportDedupeStatus;
@@ -787,22 +790,21 @@ function ImportCsvPage() {
   );
 
   const readyCommitRows = useMemo(
-    () => displayRows.filter((row) => (
-      (row.movementKind === 'cashflow' || row.movementKind === 'transfer' || row.movementKind === 'investmentOperation') && row.ready
-    )),
+    () => displayRows.filter((row) => row.ready && row.movementKind !== 'unknown'),
     [displayRows]
   );
 
   const cashflowCommitPreparation = useMemo(() => {
-    let unresolvedReadyCashflowRows = 0;
+    let unresolvedReadyCategoryRows = 0;
     let unresolvedReadyTransferRows = 0;
     let unresolvedReadyInvestmentRows = 0;
-    let duplicateReadyCashflowRows = 0;
+    let unresolvedReadyDividendRows = 0;
+    let duplicateReadyRows = 0;
     const rows: CashflowCommitRowPayload[] = [];
 
     readyCommitRows.forEach((row) => {
       if (row.dedupeStatus === 'duplicate') {
-        duplicateReadyCashflowRows += 1;
+        duplicateReadyRows += 1;
         return;
       }
 
@@ -850,33 +852,58 @@ function ImportCsvPage() {
         return;
       }
 
-      const confirmedCategory = resolveConfirmedCashflowCategory(row.categoryLikeText, expenseCategories);
-      if (!confirmedCategory) {
-        unresolvedReadyCashflowRows += 1;
+      if (row.movementKind === 'dividend') {
+        if (!row.canonicalFields.assetName && !row.canonicalFields.assetTicker && !row.canonicalFields.assetIsin) {
+          unresolvedReadyDividendRows += 1;
+          return;
+        }
+
+        rows.push({
+          rowIndex: row.rowIndex,
+          movementKind: 'dividend',
+          ready: row.ready,
+          dedupeKey: row.dedupeKey,
+          dedupeStatus: row.dedupeStatus,
+          issues: row.issues,
+          canonicalFields: row.canonicalFields,
+          categoryId: null,
+          categoryName: null,
+          subCategoryId: null,
+          subCategoryName: null,
+        });
         return;
       }
 
-      rows.push({
-        rowIndex: row.rowIndex,
-        movementKind: 'cashflow',
-        ready: row.ready,
-        dedupeKey: row.dedupeKey,
-        dedupeStatus: row.dedupeStatus,
-        issues: row.issues,
-        canonicalFields: row.canonicalFields,
-        categoryId: confirmedCategory.categoryId,
-        categoryName: confirmedCategory.categoryName,
-        subCategoryId: confirmedCategory.subCategoryId,
-        subCategoryName: confirmedCategory.subCategoryName,
-      });
+      if (row.movementKind === 'cashflow' || row.movementKind === 'fee' || row.movementKind === 'tax') {
+        const confirmedCategory = resolveConfirmedCashflowCategory(row.categoryLikeText, expenseCategories);
+        if (!confirmedCategory) {
+          unresolvedReadyCategoryRows += 1;
+          return;
+        }
+
+        rows.push({
+          rowIndex: row.rowIndex,
+          movementKind: row.movementKind,
+          ready: row.ready,
+          dedupeKey: row.dedupeKey,
+          dedupeStatus: row.dedupeStatus,
+          issues: row.issues,
+          canonicalFields: row.canonicalFields,
+          categoryId: confirmedCategory.categoryId,
+          categoryName: confirmedCategory.categoryName,
+          subCategoryId: confirmedCategory.subCategoryId,
+          subCategoryName: confirmedCategory.subCategoryName,
+        });
+      }
     });
 
     return {
       rows,
-      unresolvedReadyCashflowRows,
+      unresolvedReadyCategoryRows,
       unresolvedReadyTransferRows,
       unresolvedReadyInvestmentRows,
-      duplicateReadyCashflowRows,
+      unresolvedReadyDividendRows,
+      duplicateReadyRows,
     };
   }, [displayRows, expenseCategories, readyCommitRows]);
 
@@ -1493,14 +1520,14 @@ function ImportCsvPage() {
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-amber-950">Conferma importazione movimenti</p>
                     <p className="text-sm text-amber-900/80">
-                      I movimenti cashflow ordinari, i transfer interni e le operazioni di investimento pronti possono essere confermati in Milestone 6.
+                      I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti possono essere confermati in Milestone 7.
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {cashflowCommitPreparation.rows.length > 0
-                        ? `${cashflowCommitPreparation.rows.length} righe pronte verranno confermate. ${cashflowCommitPreparation.unresolvedReadyCashflowRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyCashflowRows} righe cashflow richiedono una categoria esistente nel campo "Categoria / sottocategoria". ` : ''}${cashflowCommitPreparation.unresolvedReadyTransferRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyTransferRows} transfer richiedono conto origine e destinazione. ` : ''}${cashflowCommitPreparation.unresolvedReadyInvestmentRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyInvestmentRows} operazioni di investimento richiedono un riferimento asset nel campo "Nome asset", "Ticker asset" o "ISIN asset". ` : ''}${cashflowCommitPreparation.duplicateReadyCashflowRows > 0 ? `${cashflowCommitPreparation.duplicateReadyCashflowRows} righe duplicate restano escluse dalla commit.` : ''}`
+                        ? `${cashflowCommitPreparation.rows.length} righe pronte verranno confermate. ${cashflowCommitPreparation.unresolvedReadyCategoryRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyCategoryRows} righe cashflow, fee o tax richiedono una categoria esistente nel campo "Categoria / sottocategoria". ` : ''}${cashflowCommitPreparation.unresolvedReadyTransferRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyTransferRows} transfer richiedono conto origine e destinazione. ` : ''}${cashflowCommitPreparation.unresolvedReadyInvestmentRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyInvestmentRows} operazioni di investimento richiedono un riferimento asset nel campo "Nome asset", "Ticker asset" o "ISIN asset". ` : ''}${cashflowCommitPreparation.unresolvedReadyDividendRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyDividendRows} dividendi richiedono un riferimento asset nel campo "Nome asset", "Ticker asset" o "ISIN asset". ` : ''}${cashflowCommitPreparation.duplicateReadyRows > 0 ? `${cashflowCommitPreparation.duplicateReadyRows} righe duplicate restano escluse dalla commit.` : ''}`
                         : categoriesLoading
                           ? 'Caricamento categorie in corso...'
-                          : 'Compila categorie cashflow, conti dei transfer o riferimenti asset delle operazioni di investimento per abilitare la conferma.'}
+                          : 'Compila categorie per cashflow, fee e tax, conti dei transfer o riferimenti asset per operazioni di investimento e dividendi per abilitare la conferma.'}
                     </p>
                   </div>
 
@@ -1508,7 +1535,7 @@ function ImportCsvPage() {
                     <Button
                       type="button"
                       onClick={handleCommitCashflowRows}
-                      disabled={isCommitting || categoriesLoading || cashflowCommitPreparation.rows.length === 0}
+                      disabled={isCommitting || cashflowCommitPreparation.rows.length === 0}
                     >
                       {isCommitting ? 'Conferma in corso...' : 'Conferma importazione'}
                     </Button>

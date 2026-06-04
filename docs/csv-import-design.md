@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed design. No implementation has been completed yet.
+Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. The document remains the design reference for the rest of the importer.
 
 ## Context
 
@@ -318,9 +318,9 @@ This intentionally avoids complex state restoration in the first implementation.
 
 ## Milestones and acceptance criteria
 
-### Current implementation status after Milestones 1-6
+### Current implementation status after Milestones 1-7
 
-Milestones 1-6 are implemented as narrow slices. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, and buy/sell investment operation commit/rollback. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
+Milestones 1-7 are implemented as narrow slices. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, and dividend/coupon plus standalone fee/tax commit/rollback. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
 
 Implementation commits:
 
@@ -332,16 +332,16 @@ Implementation commits:
 | 4. Cashflow commit and rollback | Implemented with M5 | `1a6e122` | Batch commit/rollback route, service, repository, cashflow created-record tracking, idempotency, tests. |
 | 5. Internal transfers | Implemented with M4 | `1a6e122` | Transfer validation, neutral internal transfers, mixed batch metadata, mixed rollback, tests. |
 | 6. Investment operations | Implemented | Current slice | Buy/sell validation, asset resolution by confirmed reference, weighted-average-cost/realized-gain semantics, optional cash-account impact, batch metadata, safe rollback, UI commit wiring, tests. |
+| 7. Dividends, coupons, fees, and taxes | Implemented | Current slice | Dividend/coupon rows plus standalone fee/tax rows, batch metadata, safe rollback, UI commit wiring, tests. |
 
 The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, but manual release checks should still be executed before enabling the importer for real users. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
 
-#### Known deferred scope after Milestones 1-6
+#### Known deferred scope after Milestones 1-7
 
 The following items are intentionally not implemented yet:
 
 - Broker-specific templates and broker-specific settlement heuristics.
 - AI-assisted classification; classification remains deterministic and explainable.
-- Dividend, coupon, standalone fee, and standalone tax commit/rollback.
 - Full import history UI for past batches, failed chunks, created-record drilldown, and rollback status.
 - Rollback UI from import history with explicit confirmation and detailed unsafe-rollback messaging.
 - Automatic creation of missing assets, accounts, categories, or subcategories; current reconciliation surfaces missing references and keeps creation/linking explicit.
@@ -350,7 +350,7 @@ The following items are intentionally not implemented yet:
 - Virtualized or paginated preview hardening for very large CSVs.
 - Operational rollout documentation for supported mappings, limitations, dedupe behavior, and rollback behavior.
 
-These items are mapped to Milestones 7-8 below. Do not treat Milestones 1-6 as a full CSV importer release; treat them as the committed foundation and first durable movement families.
+These items are mapped to Milestone 8 below. Do not treat Milestones 1-7 as a full CSV importer release; treat them as the committed foundation and first durable movement families.
 
 ### Milestone 1: Pure import foundation
 
@@ -597,23 +597,23 @@ Acceptance criteria:
 
 ### Milestone 7: Dividends, coupons, fees, and taxes
 
-Approach: add the remaining movement families after the core importer has proven stable. This milestone should explicitly decide whether fees/taxes are standalone rows or attached to related movements when the CSV structure allows it.
+Approach: add the remaining movement families after the core importer has proven stable. This milestone ships dividend/coupon rows and standalone fee/tax rows through the shared batch pipeline. Embedded fees/taxes stay on the parent buy/sell/dividend rows; CSV fee/tax rows are imported as separate expense records and are not auto-attached to other movements.
 
 Scope:
 
-- In: dividend/coupon import, standalone fee/tax import, optional linking of fee/tax fields to related rows, commit, rollback, tests.
-- Out: AI classification and broker-specific reconciliation beyond deterministic mapping/rules.
+- In: dividend/coupon import, standalone fee/tax import, commit, rollback, tests.
+- Out: AI classification, broker-specific reconciliation beyond deterministic mapping/rules, automatic fee/tax attachment to related rows.
 
 Action items:
 
-- [ ] Add dividend/coupon canonical fields for asset, ex-date when available, payment date, gross amount, tax amount, net amount, currency, quantity, and dividend type.
-- [ ] Add fee/tax canonical fields for date, amount, currency, description, linked movement reference when available, and classification.
-- [ ] Decide and document attachment rules for fees/taxes embedded in buy/sell/dividend rows versus standalone rows.
-- [ ] Add commit handling for dividend/coupon rows.
-- [ ] Add commit handling for standalone fee/tax rows.
-- [ ] Track created records in the import batch.
-- [ ] Extend rollback to dividends, coupons, fees, and taxes.
-- [ ] Add tests for dividend/coupon totals, tax handling, linked expense behavior where applicable, and rollback.
+- [x] Add dividend/coupon canonical fields for asset, ex-date when available, payment date, gross amount, tax amount, net amount, currency, quantity, and dividend type.
+- [x] Add fee/tax canonical fields for date, amount, currency, description, linked movement reference when available, and classification.
+- [x] Document the attachment rule: embedded fee/tax values stay on the parent row; standalone fee/tax CSV rows commit as separate expense records.
+- [x] Add commit handling for dividend/coupon rows.
+- [x] Add commit handling for standalone fee/tax rows.
+- [x] Track created records in the import batch.
+- [x] Extend rollback to dividends, coupons, fees, and taxes.
+- [x] Add tests for dividend/coupon totals, tax handling, linked expense behavior where applicable, and rollback.
 
 Acceptance criteria:
 
@@ -688,7 +688,6 @@ Mitigation: design supports all movement types, but implementation proceeds by n
 
 ## Open questions
 
-- Should imported fee/tax rows be standalone records by default, or attached to related investment/dividend rows when possible?
 - Should import batch history be visible in Cashflow, Settings, or a dedicated Import page?
 - Should rollback be allowed after imported rows are manually edited, or blocked strictly?
 - Should AI-assisted classification be offered later as an optional layer on top of deterministic rules?

@@ -271,6 +271,120 @@ describe('CSV import cashflow commit routes', () => {
     expect(commitCsvImportCashflowBatchMock).toHaveBeenCalledWith('user-1', payload);
   });
 
+  it('accepts dividend rows and standalone fee/tax rows with dividend-specific canonical fields', async () => {
+    const payload = {
+      userId: 'user-1',
+      presetId: 'preset-1',
+      sourceFingerprint: 'fingerprint-dividend-1',
+      idempotencyKey: 'idempotency-dividend-1',
+      rows: [
+        {
+          rowIndex: 1,
+          movementKind: 'dividend',
+          ready: true,
+          dedupeKey: 'dividend|2026-05-10|74.000000|eur|cedola btp|it0000000001|btp|100.000000|74.000000|coupon',
+          dedupeStatus: 'unique',
+          issues: [],
+          canonicalFields: {
+            date: '2026-05-10',
+            paymentDate: '2026-05-10',
+            exDate: '2026-05-08',
+            description: 'Cedola BTP',
+            amount: 74,
+            grossAmount: 100,
+            taxAmount: 26,
+            netAmount: 74,
+            currency: 'EUR',
+            sourceType: 'coupon',
+            sourceAccount: null,
+            destinationAccount: null,
+            assetTicker: 'BTP',
+            assetIsin: 'IT0000000001',
+            assetName: 'BTP 5%',
+            quantity: 10,
+            unitPrice: null,
+            fees: null,
+            taxes: 26,
+            dividendType: 'coupon',
+            linkedMovementReference: null,
+          },
+          categoryId: null,
+          categoryName: null,
+          subCategoryId: null,
+          subCategoryName: null,
+        },
+        {
+          rowIndex: 2,
+          movementKind: 'fee',
+          ready: true,
+          dedupeKey: 'fee|2026-05-11|-12.500000|eur|commissioni broker',
+          dedupeStatus: 'unique',
+          issues: [],
+          canonicalFields: {
+            date: '2026-05-11',
+            description: 'Commissioni broker',
+            amount: -12.5,
+            currency: 'EUR',
+            sourceType: 'fee',
+            sourceAccount: null,
+            destinationAccount: null,
+            assetTicker: null,
+            assetIsin: null,
+            assetName: null,
+            quantity: null,
+            unitPrice: null,
+            fees: null,
+            taxes: null,
+          },
+          categoryId: 'expense-investment-fees',
+          categoryName: 'Commissioni investimento',
+          subCategoryId: null,
+          subCategoryName: null,
+        },
+        {
+          rowIndex: 3,
+          movementKind: 'tax',
+          ready: true,
+          dedupeKey: 'tax|2026-05-12|-26.000000|eur|imposte broker',
+          dedupeStatus: 'unique',
+          issues: [],
+          canonicalFields: {
+            date: '2026-05-12',
+            description: 'Imposte broker',
+            amount: -26,
+            currency: 'EUR',
+            sourceType: 'tax',
+            sourceAccount: null,
+            destinationAccount: null,
+            assetTicker: null,
+            assetIsin: null,
+            assetName: null,
+            quantity: null,
+            unitPrice: null,
+            fees: null,
+            taxes: null,
+          },
+          categoryId: 'expense-investment-fees',
+          categoryName: 'Commissioni investimento',
+          subCategoryId: null,
+          subCategoryName: null,
+        },
+      ],
+    };
+
+    const response = await commitRoute(
+      createJsonRequest('http://localhost/api/imports/commit', {
+        body: payload,
+        headers: {
+          Authorization: 'Bearer valid-token',
+        },
+      })
+    );
+
+    expect(response.status).toBe(201);
+    expect(commitCsvImportCashflowBatchMock).toHaveBeenCalledWith('user-1', payload);
+  });
+
   it('rolls back a committed batch for authenticated users', async () => {
     const response = await rollbackRoute(
       createJsonRequest('http://localhost/api/imports/batch-1/rollback', {

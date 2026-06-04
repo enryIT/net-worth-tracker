@@ -115,23 +115,25 @@ describe('cashflow UI regression guards', () => {
     expect(trackingSource).toContain("{ value: 'transfer', label: 'Trasferimento' }");
   });
 
-  it('includes investmentOperation rows in CSV import commit prep and keeps the confirmation copy generic', () => {
+  it('includes dividend, fee, and tax rows in CSV import commit prep and keeps the confirmation copy current', () => {
     const source = readRepoFile('app/dashboard/cashflow/import-csv/page.tsx');
 
-    expect(source).toContain("movementKind: 'cashflow' | 'transfer' | 'investmentOperation';");
-    expect(source).toContain("row.movementKind === 'investmentOperation'");
+    expect(source).toContain("type CashflowCommitMovementKind = Exclude<ImportMovementKind, 'unknown'>;");
+    expect(source).toContain('movementKind: CashflowCommitMovementKind;');
+    expect(source).toContain("row.movementKind !== 'unknown'");
+    expect(source).toContain("if (row.movementKind === 'dividend') {");
+    expect(source).toContain("if (row.movementKind === 'cashflow' || row.movementKind === 'fee' || row.movementKind === 'tax') {");
     expect(source).toContain("if (row.movementKind === 'investmentOperation') {");
     expect(source).toContain("if (!row.canonicalFields.assetName && !row.canonicalFields.assetTicker && !row.canonicalFields.assetIsin) {");
-    expect(source).toContain("movementKind: 'investmentOperation',");
+    expect(source).toContain("movementKind: 'dividend',");
+    expect(source).toContain("movementKind: row.movementKind,");
     expect(source).toContain('categoryId: null,');
     expect(source).toContain('categoryName: null,');
     expect(source).toContain('subCategoryId: null,');
     expect(source).toContain('subCategoryName: null,');
-    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni e le operazioni di investimento pronti possono essere confermati');
-    expect(source).toContain('Compila categorie cashflow, conti dei transfer o riferimenti asset delle operazioni di investimento per abilitare la conferma.');
-    expect(source).not.toContain('Nessuna riga cashflow o transfer pronta da importare');
-    expect(source).not.toContain('Conferma importazione cashflow e transfer');
-    expect(source).not.toContain('Compila categorie cashflow o conti dei transfer per abilitare la conferma.');
+    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti possono essere confermati in Milestone 7.');
+    expect(source).toContain('Compila categorie per cashflow, fee e tax, conti dei transfer o riferimenti asset per operazioni di investimento e dividendi per abilitare la conferma.');
+    expect(source).not.toContain('Milestone 6');
   });
 
   it('invalidates asset and investment caches after CSV import commit and rollback', () => {

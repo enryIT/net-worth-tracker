@@ -11,18 +11,21 @@ import type {
   CsvImportCashflowBatchRepository,
   CsvImportCashflowCategoryRepository,
   CsvImportCashflowAssetReference,
+  CsvImportCashflowCreatedDividendRecord,
   CsvImportCashflowCreatedInvestmentOperationRecord,
   CsvImportCashflowCommitInput,
   CsvImportCashflowCommitResult,
   CsvImportCashflowCommitRowInput,
   CsvImportCashflowCreatedRecord,
   CsvImportCashflowExpenseRecord,
+  CsvImportCashflowDividendRecord,
   CsvImportCashflowInternalTransferRecord,
   CsvImportCashflowInvestmentOperationRecord,
   CsvImportCashflowRollbackResult,
   CsvImportCashflowCategoryRecord,
   CsvImportCashflowAssetRecord,
 } from '@/lib/server/imports/cashflowCommitTypes';
+import type { DividendType } from '@/types/dividend';
 import type { InvestmentOperationType } from '@/types/investments';
 
 interface CsvImportCashflowCommitServiceDependencies {
@@ -110,6 +113,15 @@ function getDateRangeForRows(rows: Array<{ parsedDate: Date }>): { startDate: Da
 
 type InvestmentOperationCommitType = Extract<InvestmentOperationType, 'buy' | 'sell'>;
 
+const DIVIDEND_TYPES = new Set<DividendType>([
+  'ordinary',
+  'extraordinary',
+  'interim',
+  'final',
+  'coupon',
+  'finalPremium',
+]);
+
 function normalizeReferenceText(value: string | null | undefined): string {
   return (value ?? '')
     .trim()
@@ -161,6 +173,74 @@ function matchesInvestmentAssetReference(
 
 function cloneAssetRecord(asset: CsvImportCashflowAssetRecord): CsvImportCashflowAssetRecord {
   return { ...asset };
+}
+
+function normalizeDividendType(value: string | null | undefined): DividendType | null {
+  const normalized = normalizeReferenceText(value);
+  return DIVIDEND_TYPES.has(normalized as DividendType) ? (normalized as DividendType) : null;
+}
+
+function resolveDividendType(row: CsvImportCashflowCommitRowInput): DividendType {
+  const explicitDividendType = normalizeDividendType(row.canonicalFields.dividendType);
+  if (explicitDividendType) {
+    return explicitDividendType;
+  }
+
+  const sourceType = normalizeReferenceText(row.canonicalFields.sourceType);
+  if (sourceType === 'coupon') {
+    return 'coupon';
+  }
+
+  const sourceDividendType = normalizeDividendType(sourceType);
+  return sourceDividendType ?? 'ordinary';
+}
+
+function resolveDividendDate(
+  row: CsvImportCashflowCommitRowInput,
+  fieldName: 'paymentDate' | 'exDate',
+  fallbackDate: string
+): Date {
+  const dateValue = fieldName === 'paymentDate'
+    ? row.canonicalFields.paymentDate ?? fallbackDate
+    : row.canonicalFields.exDate ?? row.canonicalFields.paymentDate ?? fallbackDate;
+
+  return validatePositiveDate(dateValue as string, row.rowIndex);
+}
+
+function resolveDividendAmounts(row: CsvImportCashflowCommitRowInput): {
+  grossAmount: number;
+  taxAmount: number;
+  netAmount: number;
+} {
+  const amount = row.canonicalFields.amount ?? null;
+  const grossAmount = row.canonicalFields.grossAmount ?? null;
+  const taxAmount = row.canonicalFields.taxAmount ?? null;
+  const netAmount = row.canonicalFields.netAmount ?? null;
+
+  const resolvedNetAmount = netAmount
+    ?? amount
+    ?? (grossAmount !== null && taxAmount !== null ? grossAmount - taxAmount : null);
+
+  const resolvedGrossAmount = grossAmount
+    ?? (resolvedNetAmount !== null && taxAmount !== null ? resolvedNetAmount + taxAmount : amount);
+
+  const resolvedTaxAmount = taxAmount
+    ?? (resolvedGrossAmount !== null && resolvedNetAmount !== null
+      ? resolvedGrossAmount - resolvedNetAmount
+      : 0);
+
+  return {
+    grossAmount: resolvedGrossAmount ?? 0,
+    taxAmount: resolvedTaxAmount,
+    netAmount: resolvedNetAmount ?? 0,
+  };
+}
+
+function resolveDividendQuantity(
+  row: CsvImportCashflowCommitRowInput,
+  asset: CsvImportCashflowAssetRecord
+): number {
+  return row.canonicalFields.quantity ?? asset.quantity;
 }
 
 function resolveInvestmentOperationType(row: CsvImportCashflowCommitRowInput): InvestmentOperationCommitType {
@@ -365,13 +445,97 @@ function buildCreatedInvestmentOperationSummary(
   };
 }
 
+interface ResolvedDividendCommitData {
+  paymentDate: Date;
+  exDate: Date;
+  grossAmount: number;
+  taxAmount: number;
+  netAmount: number;
+  quantity: number;
+  dividendPerShare: number;
+  dividendType: DividendType;
+  currency: string;
+}
+
+function buildCreatedDividendRecord(
+  userId: string,
+  batchId: string,
+  input: CsvImportCashflowCommitInput,
+  row: CsvImportCashflowCommitRowInput,
+  generatedDividendId: string,
+  now: Date,
+  asset: CsvImportCashflowAssetRecord,
+  resolved: ResolvedDividendCommitData
+): CsvImportCashflowDividendRecord {
+  const notes = row.canonicalFields.description ?? '';
+
+  return {
+    id: generatedDividendId,
+    userId,
+    batchId,
+    rowIndex: row.rowIndex,
+    dedupeKey: row.dedupeKey,
+    assetId: asset.id,
+    assetName: row.canonicalFields.assetName ?? asset.name,
+    assetTicker: row.canonicalFields.assetTicker ?? asset.ticker ?? '',
+    assetIsin: row.canonicalFields.assetIsin ?? asset.isin ?? null,
+    exDate: resolved.exDate,
+    paymentDate: resolved.paymentDate,
+    dividendPerShare: resolved.dividendPerShare,
+    quantity: resolved.quantity,
+    grossAmount: resolved.grossAmount,
+    taxAmount: resolved.taxAmount,
+    netAmount: resolved.netAmount,
+    currency: resolved.currency,
+    dividendType: resolved.dividendType,
+    notes,
+    isAutoGenerated: false,
+    costPerShare: asset.averageCost,
+    linkedMovementReference: row.canonicalFields.linkedMovementReference ?? null,
+    importBatchId: batchId,
+    importRowIndex: row.rowIndex,
+    importDedupeKey: row.dedupeKey,
+    importIdempotencyKey: input.idempotencyKey,
+    importSourceFingerprint: input.sourceFingerprint ?? null,
+    importPresetId: input.presetId ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function buildCreatedDividendSummary(
+  dividend: CsvImportCashflowDividendRecord
+): CsvImportCashflowCreatedDividendRecord {
+  return {
+    kind: 'dividend',
+    id: dividend.id,
+    rowIndex: dividend.rowIndex,
+    dedupeKey: dividend.dedupeKey,
+    assetId: dividend.assetId,
+    assetName: dividend.assetName,
+    assetTicker: dividend.assetTicker,
+    assetIsin: dividend.assetIsin,
+    exDate: formatDateInputValue(dividend.exDate),
+    paymentDate: formatDateInputValue(dividend.paymentDate),
+    dividendPerShare: dividend.dividendPerShare,
+    quantity: dividend.quantity,
+    grossAmount: dividend.grossAmount,
+    taxAmount: dividend.taxAmount,
+    netAmount: dividend.netAmount,
+    currency: dividend.currency,
+    dividendType: dividend.dividendType,
+    costPerShare: dividend.costPerShare,
+    linkedMovementReference: dividend.linkedMovementReference ?? null,
+  };
+}
+
 interface PreparedCommitRow {
   row: CsvImportCashflowCommitRowInput;
   parsedDate: Date;
 }
 
 interface PreparedCashflowCommitRow extends PreparedCommitRow {
-  row: CsvImportCashflowCommitRowInput & { movementKind: 'cashflow' };
+  row: CsvImportCashflowCommitRowInput & { movementKind: 'cashflow' | 'fee' | 'tax' };
 }
 
 function buildRequestFingerprint(
@@ -400,6 +564,8 @@ function buildRequestFingerprint(
       sourceType: row.canonicalFields.sourceType,
       sourceAccount: row.canonicalFields.sourceAccount,
       destinationAccount: row.canonicalFields.destinationAccount,
+      paymentDate: row.canonicalFields.paymentDate,
+      exDate: row.canonicalFields.exDate,
       assetTicker: row.canonicalFields.assetTicker,
       assetIsin: row.canonicalFields.assetIsin,
       assetName: row.canonicalFields.assetName,
@@ -407,6 +573,11 @@ function buildRequestFingerprint(
       unitPrice: row.canonicalFields.unitPrice,
       fees: row.canonicalFields.fees,
       taxes: row.canonicalFields.taxes,
+      grossAmount: row.canonicalFields.grossAmount,
+      taxAmount: row.canonicalFields.taxAmount,
+      netAmount: row.canonicalFields.netAmount,
+      dividendType: row.canonicalFields.dividendType,
+      linkedMovementReference: row.canonicalFields.linkedMovementReference,
     })),
   };
 
@@ -456,13 +627,15 @@ function assertRowCommonCommitReady(row: CsvImportCashflowCommitRowInput): void 
   }
 }
 
-function assertCashflowRowIsCommitReady(row: CsvImportCashflowCommitRowInput): asserts row is CsvImportCashflowCommitRowInput & { movementKind: 'cashflow' } {
+function assertCashflowLikeRowIsCommitReady(
+  row: CsvImportCashflowCommitRowInput
+): asserts row is CsvImportCashflowCommitRowInput & { movementKind: 'cashflow' | 'fee' | 'tax' } {
   assertRowCommonCommitReady(row);
 
-  if (row.movementKind !== 'cashflow') {
+  if (row.movementKind !== 'cashflow' && row.movementKind !== 'fee' && row.movementKind !== 'tax') {
     throw new CsvImportCashflowCommitServiceError(
       400,
-      'La commit import CSV accetta solo righe cashflow o transfer pronte',
+      'La commit import CSV accetta solo righe cashflow, transfer, investimento, dividendo, fee o tax pronte',
       { rowIndex: row.rowIndex, movementKind: row.movementKind }
     );
   }
@@ -470,7 +643,7 @@ function assertCashflowRowIsCommitReady(row: CsvImportCashflowCommitRowInput): a
   if (!row.categoryId?.trim() || !row.categoryName?.trim()) {
     throw new CsvImportCashflowCommitServiceError(
       400,
-      'Categoria confermata obbligatoria per la commit cashflow',
+      'Categoria confermata obbligatoria per la commit cashflow, fee o tax',
       { rowIndex: row.rowIndex }
     );
   }
@@ -503,6 +676,144 @@ function assertCashflowRowIsCommitReady(row: CsvImportCashflowCommitRowInput): a
       { rowIndex: row.rowIndex, amount: amountValue }
     );
   }
+}
+
+function assertDividendRowIsCommitReady(
+  row: CsvImportCashflowCommitRowInput
+): asserts row is CsvImportCashflowCommitRowInput & { movementKind: 'dividend' } {
+  assertRowCommonCommitReady(row);
+
+  if (row.movementKind !== 'dividend') {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La commit import CSV accetta solo righe cashflow, transfer, investimento, dividendo, fee o tax pronte',
+      { rowIndex: row.rowIndex, movementKind: row.movementKind }
+    );
+  }
+
+  const {
+    date,
+    description,
+    amount,
+    sourceAccount,
+    destinationAccount,
+    quantity,
+    unitPrice,
+    fees,
+    taxes,
+    grossAmount = null,
+    taxAmount = null,
+    netAmount = null,
+    paymentDate = null,
+    exDate = null,
+    dividendType,
+  } = row.canonicalFields;
+
+  if (!date || !description || amount === null) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La riga dividendo richiede data, descrizione e importo validi',
+      { rowIndex: row.rowIndex }
+    );
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Importo dividendo non valido',
+      { rowIndex: row.rowIndex, amount }
+    );
+  }
+
+  if (!hasInvestmentAssetReference(buildInvestmentAssetReference(row))) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il riferimento asset confermato è obbligatorio per la riga dividendo',
+      { rowIndex: row.rowIndex }
+    );
+  }
+
+  if (sourceAccount || destinationAccount) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La riga dividendo non supporta conti origine o destinazione',
+      { rowIndex: row.rowIndex }
+    );
+  }
+
+  if (unitPrice !== null) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La riga dividendo non supporta un prezzo unitario',
+      { rowIndex: row.rowIndex, unitPrice }
+    );
+  }
+
+  if (fees !== null) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La riga dividendo non supporta commissioni separate',
+      { rowIndex: row.rowIndex, fees }
+    );
+  }
+
+  if (quantity !== null && (!Number.isFinite(quantity) || quantity < 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La quantità del dividendo non è valida',
+      { rowIndex: row.rowIndex, quantity }
+    );
+  }
+
+  if (taxes !== null && (!Number.isFinite(taxes) || taxes < 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Le imposte del dividendo non sono valide',
+      { rowIndex: row.rowIndex, taxes }
+    );
+  }
+
+  if (grossAmount !== null && (!Number.isFinite(grossAmount) || grossAmount <= 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il lordo del dividendo non è valido',
+      { rowIndex: row.rowIndex, grossAmount }
+    );
+  }
+
+  if (taxAmount !== null && (!Number.isFinite(taxAmount) || taxAmount < 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Le imposte del dividendo non sono valide',
+      { rowIndex: row.rowIndex, taxAmount }
+    );
+  }
+
+  if (netAmount !== null && (!Number.isFinite(netAmount) || netAmount < 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il netto del dividendo non è valido',
+      { rowIndex: row.rowIndex, netAmount }
+    );
+  }
+
+  if (paymentDate !== null && paymentDate.trim().length === 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La data di pagamento del dividendo non è valida',
+      { rowIndex: row.rowIndex, paymentDate }
+    );
+  }
+
+  if (exDate !== null && exDate.trim().length === 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La data ex-dividendo non è valida',
+      { rowIndex: row.rowIndex, exDate }
+    );
+  }
+
+  normalizeDividendType(dividendType);
 }
 
 function assertTransferRowIsCommitReady(row: CsvImportCashflowCommitRowInput): asserts row is CsvImportCashflowCommitRowInput & { movementKind: 'transfer' } {
@@ -567,8 +878,8 @@ function assertTransferRowIsCommitReady(row: CsvImportCashflowCommitRowInput): a
 }
 
 function assertSupportedRowIsCommitReady(row: CsvImportCashflowCommitRowInput): void {
-  if (row.movementKind === 'cashflow') {
-    assertCashflowRowIsCommitReady(row);
+  if (row.movementKind === 'cashflow' || row.movementKind === 'fee' || row.movementKind === 'tax') {
+    assertCashflowLikeRowIsCommitReady(row);
     return;
   }
 
@@ -582,9 +893,14 @@ function assertSupportedRowIsCommitReady(row: CsvImportCashflowCommitRowInput): 
     return;
   }
 
+  if (row.movementKind === 'dividend') {
+    assertDividendRowIsCommitReady(row);
+    return;
+  }
+
   throw new CsvImportCashflowCommitServiceError(
     400,
-    'La commit import CSV accetta solo righe cashflow, transfer o investimento pronte',
+    'La commit import CSV accetta solo righe cashflow, transfer, investimento, dividendo, fee o tax pronte',
     { rowIndex: row.rowIndex, movementKind: row.movementKind }
   );
 }
@@ -887,7 +1203,11 @@ export function createCsvImportCashflowCommitService(
         };
       });
       const preparedCashflowRows = preparedRows.filter(
-        (prepared): prepared is PreparedCashflowCommitRow => prepared.row.movementKind === 'cashflow'
+        (prepared): prepared is PreparedCashflowCommitRow => (
+          prepared.row.movementKind === 'cashflow'
+          || prepared.row.movementKind === 'fee'
+          || prepared.row.movementKind === 'tax'
+        )
       );
       let existingExpenseDuplicateKeys = new Set<string>();
       if (preparedCashflowRows.length > 0) {
@@ -908,6 +1228,7 @@ export function createCsvImportCashflowCommitService(
       const createdExpenses: CsvImportCashflowExpenseRecord[] = [];
       const createdTransfers: CsvImportCashflowInternalTransferRecord[] = [];
       const createdInvestmentOperations: CsvImportCashflowInvestmentOperationRecord[] = [];
+      const createdDividends: CsvImportCashflowDividendRecord[] = [];
       const batchCreatedAt = now();
       const batchId = generateId();
       const assetCacheById = new Map<string, CsvImportCashflowAssetRecord>();
@@ -1142,6 +1463,112 @@ export function createCsvImportCashflowCommitService(
           continue;
         }
 
+        if (row.movementKind === 'dividend') {
+          const assetReference = buildInvestmentAssetReference(row);
+          const asset = await resolveInvestmentAsset(assetReference);
+          const paymentDate = resolveDividendDate(row, 'paymentDate', row.canonicalFields.date as string);
+          const exDate = resolveDividendDate(row, 'exDate', row.canonicalFields.date as string);
+          const resolvedAmounts = resolveDividendAmounts(row);
+          const quantity = resolveDividendQuantity(row, asset);
+          const dividendPerShare = quantity > 0 ? resolvedAmounts.grossAmount / quantity : 0;
+          const dividendType = resolveDividendType(row);
+          const currency = (row.canonicalFields.currency ?? asset.currency ?? 'EUR').toUpperCase();
+          const generatedDividendId = generateId();
+          const dividend = buildCreatedDividendRecord(
+            userId,
+            batchId,
+            input,
+            {
+              ...row,
+              canonicalFields: {
+                ...row.canonicalFields,
+                date: formatDateInputValue(parsedDate),
+              },
+            },
+            generatedDividendId,
+            batchCreatedAt,
+            asset,
+            {
+              paymentDate,
+              exDate,
+              grossAmount: resolvedAmounts.grossAmount,
+              taxAmount: resolvedAmounts.taxAmount,
+              netAmount: resolvedAmounts.netAmount,
+              quantity,
+              dividendPerShare,
+              dividendType,
+              currency,
+            }
+          );
+
+          createdRecords.push(buildCreatedDividendSummary(dividend));
+          createdDividends.push(dividend);
+          inputDedupeKeys.add(row.dedupeKey);
+          continue;
+        }
+
+        if (row.movementKind === 'fee' || row.movementKind === 'tax') {
+          const categoryId = row.categoryId as string;
+          const category = await categoryRepository.getById(categoryId);
+          if (!category) {
+            throw new CsvImportCashflowCommitServiceError(
+              404,
+              'Categoria confermata non trovata',
+              { rowIndex: row.rowIndex, categoryId: row.categoryId }
+            );
+          }
+
+          if (category.userId !== userId) {
+            throw new CsvImportCashflowCommitServiceError(
+              403,
+              'Categoria non appartiene all\'utente autenticato',
+              { rowIndex: row.rowIndex, categoryId: row.categoryId }
+            );
+          }
+
+          ensureNoCategoryGuessing(row, category);
+          assertAmountMatchesCategoryType(row, category);
+
+          const conservativeDuplicateKey = buildConservativeExpenseDuplicateKey(
+            parsedDate,
+            row.canonicalFields.amount ?? 0,
+            row.canonicalFields.currency ?? 'EUR',
+            row.canonicalFields.description ?? ''
+          );
+          if (existingExpenseDuplicateKeys.has(conservativeDuplicateKey)) {
+            throw new CsvImportCashflowCommitServiceError(
+              409,
+              'Riga già presente in un movimento cashflow esistente',
+              { rowIndex: row.rowIndex, date: row.canonicalFields.date, amount: row.canonicalFields.amount }
+            );
+          }
+
+          const subCategory = resolveSubCategory(row, category);
+          const generatedExpenseId = generateId();
+
+          const expense = buildCreatedExpenseRecord(
+            userId,
+            batchId,
+            input,
+            {
+              ...row,
+              canonicalFields: {
+                ...row.canonicalFields,
+                date: formatDateInputValue(parsedDate),
+              },
+            },
+            category,
+            generatedExpenseId,
+            batchCreatedAt,
+            subCategory
+          );
+
+          createdRecords.push(buildCreatedRecordSummary(expense));
+          createdExpenses.push(expense);
+          inputDedupeKeys.add(row.dedupeKey);
+          continue;
+        }
+
         const sourceAssetId = row.canonicalFields.sourceAccount as string;
         const destinationAssetId = row.canonicalFields.destinationAccount as string;
         const [sourceAsset, destinationAsset] = await Promise.all([
@@ -1197,7 +1624,8 @@ export function createCsvImportCashflowCommitService(
         createdRecords,
         createdExpenses,
         createdTransfers,
-        createdInvestmentOperations
+        createdInvestmentOperations,
+        createdDividends
       );
       await invalidateDashboardOverviewSummaryServer(userId, 'csv_import_cashflow_committed');
 
@@ -1235,14 +1663,17 @@ export function createCsvImportCashflowCommitService(
       const expectedCashflowCount = batch.createdRecords.filter((record) => record.kind === 'cashflow').length;
       const expectedTransferCount = batch.createdRecords.filter((record) => record.kind === 'internalTransfer').length;
       const expectedInvestmentOperationCount = batch.createdRecords.filter((record) => record.kind === 'investmentOperation').length;
+      const expectedDividendCount = batch.createdRecords.filter((record) => record.kind === 'dividend').length;
       const createdExpenses = await repository.listExpensesByBatchId(batchId);
       const createdTransfers = await repository.listInternalTransfersByBatchId(batchId);
       const createdInvestmentOperations = await repository.listInvestmentOperationsByBatchId(batchId);
-      const foundRecordCount = createdExpenses.length + createdTransfers.length + createdInvestmentOperations.length;
+      const createdDividends = await repository.listDividendsByBatchId(batchId);
+      const foundRecordCount = createdExpenses.length + createdTransfers.length + createdInvestmentOperations.length + createdDividends.length;
       if (
         createdExpenses.length !== expectedCashflowCount
         || createdTransfers.length !== expectedTransferCount
         || createdInvestmentOperations.length !== expectedInvestmentOperationCount
+        || createdDividends.length !== expectedDividendCount
       ) {
         throw new CsvImportCashflowCommitServiceError(
           409,
@@ -1254,6 +1685,7 @@ export function createCsvImportCashflowCommitService(
             expectedCashflowCount,
             expectedTransferCount,
             expectedInvestmentOperationCount,
+            expectedDividendCount,
           }
         );
       }
@@ -1279,6 +1711,18 @@ export function createCsvImportCashflowCommitService(
           409,
           'Il batch contiene transfer modificati manualmente e non può essere annullato automaticamente',
           { batchId, transferId: unsafeTransfer.id }
+        );
+      }
+
+      const unsafeDividend = createdDividends.find(
+        (dividend) => dividend.updatedAt.getTime() !== dividend.createdAt.getTime()
+      );
+
+      if (unsafeDividend) {
+        throw new CsvImportCashflowCommitServiceError(
+          409,
+          'Il batch contiene dividendi modificati manualmente e non può essere annullato automaticamente',
+          { batchId, dividendId: unsafeDividend.id }
         );
       }
 
@@ -1323,12 +1767,14 @@ export function createCsvImportCashflowCommitService(
       const expenseIds = createdExpenses.map((expense) => expense.id);
       const transferIds = createdTransfers.map((transfer) => transfer.id);
       const investmentOperationIds = createdInvestmentOperations.map((operation) => operation.id);
+      const dividendIds = createdDividends.map((dividend) => dividend.id);
       const rolledBackAt = now();
       const updatedBatch = await repository.rollbackBatch(
         batchId,
         expenseIds,
         transferIds,
         investmentOperationIds,
+        dividendIds,
         rolledBackAt,
         rollbackReason
       );
@@ -1341,7 +1787,7 @@ export function createCsvImportCashflowCommitService(
 
       return {
         batch: updatedBatch,
-        removedRecordCount: expenseIds.length + transferIds.length + investmentOperationIds.length,
+        removedRecordCount: expenseIds.length + transferIds.length + investmentOperationIds.length + dividendIds.length,
       };
     },
   };

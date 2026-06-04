@@ -50,6 +50,13 @@ const canonicalFieldsSchema = z
     unitPrice: z.number().finite().nullable(),
     fees: z.number().finite().nullable(),
     taxes: z.number().finite().nullable(),
+    paymentDate: z.string().trim().min(1).nullable().optional(),
+    exDate: z.string().trim().min(1).nullable().optional(),
+    grossAmount: z.number().finite().nullable().optional(),
+    taxAmount: z.number().finite().nullable().optional(),
+    netAmount: z.number().finite().nullable().optional(),
+    dividendType: z.string().trim().min(1).nullable().optional(),
+    linkedMovementReference: z.string().trim().min(1).nullable().optional(),
   })
   .strict();
 
@@ -69,14 +76,14 @@ const commitRowSchema = z
   })
   .strict()
   .superRefine((row, ctx) => {
-    if (row.movementKind !== 'cashflow') {
+    if (row.movementKind !== 'cashflow' && row.movementKind !== 'fee' && row.movementKind !== 'tax') {
       return;
     }
 
     if (!row.categoryId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'categoryId obbligatoria per le righe cashflow',
+        message: 'categoryId obbligatoria per le righe cashflow, fee e tax',
         path: ['categoryId'],
       });
     }
@@ -84,7 +91,7 @@ const commitRowSchema = z
     if (!row.categoryName) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'categoryName obbligatoria per le righe cashflow',
+        message: 'categoryName obbligatoria per le righe cashflow, fee e tax',
         path: ['categoryName'],
       });
     }
