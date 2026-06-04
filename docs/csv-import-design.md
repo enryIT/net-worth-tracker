@@ -318,9 +318,9 @@ This intentionally avoids complex state restoration in the first implementation.
 
 ## Milestones and acceptance criteria
 
-### Current implementation status after Milestones 1-5
+### Current implementation status after Milestones 1-6
 
-Milestones 1-5 are implemented and committed as narrow slices. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, and neutral internal transfer commit/rollback. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
+Milestones 1-6 are implemented as narrow slices. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, and buy/sell investment operation commit/rollback. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
 
 Implementation commits:
 
@@ -331,16 +331,16 @@ Implementation commits:
 | 3. Preview and reconciliation UI | Implemented | `033520d` | Wizard shell, filters, inline correction, bulk edit, assisted linking copy, preview-only UI tests. |
 | 4. Cashflow commit and rollback | Implemented with M5 | `1a6e122` | Batch commit/rollback route, service, repository, cashflow created-record tracking, idempotency, tests. |
 | 5. Internal transfers | Implemented with M4 | `1a6e122` | Transfer validation, neutral internal transfers, mixed batch metadata, mixed rollback, tests. |
+| 6. Investment operations | Implemented | Current slice | Buy/sell validation, asset resolution by confirmed reference, weighted-average-cost/realized-gain semantics, optional cash-account impact, batch metadata, safe rollback, UI commit wiring, tests. |
 
 The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, but manual release checks should still be executed before enabling the importer for real users. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
 
-#### Known deferred scope after Milestones 1-5
+#### Known deferred scope after Milestones 1-6
 
 The following items are intentionally not implemented yet:
 
 - Broker-specific templates and broker-specific settlement heuristics.
 - AI-assisted classification; classification remains deterministic and explainable.
-- Buy/sell investment operation import, including weighted-average-cost, realized gain, tax, and optional cash-account effects.
 - Dividend, coupon, standalone fee, and standalone tax commit/rollback.
 - Full import history UI for past batches, failed chunks, created-record drilldown, and rollback status.
 - Rollback UI from import history with explicit confirmation and detailed unsafe-rollback messaging.
@@ -350,7 +350,7 @@ The following items are intentionally not implemented yet:
 - Virtualized or paginated preview hardening for very large CSVs.
 - Operational rollout documentation for supported mappings, limitations, dedupe behavior, and rollback behavior.
 
-These items are mapped to Milestones 6-8 below. Do not treat Milestones 1-5 as a full CSV importer release; treat them as the committed foundation and first durable movement families.
+These items are mapped to Milestones 7-8 below. Do not treat Milestones 1-6 as a full CSV importer release; treat them as the committed foundation and first durable movement families.
 
 ### Milestone 1: Pure import foundation
 
@@ -567,13 +567,25 @@ Scope:
 
 Action items:
 
-- [ ] Add investment-operation canonical fields for side, asset, quantity, unit price, currency, fees, taxes, and optional cash account.
-- [ ] Validate asset links by confirmed asset ID, ticker, or ISIN resolution.
-- [ ] Add buy/sell commit handling through the import batch pipeline.
-- [ ] Preserve existing weighted-average-cost, realized gain, tax, and optional cash-account impact semantics.
-- [ ] Track created investment operation records in the batch.
-- [ ] Extend rollback to investment operations and related imported cash impacts when safe.
-- [ ] Add tests ensuring imported trades are not modeled as cashflow expenses/income.
+- [x] Add investment-operation canonical fields for side, asset, quantity, unit price, currency, fees, taxes, and optional cash account.
+- [x] Validate asset links by confirmed asset reference, ticker, or ISIN resolution.
+- [x] Add buy/sell commit handling through the import batch pipeline.
+- [x] Preserve existing weighted-average-cost, realized gain, tax, and optional cash-account impact semantics.
+- [x] Track created investment operation records in the batch.
+- [x] Extend rollback to investment operations and related imported cash impacts when safe.
+- [x] Add tests ensuring imported trades are not modeled as cashflow expenses/income.
+
+Release / rollback checklist:
+
+- [ ] Confirm the commit payload can include ready `cashflow`, `transfer`, and `investmentOperation` rows in the same batch.
+- [ ] Confirm investment rows require a resolved user-owned non-cash asset reference by ticker, ISIN, or exact asset name.
+- [ ] Confirm optional cash-account references are user-owned cash assets before applying buy/sell cash effects.
+- [ ] Confirm buy rows decrease the mapped cash account by gross amount plus fees and taxes, while sell rows increase it by gross amount minus fees and taxes.
+- [ ] Confirm imported trades are stored as `investmentOperations` and as `kind: 'investmentOperation'` in batch metadata, never as ordinary cashflow income/expense records.
+- [ ] Confirm the CSV import UI invalidates assets, operations, realized gains, transfers, expenses, and dashboard overview caches after commit and rollback.
+- [ ] Rollback plan: use `POST /api/imports/{batchId}/rollback` while imported investment operations remain the latest operation state for the affected asset quantity.
+- [ ] Manual rollback fallback: delete only batch-created investment operations, restore the affected asset quantity/average cost from the operation safety metadata, reverse only imported cash-account net effects, and mark the import batch rolled back.
+- [ ] Stop rollout if rollback returns `409` for unsafe investment-operation reversal, because later manual trades or balance changes make automatic restoration unsafe.
 
 Acceptance criteria:
 

@@ -338,7 +338,7 @@ interface CommitBatchSummary {
 
 interface CashflowCommitRowPayload {
   rowIndex: number;
-  movementKind: 'cashflow' | 'transfer';
+  movementKind: 'cashflow' | 'transfer' | 'investmentOperation';
   ready: boolean;
   dedupeKey: string;
   dedupeStatus: ImportDedupeStatus;
@@ -788,7 +788,7 @@ function ImportCsvPage() {
 
   const readyCommitRows = useMemo(
     () => displayRows.filter((row) => (
-      (row.movementKind === 'cashflow' || row.movementKind === 'transfer') && row.ready
+      (row.movementKind === 'cashflow' || row.movementKind === 'transfer' || row.movementKind === 'investmentOperation') && row.ready
     )),
     [displayRows]
   );
@@ -796,6 +796,7 @@ function ImportCsvPage() {
   const cashflowCommitPreparation = useMemo(() => {
     let unresolvedReadyCashflowRows = 0;
     let unresolvedReadyTransferRows = 0;
+    let unresolvedReadyInvestmentRows = 0;
     let duplicateReadyCashflowRows = 0;
     const rows: CashflowCommitRowPayload[] = [];
 
@@ -814,6 +815,28 @@ function ImportCsvPage() {
         rows.push({
           rowIndex: row.rowIndex,
           movementKind: 'transfer',
+          ready: row.ready,
+          dedupeKey: row.dedupeKey,
+          dedupeStatus: row.dedupeStatus,
+          issues: row.issues,
+          canonicalFields: row.canonicalFields,
+          categoryId: null,
+          categoryName: null,
+          subCategoryId: null,
+          subCategoryName: null,
+        });
+        return;
+      }
+
+      if (row.movementKind === 'investmentOperation') {
+        if (!row.canonicalFields.assetName && !row.canonicalFields.assetTicker && !row.canonicalFields.assetIsin) {
+          unresolvedReadyInvestmentRows += 1;
+          return;
+        }
+
+        rows.push({
+          rowIndex: row.rowIndex,
+          movementKind: 'investmentOperation',
           ready: row.ready,
           dedupeKey: row.dedupeKey,
           dedupeStatus: row.dedupeStatus,
@@ -852,6 +875,7 @@ function ImportCsvPage() {
       rows,
       unresolvedReadyCashflowRows,
       unresolvedReadyTransferRows,
+      unresolvedReadyInvestmentRows,
       duplicateReadyCashflowRows,
     };
   }, [displayRows, expenseCategories, readyCommitRows]);
@@ -1023,7 +1047,7 @@ function ImportCsvPage() {
     }
 
     if (cashflowCommitPreparation.rows.length === 0) {
-      toast.error('Nessuna riga cashflow o transfer pronta da importare');
+      toast.error('Nessuna riga pronta da importare');
       return;
     }
 
@@ -1075,10 +1099,14 @@ function ImportCsvPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.transfers(user.uid) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
       ]);
 
-      toast.success(`Importazione cashflow e transfer confermata: batch ${result.batch.id}`);
+      toast.success(`Importazione movimenti confermata: batch ${result.batch.id}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message);
@@ -1140,6 +1168,10 @@ function ImportCsvPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.transfers(user.uid) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
       ]);
 
@@ -1459,16 +1491,16 @@ function ImportCsvPage() {
               <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4">
                 <div className="flex flex-col gap-4 desktop:flex-row desktop:items-start desktop:justify-between">
                   <div className="space-y-2">
-                    <p className="text-sm font-medium text-amber-950">Conferma importazione cashflow e transfer</p>
+                    <p className="text-sm font-medium text-amber-950">Conferma importazione movimenti</p>
                     <p className="text-sm text-amber-900/80">
-                      I movimenti cashflow ordinari e i transfer interni pronti possono essere confermati in Milestone 5.
+                      I movimenti cashflow ordinari, i transfer interni e le operazioni di investimento pronti possono essere confermati in Milestone 6.
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {cashflowCommitPreparation.rows.length > 0
-                        ? `${cashflowCommitPreparation.rows.length} righe pronte verranno confermate. ${cashflowCommitPreparation.unresolvedReadyCashflowRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyCashflowRows} righe cashflow richiedono una categoria esistente nel campo "Categoria / sottocategoria". ` : ''}${cashflowCommitPreparation.unresolvedReadyTransferRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyTransferRows} transfer richiedono conto origine e destinazione. ` : ''}${cashflowCommitPreparation.duplicateReadyCashflowRows > 0 ? `${cashflowCommitPreparation.duplicateReadyCashflowRows} righe duplicate restano escluse dalla commit.` : ''}`
+                        ? `${cashflowCommitPreparation.rows.length} righe pronte verranno confermate. ${cashflowCommitPreparation.unresolvedReadyCashflowRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyCashflowRows} righe cashflow richiedono una categoria esistente nel campo "Categoria / sottocategoria". ` : ''}${cashflowCommitPreparation.unresolvedReadyTransferRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyTransferRows} transfer richiedono conto origine e destinazione. ` : ''}${cashflowCommitPreparation.unresolvedReadyInvestmentRows > 0 ? `${cashflowCommitPreparation.unresolvedReadyInvestmentRows} operazioni di investimento richiedono un riferimento asset nel campo "Nome asset", "Ticker asset" o "ISIN asset". ` : ''}${cashflowCommitPreparation.duplicateReadyCashflowRows > 0 ? `${cashflowCommitPreparation.duplicateReadyCashflowRows} righe duplicate restano escluse dalla commit.` : ''}`
                         : categoriesLoading
                           ? 'Caricamento categorie in corso...'
-                          : 'Compila categorie cashflow o conti dei transfer per abilitare la conferma.'}
+                          : 'Compila categorie cashflow, conti dei transfer o riferimenti asset delle operazioni di investimento per abilitare la conferma.'}
                     </p>
                   </div>
 

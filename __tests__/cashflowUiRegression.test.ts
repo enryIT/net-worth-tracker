@@ -115,6 +115,51 @@ describe('cashflow UI regression guards', () => {
     expect(trackingSource).toContain("{ value: 'transfer', label: 'Trasferimento' }");
   });
 
+  it('includes investmentOperation rows in CSV import commit prep and keeps the confirmation copy generic', () => {
+    const source = readRepoFile('app/dashboard/cashflow/import-csv/page.tsx');
+
+    expect(source).toContain("movementKind: 'cashflow' | 'transfer' | 'investmentOperation';");
+    expect(source).toContain("row.movementKind === 'investmentOperation'");
+    expect(source).toContain("if (row.movementKind === 'investmentOperation') {");
+    expect(source).toContain("if (!row.canonicalFields.assetName && !row.canonicalFields.assetTicker && !row.canonicalFields.assetIsin) {");
+    expect(source).toContain("movementKind: 'investmentOperation',");
+    expect(source).toContain('categoryId: null,');
+    expect(source).toContain('categoryName: null,');
+    expect(source).toContain('subCategoryId: null,');
+    expect(source).toContain('subCategoryName: null,');
+    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni e le operazioni di investimento pronti possono essere confermati');
+    expect(source).toContain('Compila categorie cashflow, conti dei transfer o riferimenti asset delle operazioni di investimento per abilitare la conferma.');
+    expect(source).not.toContain('Nessuna riga cashflow o transfer pronta da importare');
+    expect(source).not.toContain('Conferma importazione cashflow e transfer');
+    expect(source).not.toContain('Compila categorie cashflow o conti dei transfer per abilitare la conferma.');
+  });
+
+  it('invalidates asset and investment caches after CSV import commit and rollback', () => {
+    const source = readRepoFile('app/dashboard/cashflow/import-csv/page.tsx');
+    const commitStart = source.indexOf('const handleCommitCashflowRows = useCallback');
+    const rollbackStart = source.indexOf('const handleRollbackCommittedBatch = useCallback');
+
+    expect(commitStart).toBeGreaterThanOrEqual(0);
+    expect(rollbackStart).toBeGreaterThan(commitStart);
+
+    const commitBlock = source.slice(commitStart, rollbackStart);
+    const rollbackBlock = source.slice(rollbackStart);
+    const expectedInvalidations = [
+      'queryKeys.expenses.all(user.uid)',
+      'queryKeys.expenses.stats(user.uid)',
+      'queryKeys.assets.all(user.uid)',
+      'queryKeys.assets.operations(user.uid)',
+      'queryKeys.assets.realized(user.uid)',
+      'queryKeys.assets.transfers(user.uid)',
+      'queryKeys.dashboard.overview(user.uid)',
+    ];
+
+    for (const invalidation of expectedInvalidations) {
+      expect(commitBlock).toContain(invalidation);
+      expect(rollbackBlock).toContain(invalidation);
+    }
+  });
+
   it('keeps the household attribution settings tab reachable from settings navigation', () => {
     const source = readRepoFile('app/dashboard/settings/page.tsx');
 

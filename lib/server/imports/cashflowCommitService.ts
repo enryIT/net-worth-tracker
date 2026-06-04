@@ -5,20 +5,25 @@ import { fromZonedTime } from 'date-fns-tz';
 import { createFirestoreCsvImportCashflowBatchRepository, createFirestoreCsvImportCashflowCategoryRepository } from '@/lib/server/imports/cashflowCommitRepository';
 import { invalidateDashboardOverviewSummaryServer as defaultInvalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
 import { ITALY_TIMEZONE, formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';
+import { calculateInvestmentOperationEffect } from '@/lib/utils/investmentOperationUtils';
 import type {
   CsvImportCashflowBatch,
   CsvImportCashflowBatchRepository,
   CsvImportCashflowCategoryRepository,
+  CsvImportCashflowAssetReference,
+  CsvImportCashflowCreatedInvestmentOperationRecord,
   CsvImportCashflowCommitInput,
   CsvImportCashflowCommitResult,
   CsvImportCashflowCommitRowInput,
   CsvImportCashflowCreatedRecord,
   CsvImportCashflowExpenseRecord,
   CsvImportCashflowInternalTransferRecord,
+  CsvImportCashflowInvestmentOperationRecord,
   CsvImportCashflowRollbackResult,
   CsvImportCashflowCategoryRecord,
   CsvImportCashflowAssetRecord,
 } from '@/lib/server/imports/cashflowCommitTypes';
+import type { InvestmentOperationType } from '@/types/investments';
 
 interface CsvImportCashflowCommitServiceDependencies {
   repository: CsvImportCashflowBatchRepository;
@@ -103,6 +108,263 @@ function getDateRangeForRows(rows: Array<{ parsedDate: Date }>): { startDate: Da
   };
 }
 
+type InvestmentOperationCommitType = Extract<InvestmentOperationType, 'buy' | 'sell'>;
+
+function normalizeReferenceText(value: string | null | undefined): string {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function buildInvestmentAssetReference(
+  row: CsvImportCashflowCommitRowInput
+): CsvImportCashflowAssetReference {
+  return {
+    assetTicker: row.canonicalFields.assetTicker,
+    assetIsin: row.canonicalFields.assetIsin,
+    assetName: row.canonicalFields.assetName,
+  };
+}
+
+function hasInvestmentAssetReference(reference: CsvImportCashflowAssetReference): boolean {
+  return Boolean(
+    reference.assetTicker?.trim() ||
+    reference.assetIsin?.trim() ||
+    reference.assetName?.trim()
+  );
+}
+
+function matchesInvestmentAssetReference(
+  asset: CsvImportCashflowAssetRecord,
+  reference: CsvImportCashflowAssetReference
+): boolean {
+  const targetTicker = normalizeReferenceText(reference.assetTicker);
+  const targetIsin = normalizeReferenceText(reference.assetIsin);
+  const targetName = normalizeReferenceText(reference.assetName);
+
+  if (!targetTicker && !targetIsin && !targetName) {
+    return false;
+  }
+
+  const assetTicker = normalizeReferenceText(asset.ticker);
+  const assetIsin = normalizeReferenceText(asset.isin);
+  const assetName = normalizeReferenceText(asset.name);
+
+  return (
+    (!targetTicker || assetTicker === targetTicker) &&
+    (!targetIsin || assetIsin === targetIsin) &&
+    (!targetName || assetName === targetName)
+  );
+}
+
+function cloneAssetRecord(asset: CsvImportCashflowAssetRecord): CsvImportCashflowAssetRecord {
+  return { ...asset };
+}
+
+function resolveInvestmentOperationType(row: CsvImportCashflowCommitRowInput): InvestmentOperationCommitType {
+  const explicitType = normalizeReferenceText(row.canonicalFields.sourceType);
+  if (explicitType === 'buy' || explicitType === 'sell') {
+    return explicitType;
+  }
+
+  if (row.canonicalFields.sourceType !== null && explicitType.length > 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il tipo operazione di investimento deve essere buy o sell',
+      { rowIndex: row.rowIndex, sourceType: row.canonicalFields.sourceType }
+    );
+  }
+
+  const amount = row.canonicalFields.amount;
+  if (amount === null || !Number.isFinite(amount) || amount === 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il tipo operazione di investimento non è deducibile dal segno dell\'importo',
+      { rowIndex: row.rowIndex, amount }
+    );
+  }
+
+  return amount < 0 ? 'buy' : 'sell';
+}
+
+function resolveInvestmentOperationCashAccount(
+  row: CsvImportCashflowCommitRowInput,
+  type: InvestmentOperationCommitType
+): { fieldName: 'sourceAccount' | 'destinationAccount'; assetId: string | null } {
+  const sourceAccount = row.canonicalFields.sourceAccount?.trim() ?? '';
+  const destinationAccount = row.canonicalFields.destinationAccount?.trim() ?? '';
+
+  if (type === 'buy') {
+    if (sourceAccount) {
+      return { fieldName: 'sourceAccount', assetId: sourceAccount };
+    }
+
+    if (destinationAccount) {
+      return { fieldName: 'destinationAccount', assetId: destinationAccount };
+    }
+
+    return { fieldName: 'sourceAccount', assetId: null };
+  }
+
+  if (destinationAccount) {
+    return { fieldName: 'destinationAccount', assetId: destinationAccount };
+  }
+
+  if (sourceAccount) {
+    return { fieldName: 'sourceAccount', assetId: sourceAccount };
+  }
+
+  return { fieldName: 'destinationAccount', assetId: null };
+}
+
+function assertInvestmentOperationRowIsCommitReady(
+  row: CsvImportCashflowCommitRowInput
+): asserts row is CsvImportCashflowCommitRowInput & { movementKind: 'investmentOperation' } {
+  assertRowCommonCommitReady(row);
+
+  if (row.movementKind !== 'investmentOperation') {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La commit import CSV accetta solo righe cashflow, transfer o investimento pronte',
+      { rowIndex: row.rowIndex, movementKind: row.movementKind }
+    );
+  }
+
+  const { date, description, quantity, unitPrice, fees, taxes } = row.canonicalFields;
+  if (!date || !description) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La riga investimento richiede data e descrizione validi',
+      { rowIndex: row.rowIndex }
+    );
+  }
+
+  if (!hasInvestmentAssetReference(buildInvestmentAssetReference(row))) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il riferimento asset confermato è obbligatorio per la riga investimento',
+      { rowIndex: row.rowIndex }
+    );
+  }
+
+  if (quantity === null || !Number.isFinite(quantity) || quantity <= 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'La quantità dell\'operazione di investimento deve essere maggiore di zero',
+      { rowIndex: row.rowIndex, quantity }
+    );
+  }
+
+  if (unitPrice === null || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Il prezzo unitario dell\'operazione di investimento deve essere maggiore di zero',
+      { rowIndex: row.rowIndex, unitPrice }
+    );
+  }
+
+  if (fees !== null && (!Number.isFinite(fees) || fees < 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Le commissioni dell\'operazione di investimento non sono valide',
+      { rowIndex: row.rowIndex, fees }
+    );
+  }
+
+  if (taxes !== null && (!Number.isFinite(taxes) || taxes < 0)) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'Le imposte dell\'operazione di investimento non sono valide',
+      { rowIndex: row.rowIndex, taxes }
+    );
+  }
+
+  resolveInvestmentOperationType(row);
+}
+
+function buildCreatedInvestmentOperationRecord(
+  userId: string,
+  batchId: string,
+  input: CsvImportCashflowCommitInput,
+  row: CsvImportCashflowCommitRowInput,
+  generatedOperationId: string,
+  now: Date,
+  asset: CsvImportCashflowAssetRecord,
+  cashAsset: CsvImportCashflowAssetRecord | null,
+  type: InvestmentOperationCommitType,
+  effect: ReturnType<typeof calculateInvestmentOperationEffect>
+): CsvImportCashflowInvestmentOperationRecord {
+  const currency = (row.canonicalFields.currency ?? asset.currency ?? 'EUR').toUpperCase();
+  const notes = row.canonicalFields.description ?? '';
+
+  return {
+    id: generatedOperationId,
+    userId,
+    batchId,
+    rowIndex: row.rowIndex,
+    dedupeKey: row.dedupeKey,
+    assetId: asset.id,
+    assetName: row.canonicalFields.assetName ?? asset.name,
+    assetTicker: row.canonicalFields.assetTicker ?? asset.ticker ?? '',
+    type,
+    date: toDate(row.canonicalFields.date),
+    quantity: row.canonicalFields.quantity ?? 0,
+    pricePerUnit: row.canonicalFields.unitPrice ?? 0,
+    grossAmount: effect.grossAmount,
+    fees: row.canonicalFields.fees ?? 0,
+    taxes: row.canonicalFields.taxes ?? 0,
+    currency,
+    cashAssetId: cashAsset?.id ?? null,
+    cashAssetName: cashAsset?.name ?? null,
+    previousQuantity: asset.quantity,
+    previousAverageCost: asset.averageCost,
+    resultingQuantity: effect.resultingQuantity,
+    resultingAverageCost: effect.resultingAverageCost,
+    realizedGain: effect.realizedGain,
+    realizedGainTax: effect.realizedGainTax,
+    netCashEffect: effect.netCashEffect,
+    notes,
+    importBatchId: batchId,
+    importRowIndex: row.rowIndex,
+    importDedupeKey: row.dedupeKey,
+    importIdempotencyKey: input.idempotencyKey,
+    importSourceFingerprint: input.sourceFingerprint ?? null,
+    importPresetId: input.presetId ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function buildCreatedInvestmentOperationSummary(
+  operation: CsvImportCashflowInvestmentOperationRecord
+): CsvImportCashflowCreatedInvestmentOperationRecord {
+  return {
+    kind: 'investmentOperation',
+    id: operation.id,
+    rowIndex: operation.rowIndex,
+    dedupeKey: operation.dedupeKey,
+    assetId: operation.assetId,
+    assetName: operation.assetName,
+    assetTicker: operation.assetTicker,
+    type: operation.type,
+    quantity: operation.quantity,
+    pricePerUnit: operation.pricePerUnit,
+    grossAmount: operation.grossAmount,
+    fees: operation.fees,
+    taxes: operation.taxes,
+    currency: operation.currency,
+    cashAssetId: operation.cashAssetId,
+    cashAssetName: operation.cashAssetName,
+    resultingQuantity: operation.resultingQuantity,
+    resultingAverageCost: operation.resultingAverageCost,
+    realizedGain: operation.realizedGain,
+    realizedGainTax: operation.realizedGainTax,
+    netCashEffect: operation.netCashEffect,
+  };
+}
+
 interface PreparedCommitRow {
   row: CsvImportCashflowCommitRowInput;
   parsedDate: Date;
@@ -131,9 +393,20 @@ function buildRequestFingerprint(
       categoryName: row.categoryName,
       subCategoryId: row.subCategoryId ?? null,
       subCategoryName: row.subCategoryName ?? null,
+      date: row.canonicalFields.date,
+      description: row.canonicalFields.description,
       amount: row.canonicalFields.amount,
       currency: row.canonicalFields.currency,
-      date: row.canonicalFields.date,
+      sourceType: row.canonicalFields.sourceType,
+      sourceAccount: row.canonicalFields.sourceAccount,
+      destinationAccount: row.canonicalFields.destinationAccount,
+      assetTicker: row.canonicalFields.assetTicker,
+      assetIsin: row.canonicalFields.assetIsin,
+      assetName: row.canonicalFields.assetName,
+      quantity: row.canonicalFields.quantity,
+      unitPrice: row.canonicalFields.unitPrice,
+      fees: row.canonicalFields.fees,
+      taxes: row.canonicalFields.taxes,
     })),
   };
 
@@ -304,9 +577,14 @@ function assertSupportedRowIsCommitReady(row: CsvImportCashflowCommitRowInput): 
     return;
   }
 
+  if (row.movementKind === 'investmentOperation') {
+    assertInvestmentOperationRowIsCommitReady(row);
+    return;
+  }
+
   throw new CsvImportCashflowCommitServiceError(
     400,
-    'La commit import CSV accetta solo righe cashflow o transfer pronte',
+    'La commit import CSV accetta solo righe cashflow, transfer o investimento pronte',
     { rowIndex: row.rowIndex, movementKind: row.movementKind }
   );
 }
@@ -629,8 +907,86 @@ export function createCsvImportCashflowCommitService(
       const createdRecords: CsvImportCashflowCreatedRecord[] = [];
       const createdExpenses: CsvImportCashflowExpenseRecord[] = [];
       const createdTransfers: CsvImportCashflowInternalTransferRecord[] = [];
+      const createdInvestmentOperations: CsvImportCashflowInvestmentOperationRecord[] = [];
       const batchCreatedAt = now();
       const batchId = generateId();
+      const assetCacheById = new Map<string, CsvImportCashflowAssetRecord>();
+
+      function cacheAsset(asset: CsvImportCashflowAssetRecord): CsvImportCashflowAssetRecord {
+        const cachedAsset = cloneAssetRecord(asset);
+        assetCacheById.set(cachedAsset.id, cachedAsset);
+        return cachedAsset;
+      }
+
+      function getCachedAssetById(assetId: string): CsvImportCashflowAssetRecord | null {
+        return assetCacheById.get(assetId) ?? null;
+      }
+
+      function findCachedInvestmentAssetByReference(
+        reference: CsvImportCashflowAssetReference
+      ): CsvImportCashflowAssetRecord | null {
+        return Array.from(assetCacheById.values()).find((asset) => (
+          asset.assetClass !== 'cash' && matchesInvestmentAssetReference(asset, reference)
+        )) ?? null;
+      }
+
+      async function resolveInvestmentAsset(
+        reference: CsvImportCashflowAssetReference
+      ): Promise<CsvImportCashflowAssetRecord> {
+        const cachedAsset = findCachedInvestmentAssetByReference(reference);
+        if (cachedAsset) {
+          return cachedAsset;
+        }
+
+        const resolvedAsset = await repository.getInvestmentAssetByConfirmedReference(userId, reference);
+        if (!resolvedAsset) {
+          throw new CsvImportCashflowCommitServiceError(
+            404,
+            'Asset di investimento confermato non trovato',
+            { reference }
+          );
+        }
+
+        if (resolvedAsset.userId !== userId) {
+          throw new CsvImportCashflowCommitServiceError(
+            403,
+            'Asset di investimento non appartiene all\'utente autenticato',
+            { assetId: resolvedAsset.id }
+          );
+        }
+
+        if (resolvedAsset.assetClass === 'cash') {
+          throw new CsvImportCashflowCommitServiceError(
+            400,
+            'La riga investimento richiede un asset non cash',
+            { assetId: resolvedAsset.id, assetClass: resolvedAsset.assetClass }
+          );
+        }
+
+        return cacheAsset(resolvedAsset);
+      }
+
+      async function resolveCashAsset(
+        assetId: string | null,
+        row: CsvImportCashflowCommitRowInput,
+        role: 'source' | 'destination'
+      ): Promise<CsvImportCashflowAssetRecord | null> {
+        if (!assetId) {
+          return null;
+        }
+
+        const cachedAsset = getCachedAssetById(assetId);
+        if (cachedAsset) {
+          return assertCashAssetUsableForTransfer(cachedAsset, userId, row, role);
+        }
+
+        const resolvedAsset = await repository.getCashAssetById(assetId);
+        if (!resolvedAsset) {
+          return assertCashAssetUsableForTransfer(resolvedAsset, userId, row, role);
+        }
+
+        return cacheAsset(assertCashAssetUsableForTransfer(resolvedAsset, userId, row, role));
+      }
 
       for (const { row, parsedDate } of preparedRows) {
         if (inputDedupeKeys.has(row.dedupeKey)) {
@@ -711,6 +1067,81 @@ export function createCsvImportCashflowCommitService(
           continue;
         }
 
+        if (row.movementKind === 'investmentOperation') {
+          const type = resolveInvestmentOperationType(row);
+          const assetReference = buildInvestmentAssetReference(row);
+          const asset = await resolveInvestmentAsset(assetReference);
+          const cashAccount = resolveInvestmentOperationCashAccount(row, type);
+          const cashAsset = await resolveCashAsset(
+            cashAccount.assetId,
+            row,
+            cashAccount.fieldName === 'sourceAccount' ? 'source' : 'destination'
+          );
+
+          let effect: ReturnType<typeof calculateInvestmentOperationEffect>;
+          try {
+            effect = calculateInvestmentOperationEffect({
+              type,
+              previousQuantity: asset.quantity,
+              previousAverageCost: asset.averageCost,
+              quantity: row.canonicalFields.quantity ?? 0,
+              pricePerUnit: row.canonicalFields.unitPrice ?? 0,
+              fees: row.canonicalFields.fees ?? 0,
+              taxes: row.canonicalFields.taxes ?? 0,
+            });
+          } catch (error) {
+            const message = error instanceof Error && error.message.includes('Cannot sell more quantity than currently owned')
+              ? 'La quantità venduta supera quella disponibile'
+              : 'Operazione di investimento non valida';
+
+            throw new CsvImportCashflowCommitServiceError(
+              400,
+              message,
+              { rowIndex: row.rowIndex, assetId: asset.id }
+            );
+          }
+
+          const generatedOperationId = generateId();
+          const operation = buildCreatedInvestmentOperationRecord(
+            userId,
+            batchId,
+            input,
+            {
+              ...row,
+              canonicalFields: {
+                ...row.canonicalFields,
+                date: formatDateInputValue(parsedDate),
+              },
+            },
+            generatedOperationId,
+            batchCreatedAt,
+            asset,
+            cashAsset,
+            type,
+            effect
+          );
+
+          createdRecords.push(buildCreatedInvestmentOperationSummary(operation));
+          createdInvestmentOperations.push(operation);
+          cacheAsset({
+            ...asset,
+            quantity: effect.resultingQuantity,
+            averageCost: effect.resultingAverageCost,
+            updatedAt: batchCreatedAt,
+          });
+
+          if (cashAsset && Math.abs(effect.netCashEffect) > 0.000001) {
+            cacheAsset({
+              ...cashAsset,
+              quantity: cashAsset.quantity + effect.netCashEffect,
+              updatedAt: batchCreatedAt,
+            });
+          }
+
+          inputDedupeKeys.add(row.dedupeKey);
+          continue;
+        }
+
         const sourceAssetId = row.canonicalFields.sourceAccount as string;
         const destinationAssetId = row.canonicalFields.destinationAccount as string;
         const [sourceAsset, destinationAsset] = await Promise.all([
@@ -761,7 +1192,13 @@ export function createCsvImportCashflowCommitService(
         rollbackReason: null,
       };
 
-      await repository.commitBatch(batch, createdRecords, createdExpenses, createdTransfers);
+      await repository.commitBatch(
+        batch,
+        createdRecords,
+        createdExpenses,
+        createdTransfers,
+        createdInvestmentOperations
+      );
       await invalidateDashboardOverviewSummaryServer(userId, 'csv_import_cashflow_committed');
 
       return {
@@ -797,10 +1234,16 @@ export function createCsvImportCashflowCommitService(
 
       const expectedCashflowCount = batch.createdRecords.filter((record) => record.kind === 'cashflow').length;
       const expectedTransferCount = batch.createdRecords.filter((record) => record.kind === 'internalTransfer').length;
+      const expectedInvestmentOperationCount = batch.createdRecords.filter((record) => record.kind === 'investmentOperation').length;
       const createdExpenses = await repository.listExpensesByBatchId(batchId);
       const createdTransfers = await repository.listInternalTransfersByBatchId(batchId);
-      const foundRecordCount = createdExpenses.length + createdTransfers.length;
-      if (createdExpenses.length !== expectedCashflowCount || createdTransfers.length !== expectedTransferCount) {
+      const createdInvestmentOperations = await repository.listInvestmentOperationsByBatchId(batchId);
+      const foundRecordCount = createdExpenses.length + createdTransfers.length + createdInvestmentOperations.length;
+      if (
+        createdExpenses.length !== expectedCashflowCount
+        || createdTransfers.length !== expectedTransferCount
+        || createdInvestmentOperations.length !== expectedInvestmentOperationCount
+      ) {
         throw new CsvImportCashflowCommitServiceError(
           409,
           'Il batch non è più sicuro da annullare',
@@ -810,6 +1253,7 @@ export function createCsvImportCashflowCommitService(
             found: foundRecordCount,
             expectedCashflowCount,
             expectedTransferCount,
+            expectedInvestmentOperationCount,
           }
         );
       }
@@ -838,10 +1282,56 @@ export function createCsvImportCashflowCommitService(
         );
       }
 
+      const currentAssetsById = new Map<string, CsvImportCashflowAssetRecord>();
+      const orderedInvestmentOperations = [...createdInvestmentOperations].sort(
+        (left, right) => left.rowIndex - right.rowIndex
+      );
+      for (const operation of orderedInvestmentOperations.reverse()) {
+        if (operation.updatedAt.getTime() !== operation.createdAt.getTime()) {
+          throw new CsvImportCashflowCommitServiceError(
+            409,
+            'Il batch contiene operazioni di investimento modificate manualmente e non può essere annullato automaticamente',
+            { batchId, operationId: operation.id }
+          );
+        }
+
+        const currentAsset = currentAssetsById.get(operation.assetId) ?? await repository.getAssetById(operation.assetId);
+        if (!currentAsset || currentAsset.userId !== userId) {
+          throw new CsvImportCashflowCommitServiceError(
+            409,
+            'Il batch non è più sicuro da annullare',
+            { batchId, operationId: operation.id, assetId: operation.assetId }
+          );
+        }
+
+        if (Math.abs(currentAsset.quantity - operation.resultingQuantity) > 0.000001) {
+          throw new CsvImportCashflowCommitServiceError(
+            409,
+            'Il batch contiene operazioni di investimento modificate manualmente e non può essere annullato automaticamente',
+            { batchId, operationId: operation.id, assetId: operation.assetId }
+          );
+        }
+
+        currentAssetsById.set(operation.assetId, {
+          ...currentAsset,
+          quantity: operation.previousQuantity,
+          averageCost: operation.previousAverageCost,
+          updatedAt: operation.createdAt,
+        });
+      }
+
       const expenseIds = createdExpenses.map((expense) => expense.id);
       const transferIds = createdTransfers.map((transfer) => transfer.id);
+      const investmentOperationIds = createdInvestmentOperations.map((operation) => operation.id);
       const rolledBackAt = now();
-      const updatedBatch = await repository.rollbackBatch(batchId, expenseIds, transferIds, rolledBackAt, rollbackReason);
+      const updatedBatch = await repository.rollbackBatch(
+        batchId,
+        expenseIds,
+        transferIds,
+        investmentOperationIds,
+        rolledBackAt,
+        rollbackReason
+      );
 
       if (!updatedBatch) {
         throw new CsvImportCashflowCommitServiceError(404, 'Batch import non trovato');
@@ -851,7 +1341,7 @@ export function createCsvImportCashflowCommitService(
 
       return {
         batch: updatedBatch,
-        removedRecordCount: expenseIds.length + transferIds.length,
+        removedRecordCount: expenseIds.length + transferIds.length + investmentOperationIds.length,
       };
     },
   };

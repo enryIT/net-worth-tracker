@@ -10,17 +10,28 @@ import type {
   CsvImportCashflowAssetRecord,
   CsvImportCashflowExpenseRecord,
   CsvImportCashflowInternalTransferRecord,
+  CsvImportCashflowInvestmentOperationRecord,
+  CsvImportCashflowAssetReference,
 } from '@/lib/server/imports/cashflowCommitTypes';
 
 const BATCH_COLLECTION = 'csvImportBatches';
 const ASSET_COLLECTION = 'assets';
 const EXPENSE_COLLECTION = 'expenses';
 const INTERNAL_TRANSFER_COLLECTION = 'internalTransfers';
+const INVESTMENT_OPERATION_COLLECTION = 'investmentOperations';
 
 function removeUndefinedFields<T extends Record<string, unknown>>(value: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== undefined)
   ) as Partial<T>;
+}
+
+function normalizeExactText(value: string | null | undefined): string {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 function mapBatch(id: string, data: Record<string, unknown>): CsvImportCashflowBatch {
@@ -78,9 +89,56 @@ function mapAsset(id: string, data: Record<string, unknown>): CsvImportCashflowA
     id,
     userId: String(data.userId ?? ''),
     name: String(data.name ?? ''),
+    ticker: typeof data.ticker === 'string' ? data.ticker : undefined,
+    isin: typeof data.isin === 'string' ? data.isin : undefined,
     assetClass: (data.assetClass as CsvImportCashflowAssetRecord['assetClass']) ?? 'cash',
     currency: String(data.currency ?? 'EUR'),
     quantity: Number(data.quantity ?? 0),
+    averageCost: typeof data.averageCost === 'number' ? data.averageCost : undefined,
+    updatedAt: toDate(data.updatedAt as never),
+  };
+}
+
+function mapInvestmentOperation(
+  id: string,
+  data: Record<string, unknown>
+): CsvImportCashflowInvestmentOperationRecord {
+  return {
+    id,
+    userId: String(data.userId ?? ''),
+    batchId: String(data.batchId ?? data.importBatchId ?? ''),
+    rowIndex: Number(data.importRowIndex ?? data.rowIndex ?? 0),
+    dedupeKey: String(data.importDedupeKey ?? data.dedupeKey ?? ''),
+    assetId: String(data.assetId ?? ''),
+    assetName: String(data.assetName ?? ''),
+    assetTicker: String(data.assetTicker ?? ''),
+    type: (data.type as CsvImportCashflowInvestmentOperationRecord['type']) ?? 'buy',
+    date: toDate(data.date as never),
+    quantity: Number(data.quantity ?? 0),
+    pricePerUnit: Number(data.pricePerUnit ?? 0),
+    grossAmount: Number(data.grossAmount ?? 0),
+    fees: Number(data.fees ?? 0),
+    taxes: Number(data.taxes ?? 0),
+    currency: String(data.currency ?? 'EUR'),
+    cashAssetId: typeof data.cashAssetId === 'string' ? data.cashAssetId : null,
+    cashAssetName: typeof data.cashAssetName === 'string' ? data.cashAssetName : null,
+    previousQuantity: Number(data.previousQuantity ?? 0),
+    previousAverageCost: typeof data.previousAverageCost === 'number' ? data.previousAverageCost : undefined,
+    resultingQuantity: Number(data.resultingQuantity ?? 0),
+    resultingAverageCost: typeof data.resultingAverageCost === 'number' ? data.resultingAverageCost : undefined,
+    realizedGain: typeof data.realizedGain === 'number' ? data.realizedGain : undefined,
+    realizedGainTax: typeof data.realizedGainTax === 'number' ? data.realizedGainTax : undefined,
+    netCashEffect: Number(data.netCashEffect ?? 0),
+    notes: String(data.notes ?? ''),
+    importBatchId: String(data.importBatchId ?? data.batchId ?? ''),
+    importRowIndex: typeof data.importRowIndex === 'number' ? data.importRowIndex : undefined,
+    importDedupeKey: typeof data.importDedupeKey === 'string' ? data.importDedupeKey : undefined,
+    importIdempotencyKey: String(data.importIdempotencyKey ?? ''),
+    importSourceFingerprint: typeof data.importSourceFingerprint === 'string'
+      ? data.importSourceFingerprint
+      : null,
+    importPresetId: typeof data.importPresetId === 'string' ? data.importPresetId : null,
+    createdAt: toDate(data.createdAt as never),
     updatedAt: toDate(data.updatedAt as never),
   };
 }
@@ -158,7 +216,43 @@ export function createFirestoreCsvImportCashflowBatchRepository(): CsvImportCash
       return mapAsset(snapshot.id, snapshot.data() as Record<string, unknown>);
     },
 
-    async commitBatch(batch, _createdRecords, expenses, internalTransfers) {
+    async getAssetById(assetId) {
+      const snapshot = await adminDb.collection(ASSET_COLLECTION).doc(assetId).get();
+      if (!snapshot.exists) {
+        return null;
+      }
+
+      return mapAsset(snapshot.id, snapshot.data() as Record<string, unknown>);
+    },
+
+    async getInvestmentAssetByConfirmedReference(userId, reference) {
+      const snapshot = await adminDb
+        .collection(ASSET_COLLECTION)
+        .where('userId', '==', userId)
+        .get();
+
+      const targetTicker = normalizeExactText(reference.assetTicker);
+      const targetIsin = normalizeExactText(reference.assetIsin);
+      const targetName = normalizeExactText(reference.assetName);
+
+      const matchingAsset = snapshot.docs
+        .map((doc) => mapAsset(doc.id, doc.data() as Record<string, unknown>))
+        .find((asset) => {
+          if (asset.assetClass === 'cash') {
+            return false;
+          }
+
+          const tickerMatches = !targetTicker || normalizeExactText(asset.ticker) === targetTicker;
+          const isinMatches = !targetIsin || normalizeExactText(asset.isin) === targetIsin;
+          const nameMatches = !targetName || normalizeExactText(asset.name) === targetName;
+
+          return tickerMatches && isinMatches && nameMatches;
+        });
+
+      return matchingAsset ?? null;
+    },
+
+    async commitBatch(batch, _createdRecords, expenses, internalTransfers, investmentOperations) {
       const batchRef = adminDb.collection(BATCH_COLLECTION).doc(batch.id);
       const writeBatch = adminDb.batch();
 
@@ -228,6 +322,57 @@ export function createFirestoreCsvImportCashflowBatchRepository(): CsvImportCash
         });
       });
 
+      investmentOperations.forEach((operation) => {
+        const operationRef = adminDb.collection(INVESTMENT_OPERATION_COLLECTION).doc(operation.id);
+        const assetRef = adminDb.collection(ASSET_COLLECTION).doc(operation.assetId);
+        writeBatch.set(operationRef, removeUndefinedFields({
+          userId: operation.userId,
+          batchId: operation.batchId,
+          importBatchId: operation.importBatchId,
+          importRowIndex: operation.importRowIndex ?? operation.rowIndex,
+          importDedupeKey: operation.importDedupeKey ?? operation.dedupeKey,
+          importIdempotencyKey: operation.importIdempotencyKey,
+          importSourceFingerprint: operation.importSourceFingerprint,
+          importPresetId: operation.importPresetId,
+          rowIndex: operation.rowIndex,
+          dedupeKey: operation.dedupeKey,
+          assetId: operation.assetId,
+          assetName: operation.assetName,
+          assetTicker: operation.assetTicker,
+          type: operation.type,
+          date: Timestamp.fromDate(operation.date),
+          quantity: operation.quantity,
+          pricePerUnit: operation.pricePerUnit,
+          grossAmount: operation.grossAmount,
+          fees: operation.fees,
+          taxes: operation.taxes,
+          currency: operation.currency,
+          cashAssetId: operation.cashAssetId ?? null,
+          cashAssetName: operation.cashAssetName ?? null,
+          previousQuantity: operation.previousQuantity,
+          previousAverageCost: operation.previousAverageCost,
+          resultingQuantity: operation.resultingQuantity,
+          resultingAverageCost: operation.resultingAverageCost,
+          realizedGain: operation.realizedGain,
+          realizedGainTax: operation.realizedGainTax,
+          netCashEffect: operation.netCashEffect,
+          notes: operation.notes,
+          createdAt: Timestamp.fromDate(operation.createdAt),
+          updatedAt: Timestamp.fromDate(operation.updatedAt),
+        }));
+        writeBatch.update(assetRef, {
+          quantity: FieldValue.increment(operation.resultingQuantity - operation.previousQuantity),
+          averageCost: operation.resultingAverageCost === undefined ? FieldValue.delete() : operation.resultingAverageCost,
+          updatedAt: Timestamp.fromDate(operation.updatedAt),
+        });
+        if (operation.cashAssetId && Math.abs(operation.netCashEffect) > 0.000001) {
+          writeBatch.update(adminDb.collection(ASSET_COLLECTION).doc(operation.cashAssetId), {
+            quantity: FieldValue.increment(operation.netCashEffect),
+            updatedAt: Timestamp.fromDate(operation.updatedAt),
+          });
+        }
+      });
+
       await writeBatch.commit();
     },
 
@@ -266,7 +411,18 @@ export function createFirestoreCsvImportCashflowBatchRepository(): CsvImportCash
         .sort((left, right) => left.rowIndex - right.rowIndex);
     },
 
-    async rollbackBatch(batchId, expenseIds, internalTransferIds, rolledBackAt, rollbackReason) {
+    async listInvestmentOperationsByBatchId(batchId) {
+      const snapshot = await adminDb
+        .collection(INVESTMENT_OPERATION_COLLECTION)
+        .where('importBatchId', '==', batchId)
+        .get();
+
+      return snapshot.docs
+        .map((doc) => mapInvestmentOperation(doc.id, doc.data() as Record<string, unknown>))
+        .sort((left, right) => left.rowIndex - right.rowIndex);
+    },
+
+    async rollbackBatch(batchId, expenseIds, internalTransferIds, investmentOperationIds, rolledBackAt, rollbackReason) {
       const batchRef = adminDb.collection(BATCH_COLLECTION).doc(batchId);
       const transferSnapshots = await Promise.all(
         internalTransferIds.map((transferId) => adminDb.collection(INTERNAL_TRANSFER_COLLECTION).doc(transferId).get())
@@ -274,6 +430,13 @@ export function createFirestoreCsvImportCashflowBatchRepository(): CsvImportCash
       const transfers = transferSnapshots
         .filter((snapshot) => snapshot.exists)
         .map((snapshot) => mapInternalTransfer(snapshot.id, snapshot.data() as Record<string, unknown>));
+      const investmentSnapshots = await Promise.all(
+        investmentOperationIds.map((operationId) => adminDb.collection(INVESTMENT_OPERATION_COLLECTION).doc(operationId).get())
+      );
+      const investmentOperations = investmentSnapshots
+        .filter((snapshot) => snapshot.exists)
+        .map((snapshot) => mapInvestmentOperation(snapshot.id, snapshot.data() as Record<string, unknown>))
+        .sort((left, right) => left.rowIndex - right.rowIndex);
       const writeBatch = adminDb.batch();
 
       expenseIds.forEach((expenseId) => {
@@ -293,6 +456,25 @@ export function createFirestoreCsvImportCashflowBatchRepository(): CsvImportCash
 
       internalTransferIds.forEach((transferId) => {
         writeBatch.delete(adminDb.collection(INTERNAL_TRANSFER_COLLECTION).doc(transferId));
+      });
+
+      [...investmentOperations].reverse().forEach((operation) => {
+        writeBatch.update(adminDb.collection(ASSET_COLLECTION).doc(operation.assetId), {
+          quantity: FieldValue.increment(operation.previousQuantity - operation.resultingQuantity),
+          averageCost: operation.previousAverageCost === undefined ? FieldValue.delete() : operation.previousAverageCost,
+          updatedAt: Timestamp.fromDate(rolledBackAt),
+        });
+
+        if (operation.cashAssetId && Math.abs(operation.netCashEffect) > 0.000001) {
+          writeBatch.update(adminDb.collection(ASSET_COLLECTION).doc(operation.cashAssetId), {
+            quantity: FieldValue.increment(-operation.netCashEffect),
+            updatedAt: Timestamp.fromDate(rolledBackAt),
+          });
+        }
+      });
+
+      investmentOperationIds.forEach((operationId) => {
+        writeBatch.delete(adminDb.collection(INVESTMENT_OPERATION_COLLECTION).doc(operationId));
       });
 
       writeBatch.update(batchRef, {

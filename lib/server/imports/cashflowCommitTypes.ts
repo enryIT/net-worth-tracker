@@ -2,6 +2,7 @@ import type { ImportIssue, ImportDedupeStatus, ImportMovementKind, NormalizedCan
 import type { AssetClass } from '@/types/assets';
 import type { ExpenseType } from '@/types/expenses';
 import type { InternalTransferPurpose } from '@/types/household';
+import type { InvestmentOperationType } from '@/types/investments';
 
 export interface CsvImportCashflowCommitRowInput {
   rowIndex: number;
@@ -54,9 +55,34 @@ export interface CsvImportCashflowCreatedInternalTransferRecord {
   purpose: InternalTransferPurpose;
 }
 
+export interface CsvImportCashflowCreatedInvestmentOperationRecord {
+  kind: 'investmentOperation';
+  id: string;
+  rowIndex: number;
+  dedupeKey: string;
+  assetId: string;
+  assetName: string;
+  assetTicker: string;
+  type: InvestmentOperationType;
+  quantity: number;
+  pricePerUnit: number;
+  grossAmount: number;
+  fees: number;
+  taxes: number;
+  currency: string;
+  cashAssetId: string | null;
+  cashAssetName: string | null;
+  resultingQuantity: number;
+  resultingAverageCost?: number;
+  realizedGain?: number;
+  realizedGainTax?: number;
+  netCashEffect: number;
+}
+
 export type CsvImportCashflowCreatedRecord =
   | CsvImportCashflowCreatedCashflowRecord
-  | CsvImportCashflowCreatedInternalTransferRecord;
+  | CsvImportCashflowCreatedInternalTransferRecord
+  | CsvImportCashflowCreatedInvestmentOperationRecord;
 
 export interface CsvImportCashflowBatch {
   id: string;
@@ -135,14 +161,60 @@ export interface CsvImportCashflowInternalTransferRecord {
   updatedAt: Date;
 }
 
+export interface CsvImportCashflowInvestmentOperationRecord {
+  id: string;
+  userId: string;
+  batchId: string;
+  rowIndex: number;
+  dedupeKey: string;
+  assetId: string;
+  assetName: string;
+  assetTicker: string;
+  type: InvestmentOperationType;
+  date: Date;
+  quantity: number;
+  pricePerUnit: number;
+  grossAmount: number;
+  fees: number;
+  taxes: number;
+  currency: string;
+  cashAssetId: string | null;
+  cashAssetName: string | null;
+  previousQuantity: number;
+  previousAverageCost?: number;
+  resultingQuantity: number;
+  resultingAverageCost?: number;
+  realizedGain?: number;
+  realizedGainTax?: number;
+  netCashEffect: number;
+  notes: string;
+  importBatchId: string;
+  importRowIndex?: number;
+  importDedupeKey?: string;
+  importIdempotencyKey: string;
+  importSourceFingerprint: string | null;
+  importPresetId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface CsvImportCashflowAssetRecord {
   id: string;
   userId: string;
   name: string;
+  ticker?: string;
+  isin?: string;
   assetClass: AssetClass;
   currency: string;
   quantity: number;
+  averageCost?: number;
   updatedAt: Date;
+}
+
+export interface CsvImportCashflowAssetReference {
+  assetTicker: string | null;
+  assetIsin: string | null;
+  assetName: string | null;
 }
 
 export interface CsvImportCashflowCategoryRecord {
@@ -157,20 +229,28 @@ export interface CsvImportCashflowBatchRepository {
   getById(batchId: string): Promise<CsvImportCashflowBatch | null>;
   getByUserAndIdempotencyKey(userId: string, idempotencyKey: string): Promise<CsvImportCashflowBatch | null>;
   listCommittedByUserId(userId: string): Promise<CsvImportCashflowBatch[]>;
+  getAssetById(assetId: string): Promise<CsvImportCashflowAssetRecord | null>;
   getCashAssetById(assetId: string): Promise<CsvImportCashflowAssetRecord | null>;
+  getInvestmentAssetByConfirmedReference(
+    userId: string,
+    reference: CsvImportCashflowAssetReference
+  ): Promise<CsvImportCashflowAssetRecord | null>;
   commitBatch(
     batch: CsvImportCashflowBatch,
     createdRecords: CsvImportCashflowCreatedRecord[],
     expenses: CsvImportCashflowExpenseRecord[],
-    internalTransfers: CsvImportCashflowInternalTransferRecord[]
+    internalTransfers: CsvImportCashflowInternalTransferRecord[],
+    investmentOperations: CsvImportCashflowInvestmentOperationRecord[]
   ): Promise<void>;
   listExpensesByBatchId(batchId: string): Promise<CsvImportCashflowExpenseRecord[]>;
   listInternalTransfersByBatchId(batchId: string): Promise<CsvImportCashflowInternalTransferRecord[]>;
+  listInvestmentOperationsByBatchId(batchId: string): Promise<CsvImportCashflowInvestmentOperationRecord[]>;
   listExpensesByUserAndDateRange(userId: string, startDate: Date, endDate: Date): Promise<CsvImportCashflowExpenseRecord[]>;
   rollbackBatch(
     batchId: string,
     expenseIds: string[],
     internalTransferIds: string[],
+    investmentOperationIds: string[],
     rolledBackAt: Date,
     rollbackReason: string
   ): Promise<CsvImportCashflowBatch | null>;
