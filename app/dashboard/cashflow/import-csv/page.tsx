@@ -44,6 +44,24 @@ const DEFAULT_CSV = [
 ].join('\n');
 
 const DEFAULT_DATE_FORMATS = ['dd/MM/yyyy', 'dd/MM/yy', 'yyyy-MM-dd'];
+const CSV_IMPORT_COMMIT_CHUNK_SIZE = 250;
+
+function splitIntoCommitChunks<T>(rows: T[], chunkSize: number): T[][] {
+  if (chunkSize <= 0) {
+    return [rows];
+  }
+
+  const chunks: T[][] = [];
+  for (let startIndex = 0; startIndex < rows.length; startIndex += chunkSize) {
+    chunks.push(rows.slice(startIndex, startIndex + chunkSize));
+  }
+
+  return chunks;
+}
+
+function buildChunkIdempotencyKey(baseIdempotencyKey: string, chunkIndex: number): string {
+  return `${baseIdempotencyKey}::chunk-${chunkIndex + 1}`;
+}
 
 const MOVEMENT_KIND_LABELS: Record<ImportMovementKind, string> = {
   cashflow: 'Cashflow',
@@ -421,6 +439,15 @@ interface CommitBatchSummary {
   removedRecordCount?: number;
 }
 
+interface CommitRunState {
+  totalChunks: number;
+  currentChunk: number;
+  completedChunks: number;
+  totalCreatedRecordCount: number;
+  failureMessage: string | null;
+  failedChunk: number | null;
+}
+
 interface CashflowCommitRowPayload {
   rowIndex: number;
   movementKind: CashflowCommitMovementKind;
@@ -535,6 +562,7 @@ function ImportCsvPage() {
   const [isCommitting, setIsCommitting] = useState(false);
   const [isRollingBack, setIsRollingBack] = useState(false);
   const [commitBatchSummary, setCommitBatchSummary] = useState<CommitBatchSummary | null>(null);
+  const [commitRunState, setCommitRunState] = useState<CommitRunState | null>(null);
   const [importHistoryRollbackTarget, setImportHistoryRollbackTarget] = useState<ImportHistoryBatch | null>(null);
 
   const selectedPreset = useMemo(
@@ -586,7 +614,11 @@ function ImportCsvPage() {
   }, [user]);
 
   useEffect(() => {
-    void loadPresets();
+    const timeoutId = setTimeout(() => {
+      void loadPresets();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [loadPresets]);
 
   const importHistoryQuery = useQuery({
@@ -822,6 +854,7 @@ function ImportCsvPage() {
       setSelectedRowId(null);
       setSelectedRowIds([]);
       setCommitBatchSummary(null);
+      setCommitRunState(null);
       commitIdempotencyKeyRef.current = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -839,6 +872,7 @@ function ImportCsvPage() {
       setIsValidating(true);
       setApiError(null);
       setCommitBatchSummary(null);
+      setCommitRunState(null);
       commitIdempotencyKeyRef.current = null;
 
       const response = await authenticatedFetch(VALIDATE_ENDPOINT, {
@@ -878,6 +912,7 @@ function ImportCsvPage() {
       setSelectedRowId(null);
       setSelectedRowIds([]);
       setCommitBatchSummary(null);
+      setCommitRunState(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setApiError(message);
@@ -1017,7 +1052,7 @@ function ImportCsvPage() {
       unresolvedReadyDividendRows,
       duplicateReadyRows,
     };
-  }, [displayRows, expenseCategories, readyCommitRows]);
+  }, [expenseCategories, readyCommitRows]);
 
   const filteredRows = useMemo(() => displayRows.filter((row) => {
     if (showOnlyErrors && !row.hasBlockingIssues) {
@@ -1167,6 +1202,27 @@ function ImportCsvPage() {
     toast.success('Modifica massiva applicata');
   }, [bulkCategoryLikeText, bulkDescription, bulkMovementKind, selectedRowIds]);
 
+  const invalidateImportRelatedQueries = useCallback(async () => {
+    if (!user) {
+      return;
+    }
+
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.transfers(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.imports.history(user.uid) }),
+      ]);
+    } catch (error) {
+      console.error('[POST /api/imports/commit] Unable to invalidate import-related queries:', error);
+    }
+  }, [queryClient, user]);
+
   const toggleReadyState = useCallback(() => {
     if (!selectedRow) {
       return;
@@ -1236,16 +1292,7 @@ function ImportCsvPage() {
           : currentSummary
       ));
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.transfers(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.imports.history(user.uid) }),
-      ]);
+      await invalidateImportRelatedQueries();
 
       toast.success(`Batch ${result.batch.id} annullato`);
       return true;
@@ -1256,7 +1303,7 @@ function ImportCsvPage() {
     } finally {
       setIsRollingBack(false);
     }
-  }, [queryClient, user]);
+  }, [invalidateImportRelatedQueries, user]);
 
   const handleCommitCashflowRows = useCallback(async () => {
     if (!user) {
@@ -1264,75 +1311,152 @@ function ImportCsvPage() {
       return;
     }
 
-    if (cashflowCommitPreparation.rows.length === 0) {
+    const commitRows = cashflowCommitPreparation.rows;
+    if (commitRows.length === 0) {
       toast.error('Nessuna riga pronta da importare');
       return;
     }
 
+    const commitChunks = splitIntoCommitChunks(commitRows, CSV_IMPORT_COMMIT_CHUNK_SIZE);
+    const baseIdempotencyKey = commitIdempotencyKeyRef.current
+      ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `cashflow-import-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    commitIdempotencyKeyRef.current = baseIdempotencyKey;
+
+    setIsCommitting(true);
+    setCommitBatchSummary(null);
+    setCommitRunState({
+      totalChunks: commitChunks.length,
+      currentChunk: 0,
+      completedChunks: 0,
+      totalCreatedRecordCount: 0,
+      failureMessage: null,
+      failedChunk: null,
+    });
+
+    let completedChunks = 0;
+    let totalCreatedRecordCount = 0;
+    let allChunksIdempotent = true;
+    let latestSuccessfulBatchWasIdempotent = true;
+    let hasCommittedAnyChunk = false;
+    let failedChunk = 0;
+
     try {
-      setIsCommitting(true);
+      for (let chunkIndex = 0; chunkIndex < commitChunks.length; chunkIndex += 1) {
+        const chunkRows = commitChunks[chunkIndex];
+        const chunkNumber = chunkIndex + 1;
 
-      const idempotencyKey = commitIdempotencyKeyRef.current
-        ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : `cashflow-import-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-      commitIdempotencyKeyRef.current = idempotencyKey;
+        setCommitRunState({
+          totalChunks: commitChunks.length,
+          currentChunk: chunkNumber,
+          completedChunks,
+          totalCreatedRecordCount,
+          failureMessage: null,
+          failedChunk: null,
+        });
 
-      const response = await authenticatedFetch(COMMIT_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId: user.uid,
-          idempotencyKey,
-          presetId: selectedPresetId || null,
-          sourceFingerprint: null,
-          rows: cashflowCommitPreparation.rows,
-        }),
-      });
+        const chunkIdempotencyKey = buildChunkIdempotencyKey(baseIdempotencyKey, chunkIndex);
+        const response = await authenticatedFetch(COMMIT_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.uid,
+            idempotencyKey: chunkIdempotencyKey,
+            presetId: selectedPresetId || null,
+            sourceFingerprint: null,
+            rows: chunkRows,
+          }),
+        });
 
-      const payload = await response.json();
-      if (!response.ok) {
-        const message = typeof payload?.error === 'string'
-          ? payload.error
-          : 'Errore durante la conferma import CSV';
-        toast.error(message);
-        return;
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message = typeof payload?.error === 'string'
+            ? payload.error
+            : 'Errore durante la conferma import CSV';
+          const failurePrefix = completedChunks > 0
+            ? `Il chunk ${chunkNumber}/${commitChunks.length} è fallito dopo ${completedChunks} chunk già confermati`
+            : `Il chunk ${chunkNumber}/${commitChunks.length} è fallito`;
+          failedChunk = chunkNumber;
+          throw new Error(`${failurePrefix}: ${message}`);
+        }
+
+        const result = payload?.data as {
+          batch: { id: string };
+          createdRecordCount: number;
+          wasIdempotent: boolean;
+        } | undefined;
+
+        if (!result?.batch?.id) {
+          failedChunk = chunkNumber;
+          throw new Error(`Il chunk ${chunkNumber}/${commitChunks.length} non ha restituito un batch valido`);
+        }
+
+        totalCreatedRecordCount += result.createdRecordCount;
+        completedChunks = chunkNumber;
+        hasCommittedAnyChunk = true;
+        allChunksIdempotent = allChunksIdempotent && result.wasIdempotent;
+        latestSuccessfulBatchWasIdempotent = allChunksIdempotent;
+
+        setCommitBatchSummary({
+          batchId: result.batch.id,
+          createdRecordCount: totalCreatedRecordCount,
+          wasIdempotent: latestSuccessfulBatchWasIdempotent,
+          status: 'committed',
+        });
+
+        setCommitRunState({
+          totalChunks: commitChunks.length,
+          currentChunk: chunkNumber,
+          completedChunks,
+          totalCreatedRecordCount,
+          failureMessage: null,
+          failedChunk: null,
+        });
       }
 
-      const result = payload?.data as {
-        batch: { id: string };
-        createdRecordCount: number;
-        wasIdempotent: boolean;
-      };
+      if (!hasCommittedAnyChunk) {
+        throw new Error('Nessun batch confermato durante la commit a chunk');
+      }
 
-      setCommitBatchSummary({
-        batchId: result.batch.id,
-        createdRecordCount: result.createdRecordCount,
-        wasIdempotent: result.wasIdempotent,
-        status: 'committed',
+      setCommitRunState({
+        totalChunks: commitChunks.length,
+        currentChunk: commitChunks.length,
+        completedChunks: commitChunks.length,
+        totalCreatedRecordCount,
+        failureMessage: null,
+        failedChunk: null,
       });
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.all(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.expenses.stats(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.transfers(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.imports.history(user.uid) }),
-      ]);
+      await invalidateImportRelatedQueries();
 
-      toast.success(`Importazione movimenti confermata: batch ${result.batch.id}`);
+      toast.success(
+        `Importazione movimenti confermata: ${commitChunks.length} chunk, ${totalCreatedRecordCount} record creati`
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const nextFailedChunk = failedChunk || Math.min(completedChunks + 1, commitChunks.length);
+
+      setCommitRunState({
+        totalChunks: commitChunks.length,
+        currentChunk: nextFailedChunk,
+        completedChunks,
+        totalCreatedRecordCount,
+        failureMessage: message,
+        failedChunk: nextFailedChunk,
+      });
+
+      if (hasCommittedAnyChunk) {
+        await invalidateImportRelatedQueries();
+      }
+
       toast.error(message);
     } finally {
       setIsCommitting(false);
     }
-  }, [cashflowCommitPreparation.rows, queryClient, selectedPresetId, user]);
+  }, [cashflowCommitPreparation.rows, invalidateImportRelatedQueries, selectedPresetId, user]);
 
   const handleRollbackCommittedBatch = useCallback(async () => {
     if (!commitBatchSummary || commitBatchSummary.status !== 'committed') {
@@ -1346,6 +1470,36 @@ function ImportCsvPage() {
   const selectedRowTitle = selectedRow
     ? `Riga ${selectedRow.rowIndex}`
     : 'Nessuna riga selezionata';
+
+  const commitPanelToneClass = commitRunState?.failureMessage
+    ? 'border-rose-200 bg-rose-50/70'
+    : commitBatchSummary?.status === 'rolledBack'
+      ? 'border-slate-200 bg-slate-50/70'
+      : commitBatchSummary
+        ? 'border-emerald-200 bg-emerald-50/70'
+        : 'border-amber-200 bg-amber-50/70';
+
+  const commitPanelTitle = commitRunState?.failureMessage
+    ? 'Importazione interrotta'
+    : isCommitting
+      ? 'Conferma importazione in corso'
+      : commitBatchSummary?.status === 'rolledBack'
+        ? 'Importazione annullata'
+        : commitBatchSummary
+          ? 'Importazione confermata'
+          : 'Conferma importazione movimenti';
+
+  const commitPanelProgressText = commitRunState
+    ? commitRunState.failureMessage
+      ? `${commitRunState.completedChunks} di ${commitRunState.totalChunks} chunk completati · ${commitRunState.totalCreatedRecordCount} record creati totali`
+      : `${commitRunState.completedChunks} di ${commitRunState.totalChunks} chunk completati${commitRunState.currentChunk > commitRunState.completedChunks ? ` · chunk ${commitRunState.currentChunk} in corso` : ''} · ${commitRunState.totalCreatedRecordCount} record creati totali`
+    : null;
+
+  const commitBatchSummaryText = commitBatchSummary
+    ? commitBatchSummary.status === 'rolledBack'
+      ? `Batch ${commitBatchSummary.batchId} annullato${commitBatchSummary.removedRecordCount !== undefined ? ` · ${commitBatchSummary.removedRecordCount} record rimossi` : ''}`
+      : `Ultimo batch confermato: batch ${commitBatchSummary.batchId} · ${commitBatchSummary.createdRecordCount} record creati totali${commitBatchSummary.wasIdempotent ? ' · richiesta idempotente' : ''}`
+    : null;
 
   return (
     <PageContainer>
@@ -1647,12 +1801,12 @@ function ImportCsvPage() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-4">
+              <div className={`rounded-lg border p-4 ${commitPanelToneClass}`}>
                 <div className="flex flex-col gap-4 desktop:flex-row desktop:items-start desktop:justify-between">
                   <div className="space-y-2">
-                    <p className="text-sm font-medium text-amber-950">Conferma importazione movimenti</p>
-                    <p className="text-sm text-amber-900/80">
-                      I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti possono essere confermati in Milestone 7.
+                    <p className="text-sm font-medium text-foreground">{commitPanelTitle}</p>
+                    <p className="text-sm text-muted-foreground">
+                      I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti vengono confermati in chunk da {CSV_IMPORT_COMMIT_CHUNK_SIZE} righe per mantenere il retry idempotente.
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {cashflowCommitPreparation.rows.length > 0
@@ -1661,6 +1815,21 @@ function ImportCsvPage() {
                           ? 'Caricamento categorie in corso...'
                           : 'Compila categorie per cashflow, fee e tax, conti dei transfer o riferimenti asset per operazioni di investimento e dividendi per abilitare la conferma.'}
                     </p>
+                    {commitPanelProgressText && (
+                      <p className="text-xs text-muted-foreground">
+                        {commitPanelProgressText}
+                      </p>
+                    )}
+                    {commitRunState?.failureMessage && (
+                      <p className="text-sm text-destructive">
+                        {commitRunState.failureMessage}. I chunk successivi sono stati interrotti.
+                      </p>
+                    )}
+                    {commitBatchSummaryText && (
+                      <p className="text-sm text-muted-foreground">
+                        {commitBatchSummaryText}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -1671,50 +1840,19 @@ function ImportCsvPage() {
                     >
                       {isCommitting ? 'Conferma in corso...' : 'Conferma importazione'}
                     </Button>
-                  </div>
-                </div>
-              </div>
-
-              {commitBatchSummary && (
-                <div
-                  className={[
-                    'rounded-lg border p-4',
-                    commitBatchSummary.status === 'rolledBack'
-                      ? 'border-slate-200 bg-slate-50/70'
-                      : 'border-emerald-200 bg-emerald-50/70',
-                  ].join(' ')}
-                >
-                  <div className="flex flex-col gap-4 desktop:flex-row desktop:items-start desktop:justify-between">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">
-                        {commitBatchSummary.status === 'rolledBack'
-                          ? 'Importazione annullata'
-                          : 'Importazione confermata'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Batch {commitBatchSummary.batchId} · {commitBatchSummary.createdRecordCount} record creati
-                        {commitBatchSummary.wasIdempotent ? ' · richiesta idempotente' : ''}
-                        {commitBatchSummary.status === 'rolledBack' && commitBatchSummary.removedRecordCount !== undefined
-                          ? ` · ${commitBatchSummary.removedRecordCount} record rimossi`
-                          : ''}
-                      </p>
-                    </div>
-
-                    {commitBatchSummary.status === 'committed' && (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          onClick={handleRollbackCommittedBatch}
-                          disabled={isRollingBack}
-                        >
-                          {isRollingBack ? 'Annullamento in corso...' : 'Annulla importazione batch'}
-                        </Button>
-                      </div>
+                    {commitBatchSummary?.status === 'committed' && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={handleRollbackCommittedBatch}
+                        disabled={isRollingBack}
+                      >
+                        {isRollingBack ? 'Annullamento in corso...' : 'Annulla importazione batch'}
+                      </Button>
                     )}
                   </div>
                 </div>
-              )}
+              </div>
 
               <div className="rounded-lg border bg-background p-4">
                 <div className="flex flex-col gap-3 desktop:flex-row desktop:items-start desktop:justify-between">

@@ -9,7 +9,7 @@ describe('csv import preview UI', () => {
     expect(source).toContain('/dashboard/cashflow/import-csv');
   });
 
-  it('exposes the M7 commit and rollback action for ready dividend, fee, tax, cashflow, transfer, and investment rows', () => {
+  it('exposes the chunked commit and rollback action for ready dividend, fee, tax, cashflow, transfer, and investment rows', () => {
     const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
 
     expect(source).toContain('Anteprima import CSV');
@@ -21,9 +21,12 @@ describe('csv import preview UI', () => {
     expect(source).toContain('Carica preset');
     expect(source).toContain('Aggiorna preset');
     expect(source).toContain('Elimina preset');
-    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti possono essere confermati in Milestone 7.');
+    expect(source).toContain('Conferma importazione movimenti');
+    expect(source).toContain('vengono confermati in chunk da {CSV_IMPORT_COMMIT_CHUNK_SIZE} righe per mantenere il retry idempotente.');
     expect(source).toContain('Conferma importazione');
     expect(source).toContain('Annulla importazione batch');
+    expect(source).toContain('Ultimo batch confermato: batch');
+    expect(source).toContain('I chunk successivi sono stati interrotti.');
     expect(source).toContain('Nessun movimento viene salvato in questa fase');
     expect(source).toContain("row.movementKind !== 'unknown'");
     expect(source).toContain("if (row.movementKind === 'dividend') {");
@@ -71,5 +74,30 @@ describe('csv import preview UI', () => {
 
     expect(source).toMatch(/const DEFAULT_DATE_FORMATS = \['dd\/MM\/yyyy', 'dd\/MM\/yy', 'yyyy-MM-dd'\];/);
     expect(source.match(/dateFormats:\s*DEFAULT_DATE_FORMATS/g) ?? []).toHaveLength(2);
+  });
+
+  it('chunks ready commit rows with a fixed size and per-chunk idempotency keys', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toMatch(/const CSV_IMPORT_COMMIT_CHUNK_SIZE = 250;/);
+    expect(source).toMatch(
+      /function splitIntoCommitChunks<T>\(rows: T\[\], chunkSize: number\): T\[\]\[\] \{[\s\S]*if \(chunkSize <= 0\) \{[\s\S]*return \[rows\];[\s\S]*for \(let startIndex = 0; startIndex < rows\.length; startIndex \+= chunkSize\) \{[\s\S]*chunks\.push\(rows\.slice\(startIndex, startIndex \+ chunkSize\)\);[\s\S]*return chunks;[\s\S]*\}/
+    );
+    expect(source).toMatch(/function buildChunkIdempotencyKey\(baseIdempotencyKey: string, chunkIndex: number\): string \{/);
+    expect(source).toMatch(
+      /const commitChunks = splitIntoCommitChunks\(commitRows, CSV_IMPORT_COMMIT_CHUNK_SIZE\);[\s\S]*for \(let chunkIndex = 0; chunkIndex < commitChunks\.length; chunkIndex \+= 1\) \{[\s\S]*const chunkRows = commitChunks\[chunkIndex\];[\s\S]*const chunkIdempotencyKey = buildChunkIdempotencyKey\(baseIdempotencyKey, chunkIndex\);[\s\S]*rows: chunkRows,/
+    );
+    expect(source).not.toContain('rows: cashflowCommitPreparation.rows,');
+  });
+
+  it('shows chunk progress and partial failure copy in the commit status area', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toContain('Conferma importazione in corso');
+    expect(source).toContain('chunk completati');
+    expect(source).toContain('record creati totali');
+    expect(source).toContain('Il chunk ${chunkNumber}/${commitChunks.length} è fallito dopo ${completedChunks} chunk già confermati');
+    expect(source).toContain('Importazione interrotta');
+    expect(source).toContain('I chunk successivi sono stati interrotti.');
   });
 });
