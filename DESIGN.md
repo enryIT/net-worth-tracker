@@ -118,31 +118,37 @@ components:
 
 ## 1. Overview
 
-**Creative North Star: "The Precision Instrument"**
+**Creative North Star: "Effortless Precision"**
 
-This system is built for one purpose: total clarity about your financial position. Every element earns its place by communicating a number, a trend, or a relationship. The aesthetic draws from two co-primary references: Linear/Vercel clarity and Trade Republic hierarchy. Neither is secondary.
+This system is built for one purpose: total clarity about your financial position. The design ambition is to be the Apple of personal finance trackers — not the most feature-rich instrument, but the one that makes you immediately understand your financial situation, beautifully and effortlessly. Every element earns its place by communicating a number, a trend, or a relationship. The aesthetic draws from three co-primary references: Linear/Vercel clarity, Trade Republic data hierarchy, and Apple's effortless premium.
 
 **Linear / Vercel** provides the structural foundation: tight geometry, achromatic palette, strong typography, physics-native motion, zero decorative chrome.
 
 **Trade Republic** provides the data hierarchy: the primary number dominates physically and visually. Layout flows vertically — dominant value → inline variation chip → small label metadata. Flat `divide-y` lists instead of card-within-card nesting. No decorative progress bars. No box-within-box. Visual chrome is reduced to its structural minimum: only what separates, never what decorates.
 
-The two references are compatible. Both share dark mode as a premium experience, typography as structure, and zero tolerance for decoration that doesn't carry information.
+**Apple (Stocks, Wallet, Health)** provides the quality benchmark: complex data made effortlessly readable. Generous whitespace as a design material — not wasted space, but earned breathing room. Light mode equally premium to dark. Surfaces that feel considered and valuable. Progressive disclosure: the essential at a glance, depth on interaction. The interface recedes so the numbers speak.
 
-Dark mode is the primary experience. An Italian investor reviewing portfolio performance at their desk, evening light off, monitor close, expects precision: sharp contrasts, monospaced figures, no visual noise competing with numbers that represent years of work. Light mode is fully supported and equally refined, but the design intent was formed in darkness.
+The three references are compatible. All share zero tolerance for decoration that doesn't carry information, strong typography as structure, and the conviction that simplicity is harder to achieve than complexity.
+
+**The Unifying Law — Form Follows Function.** Beneath all three references sits a single conviction, the one Jony Ive carries forward from the modernist tradition: form follows function. Every visual property of every element — its size, weight, color, position, motion, even its corner radius — is a *consequence* of what that element does, never a costume applied to it afterward. A number is large because it is the most important fact on the screen, not because "large" looks impressive. A border is 1px at 10% opacity because that is precisely the contrast required to separate — no more. Motion exists to reveal a relationship the eye would otherwise miss. When form and decoration disagree, function wins, every time. Three corollaries follow Ive's reading of the principle: **honesty** — a surface never fakes a depth, material, or state it doesn't have (no false glass, no invented shadow hierarchy); **deference** — the interface is a quiet instrument that recedes so the data can speak; **inevitability** — a well-resolved element looks like the only possible answer, as if it could not have been otherwise. This law is the *why* behind every rule that follows: zero-chroma, the Mono Mandate, ambient elevation, chrome reduction — each is form bending to function, not the reverse.
+
+Both dark and light modes are primary, equally refined experiences. An Italian investor reviewing portfolio performance deserves precision and premium quality regardless of their environment or preference.
 
 The five named color themes (Solar Dusk, Elegant Luxury, Midnight Bloom, Cyberpunk, Retro Arcade) are personality layers on top of a structural foundation. They change accent and surface palette without touching the underlying type scale, radius, or component API. The default theme is the instrument in its raw state. The themes are its finishes.
 
-This system explicitly rejects three aesthetic modes: Bloomberg terminal coldness (too dense and impersonal for a personal wealth journal), consumer fintech brightness (Revolut-style gradients and playful fills trivialize serious data), and Material Design genericism (component conventions that serve any app therefore serve this one poorly).
+This system explicitly rejects four aesthetic modes: Bloomberg terminal coldness (too dense and impersonal for a personal wealth journal), consumer fintech brightness (Revolut-style gradients and playful fills trivialize serious data), Material Design genericism (component conventions that serve any app therefore serve this one poorly), and **ostentated complexity** (UI that demonstrates how hard the domain is rather than hiding that complexity behind a calm surface).
 
 **Key Characteristics:**
+- Form follows function: every visual property is derived from what an element does — honesty over illusion, deference over decoration, inevitability over ornament
 - Achromatic structural palette; data colors carry all chromatic meaning in the default theme
 - Geist Sans for interface text, Geist Mono for every number that matters
-- Radius is tight: 8px (inputs, buttons), 14px (cards) — never pill-shaped for containers
+- Radius is refined: 10px (inputs, buttons), 16px (cards) — premium curve without losing authority
 - Elevation is ambient: surfaces layer through background steps, shadows are atmospheric whispers
 - Motion is physics-native: spring dialogs, ease-out-quart state transitions, circle-reveal theme toggle
 - Hierarchy is Trade Republic-style: one dominant value per section, everything else is context
 - Chrome reduction is deliberate: flat lists over nested cards, divide-y over borders-on-boxes
 - Mobile-first: layouts are designed at 390px first; desktop adds columns, never simplifies
+- Light and dark modes are equally premium — different materials, same quality standard
 
 ## 2. Colors: The Zero-Chroma Foundation
 
@@ -354,18 +360,34 @@ A compact, text-only chip for contextual financial actions (buy / sell / hold si
 
 ### Segmented Pill Control
 
-A tab switcher for 2–4 mutually exclusive views within a section. Replaces `<Select>` dropdowns where options are few, short, and always visible. The active pill animates via Framer Motion `layoutId` spring.
+A tab switcher for mutually exclusive views within a section. Replaces `<Select>` dropdowns where options are few and always visible. The active pill animates via Framer Motion `layoutId` spring.
 
-**Structure:** `role="tablist"` container with `bg-muted rounded-lg p-1`, each option is a `role="tab"` button. Active pill is a `motion.div` with `layoutId` that slides between options.
+**Structure:** `role="tablist"` container with `bg-muted rounded-lg p-1 w-fit mx-auto`, each option is a `role="tab"` `motion.button` with `layout="size"`. Active pill is a `motion.div` with `layoutId` and `bg-background shadow-sm` that slides between options.
 
-**Spring:** `stiffness: 400, damping: 35` — snappy without overshooting.
+**Spring:** `stiffness: 400, damping: 35` — snappy without overshooting. Same constant on both `motion.button` `transition` and `motion.div` `transition`.
 
-**Rules:**
-- 2–4 options maximum. Beyond 4, use a Select or vertical nav.
-- Labels are abbreviated for mobile (≤10 chars preferred). Full labels on `desktop:`.
+#### Variant A — Icon tabs (section navigation)
+
+Used in `PageTabBar` for pages with multiple named sections (Cashflow, Settings, FIRE). Each tab has a meaningful icon.
+
+- **Active tab:** icon + full label. `motion.button layout="size"` expands smoothly.
+- **Inactive tabs:** icon only — label hidden. Tabs shrink to icon width.
+- **Fallback:** if a tab has no icon, always show the label regardless of active state.
+- **Centering:** `w-fit mx-auto` on the container — the pill sizes to content and centers in the page.
+- **Implementation:** `components/layout/PageTabBar.tsx`
+
+#### Variant B — Text tabs (period / filter selection)
+
+Used for compact period selectors (e.g. YTD / 1A / 3A / 5A / MAX on Rendimenti) where labels ARE the identifier and no icons exist.
+
+- All options always show their label (already ≤3–4 chars — no overflow risk).
+- Uses underline `motion.div` indicator instead of background pill — appropriate for horizontal period strips.
+- Do not force icons onto period selectors. "1 year" has no meaningful icon.
+
+**Shared rules:**
 - Full ARIA: `role="tablist"` on container, `role="tab"` + `aria-selected` per button.
 - Only use for view-switching within a page section. Global navigation uses the bottom pill or sidebar.
-- Desktop may use shadcn `TabsList` when the design calls for a more open tab style. The segmented pill is the mobile-first default.
+- Desktop (`≥ 1440px`): `PageTabBar` renders the animated underline tab bar instead. The segmented pill is mobile-only (`desktop:hidden`).
 
 ### Bento Asymmetric Hero Layout
 
@@ -657,6 +679,7 @@ useEffect(() => {
 
 ### Do:
 
+- **Do** derive every visual choice from function — form follows function. Before adding any property (a color, a shadow, a radius, a motion, an extra pixel of size), name the job it does. If the only answer is "it looks nice," remove it. Form is the consequence of function, never its costume.
 - **Do** use Geist Mono with `font-feature-settings: "tnum" 1` for every monetary value, percentage, and structured date. Column alignment is a trust signal.
 - **Do** reference `--sidebar-primary` for active navigation states. In the default theme this is the only sanctioned non-achromatic color in the interface chrome.
 - **Do** use the Float shadow exclusively for elements that leave document flow (modals, the mobile nav pill, dropdown menus). Never apply it to in-flow cards.
@@ -679,6 +702,7 @@ useEffect(() => {
 
 ### Don't:
 
+- **Don't** shape an element for appearance alone. A larger number, a heavier shadow, a brighter accent, or an extra animation that exists "to look good" violates form-follows-function. If a property carries no function, it is decoration — cut it. And never fake what isn't there: no false depth, no invented material, no shadow hierarchy a surface hasn't earned (the honesty corollary).
 - **Don't** add brand color to the default theme's surface chrome (backgrounds, cards, buttons). Zero-chroma is the rule: color belongs to data, not decoration.
 - **Don't** model density after a Bloomberg terminal. Dense presentation serves the user; illegibility or emotional coldness does not.
 - **Don't** use consumer fintech color patterns — colorful fills, playful gradients, bright accents on every interactive element. This tool handles serious long-term wealth management.

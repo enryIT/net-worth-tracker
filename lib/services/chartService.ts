@@ -401,6 +401,8 @@ export function prepareSavingsVsInvestmentData(
     const year = getItalyYear(expense.date);
     const current = expensesByYear.get(year) || { income: 0, expenses: 0 };
 
+    // Transfers are net-zero — skip entirely
+    if (expense.type === 'transfer') return;
     // Income is positive, expenses are stored as negative values
     if (expense.type === 'income') {
       current.income += expense.amount;
@@ -506,6 +508,8 @@ export function prepareSavingsVsInvestmentDataMonthly(
     const key = `${ey}-${em}`;
     const current = expensesByMonth.get(key) || { income: 0, expenses: 0 };
 
+    // Transfers are net-zero — skip entirely
+    if (expense.type === 'transfer') return;
     // Income is positive, expenses are stored as negative values
     if (expense.type === 'income') {
       current.income += expense.amount;
@@ -589,6 +593,8 @@ export function prepareSavingsVsInvestmentDataAllMonths(
     const key = `${ey}-${em}`;
     const current = expensesByMonth.get(key) || { income: 0, expenses: 0 };
 
+    // Transfers are net-zero — skip entirely
+    if (expense.type === 'transfer') return;
     // Income is positive, expenses are stored as negative values
     if (expense.type === 'income') {
       current.income += expense.amount;
@@ -1065,7 +1071,7 @@ export function prepareMonthlyLaborMetricsData(
       if (laborCategorySet.has(expense.categoryId)) {
         current.laborIncome += expense.amount;
       }
-    } else {
+    } else if (expense.type !== 'transfer') {
       current.allExpenses += expense.amount; // already negative
     }
 

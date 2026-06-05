@@ -29,7 +29,8 @@
 
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
@@ -69,10 +70,12 @@ import { getExpenseCountByCategoryId, reassignExpensesCategory, clearExpensesCat
 import { CategoryManagementDialog } from '@/components/expenses/CategoryManagementDialog';
 import { CategoryDeleteConfirmDialog } from '@/components/expenses/CategoryDeleteConfirmDialog';
 import { CategoryMoveDialog } from '@/components/expenses/CategoryMoveDialog';
+import { getLazyIcon } from '@/components/expenses/IconPickerPopover';
 import { CreateDummySnapshotModal } from '@/components/CreateDummySnapshotModal';
 import { DeleteDummyDataDialog } from '@/components/DeleteDummyDataDialog';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { PageTabs } from '@/components/layout/PageTabs';
+import type { TabDef } from '@/components/layout/PageTabBar';
 
 interface SubTarget {
   name: string;
@@ -120,13 +123,12 @@ const roundToTwoDecimals = (value: number): number => {
 };
 
 // Module-level tab definitions drive both the mobile pill and the desktop underline tabs.
-// shortLabel must be ≤8 chars for the iPhone SE pill width.
-const SETTINGS_TABS: { value: string; label: string; shortLabel: string; icon: React.ElementType }[] = [
-  { value: 'allocazione', label: 'Allocazione', shortLabel: 'Alloc.',  icon: PieChart },
-  { value: 'generale',    label: 'Preferenze',  shortLabel: 'Pref.',   icon: Settings },
-  { value: 'spese',       label: 'Spese',       shortLabel: 'Spese',   icon: Receipt  },
-  { value: 'dividendi',   label: 'Dividendi',   shortLabel: 'Divid.',  icon: Coins    },
-  { value: 'aspetto',     label: 'Aspetto',     shortLabel: 'Aspetto', icon: Palette  },
+const SETTINGS_TABS: TabDef[] = [
+  { value: 'allocazione', label: 'Allocazione', icon: PieChart },
+  { value: 'generale',    label: 'Preferenze',  icon: Settings },
+  { value: 'spese',       label: 'Spese',       icon: Receipt  },
+  { value: 'dividendi',   label: 'Dividendi',   icon: Coins    },
+  { value: 'aspetto',     label: 'Aspetto',     icon: Palette  },
 ];
 
 export default function SettingsPage() {
@@ -150,10 +152,12 @@ export default function SettingsPage() {
   const [costCentersEnabled, setCostCentersEnabled] = useState<boolean>(false);
   const [monthlyEmailEnabled, setMonthlyEmailEnabled] = useState<boolean>(false);
   const [quarterlyEmailEnabled, setQuarterlyEmailEnabled] = useState<boolean>(false);
+  const [semiAnnualEmailEnabled, setSemiAnnualEmailEnabled] = useState<boolean>(false);
   const [yearlyEmailEnabled, setYearlyEmailEnabled] = useState<boolean>(false);
+  const [weeklyBudgetEmailEnabled, setWeeklyBudgetEmailEnabled] = useState<boolean>(false);
   const [monthlyEmailRecipients, setMonthlyEmailRecipients] = useState<string[]>([]);
   const [newEmailInput, setNewEmailInput] = useState<string>('');
-  const [sendingTestEmailType, setSendingTestEmailType] = useState<'monthly' | 'quarterly' | 'yearly' | null>(null);
+  const [sendingTestEmailType, setSendingTestEmailType] = useState<'monthly' | 'quarterly' | 'semiannual' | 'yearly' | 'weekly-budget' | null>(null);
   const [assetClassStates, setAssetClassStates] = useState<
     Record<AssetClass, AssetClassState>
   >({} as Record<AssetClass, AssetClassState>);
@@ -207,8 +211,15 @@ export default function SettingsPage() {
 
   // Tab navigation — lazy-loading pattern (same as Assets/Cashflow pages)
   type SettingsTabId = 'generale' | 'allocazione' | 'spese' | 'dividendi' | 'aspetto';
-  const [mountedTabs, setMountedTabs] = useState<Set<SettingsTabId>>(new Set(['allocazione']));
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('allocazione');
+  const VALID_TABS: SettingsTabId[] = ['generale', 'allocazione', 'spese', 'dividendi', 'aspetto'];
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const initialTab = (VALID_TABS.includes(searchParams.get('tab') as SettingsTabId)
+    ? searchParams.get('tab') as SettingsTabId
+    : 'allocazione');
+  const [mountedTabs, setMountedTabs] = useState<Set<SettingsTabId>>(new Set([initialTab]));
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(initialTab);
   const { colorTheme, setColorTheme } = useColorTheme();
   const [allocationBaselineKey, setAllocationBaselineKey] = useState('');
   const [generalBaselineKey, setGeneralBaselineKey] = useState('');
@@ -233,7 +244,14 @@ export default function SettingsPage() {
   const handleTabChange = (value: string) => {
     setActiveTab(value as SettingsTabId);
     setMountedTabs((prev) => new Set(prev).add(value as SettingsTabId));
+    router.replace(`${pathname}?tab=${value}`, { scroll: false });
   };
+
+  // Sync URL on mount so the initial tab is always reflected
+  useEffect(() => {
+    router.replace(`${pathname}?tab=${initialTab}`, { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -373,7 +391,9 @@ export default function SettingsPage() {
         setCostCentersEnabled(settingsData.costCentersEnabled ?? false);
         setMonthlyEmailEnabled(settingsData.monthlyEmailEnabled ?? false);
         setQuarterlyEmailEnabled(settingsData.quarterlyEmailEnabled ?? false);
+        setSemiAnnualEmailEnabled(settingsData.semiAnnualEmailEnabled ?? false);
         setYearlyEmailEnabled(settingsData.yearlyEmailEnabled ?? false);
+        setWeeklyBudgetEmailEnabled(settingsData.weeklyBudgetEmailEnabled ?? false);
         setMonthlyEmailRecipients(settingsData.monthlyEmailRecipients ?? []);
         // Load dividend settings
         setDividendIncomeCategoryId(settingsData.dividendIncomeCategoryId || '');
@@ -490,7 +510,9 @@ export default function SettingsPage() {
           costCentersEnabled: settingsData?.costCentersEnabled ?? false,
           monthlyEmailEnabled: settingsData?.monthlyEmailEnabled ?? false,
           quarterlyEmailEnabled: settingsData?.quarterlyEmailEnabled ?? false,
+          semiAnnualEmailEnabled: settingsData?.semiAnnualEmailEnabled ?? false,
           yearlyEmailEnabled: settingsData?.yearlyEmailEnabled ?? false,
+          weeklyBudgetEmailEnabled: settingsData?.weeklyBudgetEmailEnabled ?? false,
           monthlyEmailRecipients: [...(settingsData?.monthlyEmailRecipients ?? [])].sort(),
         })
       );
@@ -1051,7 +1073,9 @@ export default function SettingsPage() {
         costCentersEnabled,
         monthlyEmailEnabled,
         quarterlyEmailEnabled,
+        semiAnnualEmailEnabled,
         yearlyEmailEnabled,
+        weeklyBudgetEmailEnabled,
         monthlyEmailRecipients,
       });
       toast.success('Impostazioni salvate con successo');
@@ -1365,7 +1389,9 @@ export default function SettingsPage() {
         costCentersEnabled,
         monthlyEmailEnabled,
         quarterlyEmailEnabled,
+        semiAnnualEmailEnabled,
         yearlyEmailEnabled,
+        weeklyBudgetEmailEnabled,
         monthlyEmailRecipients: [...monthlyEmailRecipients].sort(),
       }),
     [
@@ -1382,7 +1408,9 @@ export default function SettingsPage() {
       costCentersEnabled,
       monthlyEmailEnabled,
       quarterlyEmailEnabled,
+      semiAnnualEmailEnabled,
       yearlyEmailEnabled,
+      weeklyBudgetEmailEnabled,
       monthlyEmailRecipients,
     ]
   );
@@ -1823,6 +1851,25 @@ export default function SettingsPage() {
             />
           </div>
 
+          {/* Semi-annual email toggle */}
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <Label htmlFor="semiAnnualEmailEnabled" className="text-sm font-medium">
+                Attiva report semestrale
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Inviato automaticamente il 30 giugno e il 31 dicembre
+              </p>
+            </div>
+            <Switch
+              id="semiAnnualEmailEnabled"
+              checked={semiAnnualEmailEnabled}
+              onCheckedChange={setSemiAnnualEmailEnabled}
+              disabled={isDemo}
+              className={interactiveControlClass}
+            />
+          </div>
+
           {/* Yearly email toggle */}
           <div className="flex items-center justify-between border-t pt-4">
             <div>
@@ -1842,7 +1889,26 @@ export default function SettingsPage() {
             />
           </div>
 
-          {(monthlyEmailEnabled || quarterlyEmailEnabled || yearlyEmailEnabled) && (
+          {/* Weekly budget email toggle */}
+          <div className="flex items-center justify-between border-t pt-4">
+            <div>
+              <Label htmlFor="weeklyBudgetEmailEnabled" className="text-sm font-medium">
+                Attiva report budget settimanale
+              </Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Inviato ogni domenica con lo stato dei budget mensili e annuali
+              </p>
+            </div>
+            <Switch
+              id="weeklyBudgetEmailEnabled"
+              checked={weeklyBudgetEmailEnabled}
+              onCheckedChange={setWeeklyBudgetEmailEnabled}
+              disabled={isDemo}
+              className={interactiveControlClass}
+            />
+          </div>
+
+          {(monthlyEmailEnabled || quarterlyEmailEnabled || semiAnnualEmailEnabled || yearlyEmailEnabled || weeklyBudgetEmailEnabled) && (
             <div className="space-y-3 border-t pt-4">
               <Label className="text-sm font-medium">Destinatari</Label>
 
@@ -1921,7 +1987,9 @@ export default function SettingsPage() {
                 {([
                   { type: 'monthly' as const, label: 'Invia mensile ora', enabled: monthlyEmailEnabled },
                   { type: 'quarterly' as const, label: 'Invia trimestrale ora', enabled: quarterlyEmailEnabled },
+                  { type: 'semiannual' as const, label: 'Invia semestrale ora', enabled: semiAnnualEmailEnabled },
                   { type: 'yearly' as const, label: 'Invia annuale ora', enabled: yearlyEmailEnabled },
+                  { type: 'weekly-budget' as const, label: 'Invia report budget ora', enabled: weeklyBudgetEmailEnabled },
                 ] as const).filter(({ enabled }) => enabled).map(({ type, label }) => (
                   <Button
                     key={type}
@@ -2626,10 +2694,23 @@ export default function SettingsPage() {
                             className="flex items-center justify-between py-3 hover:bg-muted/30 transition-colors"
                           >
                             <div className="flex items-center gap-3">
-                              <div
-                                className="w-3 h-3 rounded-full border border-border"
-                                style={{ backgroundColor: category.color || '#3b82f6' }}
-                              />
+                              {(() => {
+                                const CatIcon = category.icon ? getLazyIcon(category.icon) : null;
+                                return (
+                                  <div
+                                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                                    style={{ backgroundColor: category.color ? `${category.color}20` : 'var(--muted)' }}
+                                  >
+                                    {CatIcon ? (
+                                      <Suspense fallback={<div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: category.color || '#3b82f6' }} />}>
+                                        <CatIcon className="w-3.5 h-3.5" style={{ color: category.color || 'var(--muted-foreground)' }} aria-hidden="true" />
+                                      </Suspense>
+                                    ) : (
+                                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color || '#3b82f6' }} />
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               <div>
                                 <p className="font-medium text-sm">{category.name}</p>
                                 {category.subCategories && category.subCategories.length > 0 && (

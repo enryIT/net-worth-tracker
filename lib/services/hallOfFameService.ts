@@ -15,7 +15,7 @@
  */
 
 import { db } from '@/lib/firebase/config';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { HallOfFameData, MonthlyRecord, YearlyRecord, HallOfFameNote, HallOfFameSectionKey } from '@/types/hall-of-fame';
 import { MonthlySnapshot } from '@/types/assets';
 import { getUserSnapshots } from './snapshotService';
@@ -261,7 +261,7 @@ export async function updateHallOfFame(userId: string): Promise<void> {
         .sort((a, b) => b.totalExpenses - a.totalExpenses)
         .slice(0, MAX_YEARLY_RECORDS),
 
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     };
 
     // GET existing document to preserve notes
@@ -354,8 +354,8 @@ export async function addHallOfFameNote(
       sections: noteData.sections,
       year: noteData.year,
       month: noteData.month,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     // GET existing document
@@ -375,7 +375,7 @@ export async function addHallOfFameNote(
     await setDoc(docRef, {
       ...existingData,
       notes: updatedNotes,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
 
     return newNote;
@@ -444,14 +444,14 @@ export async function updateHallOfFameNote(
     updatedNotes[noteIndex] = {
       ...updatedNotes[noteIndex],
       ...updates,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     };
 
     // SET complete document (no merge)
     await setDoc(docRef, {
       ...existingData,
       notes: updatedNotes,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
   } catch (error) {
     console.error('Error updating Hall of Fame note:', error);
@@ -489,7 +489,7 @@ export async function deleteHallOfFameNote(userId: string, noteId: string): Prom
     await setDoc(docRef, {
       ...existingData,
       notes: updatedNotes,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
   } catch (error) {
     console.error('Error deleting Hall of Fame note:', error);

@@ -2,12 +2,13 @@
  * POST /api/user/monthly-email/send
  *
  * Allows an authenticated user to trigger a periodic summary email immediately.
- * Accepts an optional JSON body with `periodType` ('monthly' | 'quarterly' | 'yearly').
+ * Accepts an optional JSON body with `periodType` ('monthly' | 'quarterly' | 'semiannual' | 'yearly').
  * When omitted, defaults to 'monthly'. Resolves the most recently completed period
- * automatically (e.g. April 19 2026 → March for quarterly, 2025 for yearly).
+ * automatically (e.g. April 19 2026 → March for quarterly, H2 2025 for semiannual, 2025 for yearly).
+ * `periodType: 'weekly-budget'` sends the weekly budget status email for the current state instead.
  *
  * Auth: Firebase ID token via Authorization: Bearer <token>
- * Body: { periodType?: 'monthly' | 'quarterly' | 'yearly' }
+ * Body: { periodType?: 'monthly' | 'quarterly' | 'semiannual' | 'yearly' | 'weekly-budget' }
  * Returns: { success: true } or error JSON
  */
 
@@ -17,9 +18,11 @@ import {
   getSettingsAdmin,
   buildAndSendForPeriod,
   getMostRecentCompletedQuarterEnd,
+  getMostRecentCompletedHalfYearEnd,
   getMostRecentCompletedYearEnd,
   type EmailPeriodType,
 } from '@/lib/server/monthlyEmailService';
+import { buildAndSendWeeklyBudget } from '@/lib/server/weeklyBudgetEmailService';
 import { getItalyMonthYear } from '@/lib/utils/dateHelpers';
 
 export async function POST(request: NextRequest) {
@@ -35,8 +38,27 @@ export async function POST(request: NextRequest) {
 
     // Parse optional body — default to monthly
     const body = await request.json().catch(() => ({})) as { periodType?: string };
+
+    // Weekly budget email is a separate builder (not a snapshot-based period summary).
+    if (body.periodType === 'weekly-budget') {
+      const settings = await getSettingsAdmin(userId);
+      if (!settings?.weeklyBudgetEmailEnabled) {
+        return NextResponse.json({ error: 'weekly budget email is not enabled for this account' }, { status: 400 });
+      }
+      if (!settings.monthlyEmailRecipients?.length) {
+        return NextResponse.json({ error: 'No recipients configured' }, { status: 400 });
+      }
+      const sent = await buildAndSendWeeklyBudget(userId, settings.monthlyEmailRecipients, new Date());
+      if (!sent) {
+        return NextResponse.json({ error: 'No budgets configured — create a budget first' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
     const periodType: EmailPeriodType =
-      body.periodType === 'quarterly' || body.periodType === 'yearly'
+      body.periodType === 'quarterly' ||
+      body.periodType === 'semiannual' ||
+      body.periodType === 'yearly'
         ? body.periodType
         : 'monthly';
 
@@ -45,6 +67,8 @@ export async function POST(request: NextRequest) {
     let month: number;
     if (periodType === 'quarterly') {
       ({ year, month } = getMostRecentCompletedQuarterEnd(new Date()));
+    } else if (periodType === 'semiannual') {
+      ({ year, month } = getMostRecentCompletedHalfYearEnd(new Date()));
     } else if (periodType === 'yearly') {
       ({ year, month } = getMostRecentCompletedYearEnd(new Date()));
     } else {
@@ -57,6 +81,8 @@ export async function POST(request: NextRequest) {
     const enabledKey =
       periodType === 'quarterly'
         ? 'quarterlyEmailEnabled'
+        : periodType === 'semiannual'
+        ? 'semiAnnualEmailEnabled'
         : periodType === 'yearly'
         ? 'yearlyEmailEnabled'
         : 'monthlyEmailEnabled';

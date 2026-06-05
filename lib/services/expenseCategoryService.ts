@@ -92,6 +92,23 @@ export async function getAllCategories(userId: string): Promise<ExpenseCategory[
 }
 
 /**
+ * Ensure a system "Trasferimenti" category of type 'transfer' exists for the user.
+ * Returns the category ID — creates the category if missing.
+ */
+export async function ensureTransferCategory(userId: string): Promise<string> {
+  const categories = await getAllCategories(userId);
+  const existing = categories.find(c => c.type === 'transfer');
+  if (existing) return existing.id;
+
+  return createCategory(userId, {
+    name: 'Trasferimenti',
+    type: 'transfer',
+    icon: 'ArrowLeftRight',
+    subCategories: [],
+  });
+}
+
+/**
  * Get categories by type for a specific user
  */
 export async function getCategoriesByType(
@@ -157,7 +174,7 @@ export async function createCategory(
   categoryData: ExpenseCategoryFormData
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
+    const now = new Date();
     const categoriesRef = collection(db, CATEGORIES_COLLECTION);
 
     const cleanedData = removeUndefinedFields({
@@ -207,7 +224,7 @@ export async function updateCategory(
 
     const cleanedUpdates = removeUndefinedFields({
       ...updates,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
 
     await updateDoc(categoryRef, cleanedUpdates);
@@ -323,7 +340,7 @@ export async function updateSubCategory(
     const categoryRef = doc(db, CATEGORIES_COLLECTION, categoryId);
     const cleanedUpdates = removeUndefinedFields({
       subCategories: updatedSubCategories,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
     await updateDoc(categoryRef, cleanedUpdates);
   } catch (error) {

@@ -26,6 +26,7 @@ import { useDashboardOverview } from '@/lib/hooks/useDashboardOverview';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Dialog,
   DialogContent,
@@ -72,40 +73,52 @@ function formatAssetDate(ts: Date | Timestamp | null | undefined): string {
 function CashAccountsSection({
   assets,
   onSelect,
+  onAdd,
 }: {
   assets: Asset[];
   onSelect: (asset: Asset) => void;
+  onAdd: () => void;
 }) {
-  if (assets.length === 0) return null;
   return (
     <div className="space-y-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
         Conti Correnti
       </p>
-      <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
-        {assets.map((asset) => (
-          <button
-            key={asset.id}
-            type="button"
-            onClick={() => onSelect(asset)}
-            // bg-muted/40 (no border) keeps these as lighter KPI chips, not full cards.
-            // bg-card + border would give them equal visual weight to the hero cards above.
-            className={cn(
-              'cursor-pointer rounded-xl bg-muted/40 p-5 text-left',
-              'hover:bg-muted/60 active:bg-muted/70 transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1'
-            )}
-          >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted mb-3">
-              <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <p className="text-xs text-muted-foreground truncate mb-0.5">{asset.name}</p>
-            <p className="text-lg font-bold font-mono tabular-nums tracking-tight text-foreground">
-              {formatCurrency(calculateAssetValue(asset), asset.currency)}
-            </p>
-          </button>
-        ))}
-      </div>
+      {assets.length === 0 ? (
+        <EmptyState
+          icon={Wallet}
+          title="Nessun conto corrente"
+          description="Aggiungi il tuo primo conto corrente per tracciare la liquidità."
+          action={
+            <Button size="sm" onClick={onAdd}>
+              Aggiungi conto
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
+          {assets.map((asset) => (
+            <button
+              key={asset.id}
+              type="button"
+              onClick={() => onSelect(asset)}
+              className={cn(
+                'cursor-pointer rounded-xl bg-muted/40 p-5 text-left',
+                'hover:bg-muted/60 active:bg-muted/70 transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1'
+              )}
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted mb-3">
+                <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground truncate mb-0.5">{asset.name}</p>
+              <p className="text-lg font-bold font-mono tabular-nums tracking-tight text-foreground">
+                {formatCurrency(calculateAssetValue(asset), asset.currency)}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -238,7 +251,7 @@ export default function AssetsPage() {
   // Cash accounts (type=cash AND assetClass=cash, active quantity) are shown in
   // the dedicated "Conti Correnti" section above the table, not in the table.
   const cashAssets = useMemo(
-    () => assets.filter((a) => a.type === 'cash' && a.assetClass === 'cash' && a.quantity > 0),
+    () => assets.filter((a) => a.type === 'cash' && a.assetClass === 'cash'),
     [assets]
   );
   const nonCashAssets = useMemo(
@@ -563,6 +576,10 @@ export default function AssetsPage() {
         onSelect={(asset) => {
           setSelectedCashAsset(asset);
           setCashDetailOpen(true);
+        }}
+        onAdd={() => {
+          setSelectedCashAsset(null);
+          setCashEditOpen(true);
         }}
       />
 

@@ -26,11 +26,17 @@ Componenti: components/dashboard/*
 
 Confronta con: Patrimonio (stesso hero [2fr_1fr] condiviso), Rendimenti (hero TWR),
 Storico (hero patrimonio), Goals (hero allocato).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -59,12 +65,18 @@ condivide useDashboardOverview RQ cache) → CashAccountsSection (grid cards
 conti correnti) → AssetManagementTab (tabella ordinabile, group-by-class,
 sparkline per asset, 2-click delete, AssetDialog 2-step).
 Confronta con: Panoramica (stesso hero layout — usa come riferimento primario),
-AllocationCard (flat divide-y), GoalDetailCard (expand/collapse inline).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+AllocationBreakdown (flat divide-y rows), GoalDetailCard (expand/collapse inline).
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -90,11 +102,17 @@ Componenti: components/dividends/DividendTrackingTab.tsx,
             components/dividends/DividendDialog.tsx
 
 Confronta con: Hall of Fame (tabelle flat), Cashflow/Analisi (period-based data).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -112,11 +130,17 @@ Componenti: components/cashflow/ExpenseTrackingTab.tsx,
             components/expenses/ExpenseDialog.tsx
 
 Confronta con: AssetManagementTab (lista + dialog 2-step), GoalDetailCard (delete pattern).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -132,12 +156,18 @@ Priority issues (P0/P1) da: [SLUG]
 File: app/dashboard/cashflow/page.tsx
 Componenti: components/cashflow/BudgetTab.tsx
 
-Confronta con: AllocationCard (progress bar + target%), GoalDetailCard (% display).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Confronta con: Allocazione/RebalancePlan (mosse + target% via TargetTick), GoalDetailCard (% display).
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -156,11 +186,17 @@ Componenti: components/cashflow/CostCentersTab.tsx,
             components/cashflow/CostCenterDialog.tsx
 
 Confronta con: GoalBasedInvestingTab (assegnazione risorse), ExpenseTrackingTab (tabella).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -185,11 +221,17 @@ Componenti: components/cashflow/AnalisiTab.tsx,
 
 Confronta con: Cashflow/Tracciamento (dati condivisi via RQ cache),
 Rendimenti (period selector), Storico (narrative order + collapsible).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -208,11 +250,17 @@ File: app/dashboard/allocation/page.tsx
 Componenti: components/allocation/*
 
 Confronta con: Rendimenti (MetricSection flat rows), Patrimonio (sortable table).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -231,11 +279,17 @@ File: app/dashboard/performance/page.tsx
 Componenti: components/performance/*
 
 Confronta con: Storico (hero patrimonio + CAGR), Goals (hero allocato).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -255,11 +309,17 @@ Componenti: components/history/*,
             components/dashboard/LaborMetricsChart.tsx
 
 Confronta con: Rendimenti (period selector), Hall of Fame (tabelle flat + hero).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -279,11 +339,17 @@ Componenti: components/hall-of-fame/*,
             lib/constants/hallOfFame.ts
 
 Confronta con: Storico (hero + narrative sections), Rendimenti (period selector).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -307,11 +373,17 @@ Componenti: components/fire-simulations/FireCalculatorTab.tsx,
             components/fire-simulations/FireCalculatorSkeleton.tsx
 
 Confronta con: Monte Carlo (hero + collapsible), Goals (hero allocato), Coast FIRE.
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -329,16 +401,60 @@ Componenti: components/fire-simulations/CoastFireTab.tsx,
             components/fire-simulations/CoastFireProjectionChart.tsx
 
 Confronta con: FIRE Calculator (stesso hero + Settings pattern), Monte Carlo (scenarios).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
 - Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
 ```
+
+### Tab "What If"
+
+```
+/impeccable shape il tab "What If" della pagina FIRE e Simulazioni
+
+Priority issues (P0/P1) da: [SLUG]
+File: app/dashboard/fire-simulations/page.tsx
+Componenti: components/fire-simulations/WhatIfAnalysisTab.tsx,
+            components/fire-simulations/WhatIfSensitivitySection.tsx,
+            components/fire-simulations/WhatIfAnalysisSkeleton.tsx
+
+Tab che simula eventi di vita (perdita lavoro, acquisto importante, variazione
+risparmio/spesa, windfall) e mostra l'impatto before→after su FIRE tradizionale e
+Coast FIRE, ri-eseguendo le pure functions di fireService su baseline vs adjusted.
+Hero con blocco before→after custom (non HeroMetricBlock — il sign-coloring confligge
+con "meno anni = meglio"). Ospita la matrice "Sensibilità Anni al FIRE" rilocata
+(baseline locale ri-centrabile). Impatto Coast richiede settings.userAge, altrimenti empty-state.
+Confronta con: FIRE Calculator + Coast FIRE (riusa le stesse fireService functions +
+hero pattern), Monte Carlo (scenario inputs + collapsible).
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
+
+Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+- Leggi COMMENTS.md e APPLICALA mentre scrivi codice
+- Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
+```
+
+---
 
 ### Tab "Monte Carlo"
 
@@ -352,11 +468,17 @@ Componenti: components/fire-simulations/MonteCarloTab.tsx,
             components/fire-simulations/MonteCarloSkeleton.tsx
 
 Confronta con: FIRE Calculator (hero + collapsible), Coast FIRE (scenarios).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -375,11 +497,17 @@ Componenti: components/fire-simulations/GoalBasedInvestingTab.tsx,
             components/fire-simulations/GoalsSkeleton.tsx
 
 Confronta con: FIRE Calculator (hero pattern), Allocazione (ActionChip, target%).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -393,17 +521,23 @@ Contesto:
 ```
 /impeccable shape la pagina Assistente AI
 
-Priority issues (P0/P1) da: .impeccable/critique/2026-05-24T05-46-56Z__app-dashboard-assistant-page-tsx.md
+Priority issues (P0/P1) da: [SLUG]
 File: app/dashboard/assistant/page.tsx
 Componenti: components/assistant/*
 
 Confronta con: Rendimenti (hero number + data-first), Storico (narrative order),
 Goals (flat divide-y list).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -423,11 +557,17 @@ Componenti: components/settings/SettingsPageSkeleton.tsx
 
 Confronta con: nessuna pagina specifica — verifica che i componenti form usino
 la stessa vocabulary degli altri form dell'app.
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -453,11 +593,17 @@ Componenti: components/layout/Sidebar.tsx,
 Confronta con: nessuna pagina specifica — il benchmark è la coerenza interna tra
 sidebar desktop, bottom nav mobile e secondary drawer. Verifica che i token
 --sidebar-* siano correttamente applicati su tutti e 6 i temi.
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -477,11 +623,17 @@ Priority issues (P0/P1) da: [SLUG]
 File: app/page.tsx
 
 Confronta con: Panoramica (stesso brand, gerarchia coerente), Rendimenti (hero number).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -499,11 +651,56 @@ File: app/login/page.tsx,
 
 Confronta con: Impostazioni (stessa vocabulary form: Input, Button, label/focus ring),
 Landing (stesso brand entry point, coerenza visiva).
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+- Leggi COMMENTS.md e APPLICALA mentre scrivi codice
+- Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
+```
+
+---
+
+## Cross-cutting: Sistema di Shell e Layout Condivisi
+
+```
+/impeccable shape il sistema di shell e layout condivisi dell'app
+
+Priority issues (P0/P1) da: [SLUG]
+Componenti: components/layout/PageContainer.tsx,
+            components/layout/PageHeader.tsx,
+            components/layout/PageTabBar.tsx,
+            components/layout/PageTabs.tsx,
+            components/layout/ThemePicker.tsx,
+            lib/constants/navigation.ts
+
+Guscio "interno" condiviso da tutte le pagine: PageContainer (wrapper max-w + spacing +
+bottom-nav clearance), PageHeader (sticky mobile bar ↔ desktop header), pattern multi-tab
+(PageTabBar underline desktop ↔ Radix Select / segmented pill mobile), ThemePicker,
+navigation.ts (nav arrays centralizzati). I P0/P1 qui riguardano tipicamente: meccanica
+tab incoerente tra pagine, sticky header che sovrappone, layoutId duplicati, breakpoint errati.
+Confronta con: App Shell e Navigazione (sidebar/bottom-nav/drawer = guscio "esterno");
+il benchmark è la coerenza del guscio su Cashflow/FIRE/Settings e sulle pagine single-scroll.
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
+
+Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -525,16 +722,72 @@ Componenti: components/assets/AssetDialog.tsx,
             components/dividends/DividendDialog.tsx,
             components/dividends/DividendDetailsDialog.tsx,
             components/cashflow/CostCenterDialog.tsx,
-            components/layout/LogoutDialog.tsx
+            components/expenses/CategoryManagementDialog.tsx,
+            components/layout/LogoutDialog.tsx,
+            components/ui/responsive-modal.tsx
 
 Confronta con: ogni dialog rispetto agli altri — il benchmark è la coerenza interna.
 I P0/P1 su questo sistema riguardano tipicamente: struttura mancante (DialogDescription
 assente), footer pattern inconsistente, sizing breakpoint difformi, motion non uniforme.
-Design language atteso: Trade Republic hierarchy (text-4xl font-bold font-mono hero,
-divide-y flat rows, no card-in-card), useChartColors() per tutte le serie grafiche,
-token compliance su tutti e 6 i temi dell'app.
+Convergenza su ResponsiveModal: quando un fix struttura un dialog-form, preferisci la migrazione a
+`components/ui/responsive-modal.tsx` (Dialog su desktop ↔ bottom-sheet Drawer su mobile ≤768px da una
+sola API) invece di reimplementare lo split useMediaQuery + Dialog/Drawer a mano — è l'astrazione target
+per uniformare le modali. Caveat: default max-w-4xl (override via dialogClassName), footer risolto dal
+chiamante; conferme piccole e flussi speciali (AssetDialog 2-step) possono restare Dialog. Vedi
+AGENTS.md → "Responsive Modals".
+Design language atteso (vedi DESIGN.md): North Star "Effortless Precision" — Linear/Vercel +
+Trade Republic + Apple, sotto la legge Form Follows Function (onestà, deferenza, inevitabilità:
+ogni proprietà visiva è conseguenza di una funzione, mai decorazione). Scala hero: page hero
+text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em], section hero text-[36px],
+sub-hero text-[22px] (mai text-4xl/text-2xl per un hero). Mono Mandate: ogni numero in Geist Mono
++ tabular-nums. Zero-Chroma + Data Owns Color: chrome achromatica, il colore lo possiede il dato
+(chart e temi). Gerarchia Trade Republic (un numero dominante, flat divide-y rows, no card-in-card),
+useChartColors() per ogni serie grafica, token OKLCH compliance su tutti e 6 i temi.
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+- Leggi COMMENTS.md e APPLICALA mentre scrivi codice
+- Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
+```
+
+---
+
+## Email Periodiche
+
+> Lancia shape **solo** se la critique email ha trovato P0/P1 strutturali — tipicamente:
+> spezzare il monolite `monthlyEmailService.ts` (1375 righe) in un template layer riusabile,
+> introdurre dark-mode (`@media (prefers-color-scheme: dark)` + `<meta name="color-scheme">`),
+> o ripensare il layout della tabella Confronti per il mobile. Se la critique ha trovato solo
+> P2/P3 (microcopy, spacing, fedeltà markdown), vai diretto a polish. Ricorda: il piano
+> funzionale (logica confronti, prompt AI) NON è dominio di shape — è `/code-review` + Vitest.
+
+```
+/impeccable shape l'email periodica (riepilogo mensile / trimestrale / semestrale / annuale)
+
+Priority issues (P0/P1) da: [SLUG]
+File: lib/server/monthlyEmailService.ts
+      (buildEmailHtml, simpleMarkdownToHtml, buildComparisonSectionHtml, comparisonCell)
+Contesto logico (non visivo): lib/server/emailPeriodComparison.ts,
+      app/api/user/monthly-email/send/route.ts (render di test)
+
+L'email ha: hero patrimonio netto, tabella deterministica "Confronti" (Patrimonio/Entrate/
+Uscite/Risparmio × periodo precedente + anno prima) e commento AI in 5 sezioni reso da markdown.
+
+Design language atteso (email HTML — medium con vincoli OPPOSTI al dashboard):
+Principio di DESIGN.md ("Effortless Precision", Form Follows Function), ma:
+- Stili inline + hex hardcoded sono OBBLIGATORI (i client email non supportano CSS vars/token).
+- Layout a tabelle, larghezza max 600px. NON applicabili: useChartColors(), Framer Motion,
+  ARIA tablist, breakpoint desktop:, count-up.
+- DEVE valere: Mono Mandate (numeri in stack monospace, allineamento tabellare), gerarchia
+  Trade Republic (un numero dominante), Zero-Chroma (chrome achromatica, colore solo sui delta
+  sign-aware con semantica invertita sulle Uscite), chrome reduction (border-bottom, non box annidati).
+- Qualità medium-specifica: compat Gmail/Outlook/Apple Mail, dark-mode, mobile 320–375px,
+  fedeltà markdown→HTML, fallback "N/D" / `previousEqualsYoy`.
+
+Contesto:
+- Leggi DESIGN.md (North Star, Form Follows Function, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice

@@ -262,6 +262,20 @@ Each commit should represent a single logical change. If your commit message req
 
 ---
 
+## 🎨 Design System
+
+Before implementing any UI feature, read **DESIGN.md** — it is the authoritative source for:
+- OKLCH color tokens and semantic color names
+- Typography scale with exact values (`text-[44px]`, `text-[22px]`, `font-mono`, etc.)
+- Layout vocabulary (`desktop:grid-cols-[2fr_1fr]`, hero patterns, `divide-y` lists)
+- Breakpoint rules (`desktop:` at 1440px — never use `lg:` for wide-screen layouts)
+- Animation standards (spring physics: stiffness 400, damping 35)
+- Anti-patterns (no decorative progress bars, no nested card-within-card, no hardcoded hex colors)
+
+CLAUDE.md contains a summary of design intent; DESIGN.md is the full spec.
+
+---
+
 ## 🤖 Writing AI-Friendly Code
 
 When working with AI coding agents (like Claude Code), the same principles that make code readable for humans make it workable for AI — but the stakes are higher. An AI has no accumulated context between sessions. Everything it needs to understand your codebase must be visible in the code itself.

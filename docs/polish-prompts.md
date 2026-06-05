@@ -27,6 +27,7 @@ File: app/dashboard/page.tsx
 Componenti: components/dashboard/*
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -51,6 +52,7 @@ Componenti: components/assets/AssetManagementTab.tsx,
             components/dashboard/NetWorthSparkline.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -76,6 +78,7 @@ Componenti: components/dividends/DividendTrackingTab.tsx,
             components/dividends/DividendDialog.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -93,6 +96,7 @@ Componenti: components/cashflow/ExpenseTrackingTab.tsx,
             components/expenses/ExpenseDialog.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -109,6 +113,7 @@ File: app/dashboard/cashflow/page.tsx
 Componenti: components/cashflow/BudgetTab.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -127,6 +132,7 @@ Componenti: components/cashflow/CostCentersTab.tsx,
             components/cashflow/CostCenterDialog.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -150,6 +156,7 @@ Componenti: components/cashflow/AnalisiTab.tsx,
             components/cashflow/CategoryTrendsGrid.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -168,6 +175,7 @@ File: app/dashboard/allocation/page.tsx
 Componenti: components/allocation/*
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -186,6 +194,7 @@ File: app/dashboard/performance/page.tsx
 Componenti: components/performance/*
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -205,6 +214,7 @@ Componenti: components/history/*,
             components/dashboard/LaborMetricsChart.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -224,6 +234,7 @@ Componenti: components/hall-of-fame/*,
             lib/constants/hallOfFame.ts
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -247,6 +258,7 @@ Componenti: components/fire-simulations/FireCalculatorTab.tsx,
             components/fire-simulations/FireCalculatorSkeleton.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -264,11 +276,33 @@ Componenti: components/fire-simulations/CoastFireTab.tsx,
             components/fire-simulations/CoastFireProjectionChart.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
 - Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
 ```
+
+### Tab "What If"
+
+```
+/impeccable polish il tab "What If" della pagina FIRE e Simulazioni
+
+Priority issues (P2/P3) da: [SLUG]
+File: app/dashboard/fire-simulations/page.tsx
+Componenti: components/fire-simulations/WhatIfAnalysisTab.tsx,
+            components/fire-simulations/WhatIfSensitivitySection.tsx,
+            components/fire-simulations/WhatIfAnalysisSkeleton.tsx
+
+Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+- Leggi COMMENTS.md e APPLICALA mentre scrivi codice
+- Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
+```
+
+---
 
 ### Tab "Monte Carlo"
 
@@ -282,6 +316,7 @@ Componenti: components/fire-simulations/MonteCarloTab.tsx,
             components/fire-simulations/MonteCarloSkeleton.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -300,6 +335,7 @@ Componenti: components/fire-simulations/GoalBasedInvestingTab.tsx,
             components/fire-simulations/GoalsSkeleton.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -313,11 +349,12 @@ Contesto:
 ```
 /impeccable polish la pagina Assistente AI
 
-Priority issues (P2/P3) da: .impeccable/critique/2026-05-24T05-46-56Z__app-dashboard-assistant-page-tsx.md
+Priority issues (P2/P3) da: [SLUG]
 File: app/dashboard/assistant/page.tsx
 Componenti: components/assistant/*
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -336,6 +373,7 @@ File: app/dashboard/settings/page.tsx
 Componenti: components/settings/SettingsPageSkeleton.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -359,6 +397,7 @@ Componenti: components/layout/Sidebar.tsx,
             components/layout/LogoutDialog.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -378,6 +417,7 @@ Priority issues (P2/P3) da: [SLUG]
 File: app/page.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -394,6 +434,30 @@ File: app/login/page.tsx,
       app/register/page.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+- Leggi COMMENTS.md e APPLICALA mentre scrivi codice
+- Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
+```
+
+---
+
+## Cross-cutting: Sistema di Shell e Layout Condivisi
+
+```
+/impeccable polish il sistema di shell e layout condivisi dell'app
+
+Priority issues (P2/P3) da: [SLUG]
+Componenti: components/layout/PageContainer.tsx,
+            components/layout/PageHeader.tsx,
+            components/layout/PageTabBar.tsx,
+            components/layout/PageTabs.tsx,
+            components/layout/ThemePicker.tsx,
+            lib/constants/navigation.ts
+
+Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice
@@ -415,9 +479,45 @@ Componenti: components/assets/AssetDialog.tsx,
             components/dividends/DividendDialog.tsx,
             components/dividends/DividendDetailsDialog.tsx,
             components/cashflow/CostCenterDialog.tsx,
-            components/layout/LogoutDialog.tsx
+            components/expenses/CategoryManagementDialog.tsx,
+            components/layout/LogoutDialog.tsx,
+            components/ui/responsive-modal.tsx
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+- Leggi COMMENTS.md e APPLICALA mentre scrivi codice
+- Leggi DEVELOPMENT_GUIDELINES.md e APPLICALA mentre scrivi codice
+```
+
+---
+
+## Email Periodiche
+
+> Probabilmente il comando impeccable **più direttamente utile** per "il testo formattato
+> nella mail": rifinire la tabella Confronti, le 5 sezioni del commento AI, spacing, microcopy
+> italiano, allineamento dei numeri. Lancia polish dopo che la critique (o critique+shape) ha
+> prodotto i P2/P3. Renderizza l'HTML mentre rifinisci, per vedere il risultato reale.
+> Il piano funzionale (logica confronti, prompt AI) resta fuori — è `/code-review` + Vitest.
+
+```
+/impeccable polish l'email periodica (riepilogo mensile / trimestrale / semestrale / annuale)
+
+Priority issues (P2/P3) da: [SLUG]
+File: lib/server/monthlyEmailService.ts
+      (buildEmailHtml, simpleMarkdownToHtml, buildComparisonSectionHtml, comparisonCell)
+Contesto logico (non visivo): lib/server/emailPeriodComparison.ts,
+      app/api/user/monthly-email/send/route.ts (render di test)
+
+Nota medium: stili inline + hex hardcoded sono OBBLIGATORI (NON migrarli a token/CSS vars —
+i client email non li supportano); layout a tabelle, max 600px. Mantieni: numeri in stack
+monospace con allineamento tabellare (Mono Mandate), delta sign-aware con semantica invertita
+sulle Uscite, chrome achromatica (Zero-Chroma — colore solo sui delta), separazione via
+border-bottom (no box annidati). Cura la fedeltà markdown→HTML e i fallback "N/D".
+
+Contesto:
+- Leggi DESIGN.md (Mono Mandate, Zero-Chroma, Form Follows Function)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 - Leggi COMMENTS.md e APPLICALA mentre scrivi codice

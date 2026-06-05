@@ -4,15 +4,19 @@ import { updateHallOfFame } from '@/lib/services/hallOfFameService.server';
 import {
   isLastDayOfMonthItaly,
   isLastDayOfQuarterItaly,
+  isLastDayOfHalfYearItaly,
   isLastDayOfYearItaly,
   monthToQuarter,
+  monthToSemester,
   getSettingsAdmin,
   buildAndSendForPeriod,
   buildAndSendQuarterly,
+  buildAndSendSemiAnnual,
   buildAndSendYearly,
 } from '@/lib/server/monthlyEmailService';
 import { getItalyMonthYear } from '@/lib/utils/dateHelpers';
 import { refreshEcbRatesIfStale } from '@/lib/server/ecbRatesService';
+import { isWeeklyBudgetDayItaly, buildAndSendWeeklyBudget } from '@/lib/server/weeklyBudgetEmailService';
 
 /**
  * GET /api/cron/monthly-snapshot
@@ -211,7 +215,47 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Phase 4: Send yearly summary emails (only on December 31)
+    // Phase 4: Send semi-annual summary emails (only on June 30 / December 31).
+    // Note: a half-year-end coincides with a quarter-end (Q2/Q4) and, on Dec 31, with the
+    // year-end too — these are independent opt-in emails, so a user enabling several toggles
+    // can receive more than one summary on the same day. That is intentional.
+    const semiAnnualEmailResults = { sent: 0, skipped: 0, errors: 0 };
+    if (isLastDayOfHalfYearItaly(now)) {
+      const { year, month } = getItalyMonthYear(now);
+      const semester = monthToSemester(month);
+      console.log(`Last day of H${semester} detected — sending semi-annual emails for H${semester}/${year}`);
+
+      for (const userDoc of usersSnapshot.docs) {
+        const userId = userDoc.id;
+
+        if (userId === process.env.NEXT_PUBLIC_DEMO_USER_ID) {
+          semiAnnualEmailResults.skipped++;
+          continue;
+        }
+
+        try {
+          const settings = await getSettingsAdmin(userId);
+          if (!settings?.semiAnnualEmailEnabled || !settings.monthlyEmailRecipients?.length) {
+            semiAnnualEmailResults.skipped++;
+            continue;
+          }
+
+          const sent = await buildAndSendSemiAnnual(userId, settings.monthlyEmailRecipients, year, semester);
+          if (!sent) {
+            console.warn(`No H${semester} snapshot found for user ${userId} — skipping semi-annual email`);
+            semiAnnualEmailResults.skipped++;
+          } else {
+            semiAnnualEmailResults.sent++;
+            console.log(`Semi-annual email sent for user ${userId}`);
+          }
+        } catch (emailError) {
+          console.error(`Semi-annual email failed for user ${userId}:`, emailError);
+          semiAnnualEmailResults.errors++;
+        }
+      }
+    }
+
+    // Phase 5: Send yearly summary emails (only on December 31)
     const yearlyEmailResults = { sent: 0, skipped: 0, errors: 0 };
     if (isLastDayOfYearItaly(now)) {
       const { year } = getItalyMonthYear(now);
@@ -247,6 +291,40 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Phase 6: Send weekly budget status emails (every Sunday)
+    const weeklyBudgetEmailResults = { sent: 0, skipped: 0, errors: 0 };
+    if (isWeeklyBudgetDayItaly(now)) {
+      console.log('Sunday detected — sending weekly budget emails');
+
+      for (const userDoc of usersSnapshot.docs) {
+        const userId = userDoc.id;
+
+        if (userId === process.env.NEXT_PUBLIC_DEMO_USER_ID) {
+          weeklyBudgetEmailResults.skipped++;
+          continue;
+        }
+
+        try {
+          const settings = await getSettingsAdmin(userId);
+          if (!settings?.weeklyBudgetEmailEnabled || !settings.monthlyEmailRecipients?.length) {
+            weeklyBudgetEmailResults.skipped++;
+            continue;
+          }
+
+          const sent = await buildAndSendWeeklyBudget(userId, settings.monthlyEmailRecipients, now);
+          if (!sent) {
+            weeklyBudgetEmailResults.skipped++;
+          } else {
+            weeklyBudgetEmailResults.sent++;
+            console.log(`Weekly budget email sent for user ${userId}`);
+          }
+        } catch (emailError) {
+          console.error(`Weekly budget email failed for user ${userId}:`, emailError);
+          weeklyBudgetEmailResults.errors++;
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: `Monthly snapshots job completed`,
@@ -257,7 +335,9 @@ export async function GET(request: NextRequest) {
       errorDetails: errors,
       emailSummary: emailResults,
       quarterlyEmailSummary: quarterlyEmailResults,
+      semiAnnualEmailSummary: semiAnnualEmailResults,
       yearlyEmailSummary: yearlyEmailResults,
+      weeklyBudgetEmailSummary: weeklyBudgetEmailResults,
     });
   } catch (error) {
     console.error('Error in monthly snapshot cron job:', error);

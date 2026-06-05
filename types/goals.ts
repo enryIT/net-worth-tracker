@@ -1,4 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
 import { AssetClass } from './assets';
 
 // Goal-Based Investing Types
@@ -21,8 +20,8 @@ export interface InvestmentGoal {
   color: string;                   // Hex color for charts
   recommendedAllocation?: Partial<Record<AssetClass, number>>; // Suggested asset class mix, values sum to 100
   notes?: string;                  // Free-text notes (max 500 chars)
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // Links an asset (by percentage) to a goal.

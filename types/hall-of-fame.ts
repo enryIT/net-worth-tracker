@@ -1,5 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
-
 /**
  * Type union for Hall of Fame section identifiers
  *
@@ -38,8 +36,8 @@ export interface HallOfFameNote {
   sections: HallOfFameSectionKey[]; // Ranking sections where this note should appear
   year: number; // Year in Italy timezone (via getItalyYear)
   month?: number; // Month 1-12 in Italy timezone (undefined for yearly notes)
-  createdAt: Date | Timestamp; // Creation timestamp
-  updatedAt: Date | Timestamp; // Last update timestamp
+  createdAt: Date; // Creation timestamp
+  updatedAt: Date; // Last update timestamp
 }
 
 /**
@@ -87,5 +85,5 @@ export interface HallOfFameData {
   worstYearsByNetWorthDecline: YearlyRecord[]; // Peggiori anni per decremento NW
   worstYearsByExpenses: YearlyRecord[]; // Peggiori anni per spese
 
-  updatedAt: Date | Timestamp;
+  updatedAt: Date;
 }

@@ -70,10 +70,7 @@ export function filterExpensesByTime(
   const targetMonth = month ?? (now.getMonth() + 1);
 
   return expenses.filter(expense => {
-    // Handle both Date and Firestore Timestamp
-    const date = expense.date instanceof Date
-      ? expense.date
-      : expense.date.toDate();
+    const date = expense.date;
 
     const expenseYear = date.getFullYear();
     const expenseMonth = date.getMonth() + 1;

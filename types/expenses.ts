@@ -1,23 +1,24 @@
-import { Timestamp } from 'firebase/firestore';
-
 // Expense categories for cashflow tracking.
 // These are mutually exclusive and determine UI filtering/display logic.
 // - fixed: Regular fixed expenses (rent, subscriptions)
 // - variable: Variable expenses (groceries, entertainment)
 // - debt: Debt payments (loan installments, mortgages)
 // - income: Income entries (salary, bonuses, gifts)
-export type ExpenseType = 'fixed' | 'variable' | 'debt' | 'income';
+// - transfer: Inter-account transfers (net-zero for portfolio, excluded from all metrics)
+export type ExpenseType = 'fixed' | 'variable' | 'debt' | 'income' | 'transfer';
 
 export const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
   fixed: 'Spese Fisse',
-  variable: 'Variabili',
+  variable: 'Spese Variabili',
   debt: 'Debiti',
   income: 'Entrate',
+  transfer: 'Trasferimento',
 };
 
 export interface ExpenseSubCategory {
   id: string;
   name: string;
+  icon?: string;
 }
 
 export interface ExpenseCategory {
@@ -28,8 +29,8 @@ export interface ExpenseCategory {
   color?: string;
   icon?: string;
   subCategories: ExpenseSubCategory[];
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ExpenseCategoryFormData {
@@ -52,9 +53,9 @@ export interface Expense {
   categoryName: string; // Denormalized for faster queries
   subCategoryId?: string;
   subCategoryName?: string; // Denormalized for faster queries
-  amount: number; // Sign convention: POSITIVE for income, NEGATIVE for expenses/debts
+  amount: number; // Sign convention: POSITIVE for income, NEGATIVE for expenses/debts, POSITIVE for transfers (direction encoded by origin/destination asset IDs)
   currency: string;
-  date: Date | Timestamp;
+  date: Date;
   notes?: string;
   link?: string; // Optional link (e.g., Amazon order, receipt, etc.)
   // Recurring payment configuration
@@ -76,13 +77,15 @@ export interface Expense {
   // Optional link to a cash-class asset whose balance is updated when this expense is saved.
   // Only stored on single expenses or the first entry of a recurring/installment series.
   linkedCashAssetId?: string;
+  // Destination cash asset for transfer-type expenses. Origin is `linkedCashAssetId`.
+  transferCashAssetId?: string;
   // Optional cost center assignment for grouping expenses by object/project (e.g. "Automobile Dacia").
   // costCenterName is denormalized for query performance — same pattern as categoryName.
   // WARNING: If a cost center is renamed, bulk-update all linked expenses via costCenterService.renameCostCenter.
   costCenterId?: string;
   costCenterName?: string;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ExpenseFormData {
@@ -104,6 +107,7 @@ export interface ExpenseFormData {
   installmentAmounts?: number[]; // Individual amounts for each installment (manual mode)
   installmentStartDate?: Date; // Date of first installment
   linkedCashAssetId?: string; // ID of cash asset whose balance is updated on save
+  transferCashAssetId?: string; // Destination cash asset for transfers (origin = linkedCashAssetId)
   costCenterId?: string;    // Optional cost center assignment
   costCenterName?: string;  // Denormalized name, must be kept in sync via costCenterService
 }

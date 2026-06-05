@@ -116,7 +116,7 @@ export function BottomNavigation() {
             {isOnCashflow && (
               <motion.button
                 type="button"
-                aria-label="Nuova Spesa"
+                aria-label="Aggiungi nuova voce"
                 initial={{ scale: 0.6, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.6, opacity: 0 }}

@@ -19,7 +19,7 @@ export async function createExpenseFromDividend(
   subCategoryName?: string
 ): Promise<string> {
   try {
-    const now = Timestamp.now();
+    const now = new Date();
     const paymentDate = toDate(dividend.paymentDate);
 
     // Determine amount and currency to use
@@ -90,7 +90,7 @@ export async function updateExpenseFromDividend(
       }${dividend.notes ? ` | ${dividend.notes}` : ''}`,
       categoryName,
       subCategoryName: subCategoryName || null,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
 
     console.log(`[dividendIncomeService] Updated expense in ${expenseCurrency} (amount: ${expenseAmount.toFixed(2)})`);

@@ -201,11 +201,7 @@ export function CategoryMoveDialog({
       // Auto-select newest category
       const newestCategory = updatedCategories
         .filter(cat => cat.id !== sourceCategory.id || sourceSubCategory)
-        .sort((a, b) => {
-          const timeA = a.createdAt instanceof Date ? a.createdAt.getTime() : a.createdAt.toMillis();
-          const timeB = b.createdAt instanceof Date ? b.createdAt.getTime() : b.createdAt.toMillis();
-          return timeB - timeA;
-        })[0];
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
 
       if (newestCategory) {
         setSelectedCategoryId(newestCategory.id);

@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import type { MonthlySnapshot } from '@/types/assets';
 import type { Expense, ExpenseCategory, ExpenseType } from '@/types/expenses';
@@ -211,7 +211,7 @@ export async function generateDummySnapshots(params: DummySnapshotParams): Promi
       byAssetClass,
       byAsset,
       assetAllocation,
-      createdAt: Timestamp.now(),
+      createdAt: new Date(),
     };
 
     snapshots.push(snapshot);
@@ -281,8 +281,8 @@ async function createDummyCategories(userId: string): Promise<Map<ExpenseType, E
       type: categoryDef.type,
       color: categoryDef.color,
       subCategories: [],
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     const docRef = doc(categoriesCollection, categoryId);
@@ -337,10 +337,10 @@ async function generateMonthlyExpenses(
       categoryName: category.name,
       amount: Math.abs(amount), // Income is positive
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth),
       notes: 'Entrata fittizia generata automaticamente',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     expenses.push(expense);
@@ -368,10 +368,10 @@ async function generateMonthlyExpenses(
       categoryName: category.name,
       amount: -Math.abs(amount), // Expenses are negative
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth),
       notes: 'Spesa fissa fittizia',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     expenses.push(expense);
@@ -395,10 +395,10 @@ async function generateMonthlyExpenses(
       categoryName: category.name,
       amount: -Math.abs(amount), // Expenses are negative
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth),
       notes: 'Spesa variabile fittizia',
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     expenses.push(expense);
@@ -421,12 +421,12 @@ async function generateMonthlyExpenses(
       categoryName: category.name,
       amount: -Math.abs(amount), // Expenses are negative
       currency: 'EUR',
-      date: Timestamp.fromDate(new Date(year, month - 1, dayOfMonth)),
+      date: new Date(year, month - 1, dayOfMonth),
       notes: 'Debito fittizio',
       isRecurring: true,
       recurringDay: dayOfMonth,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     expenses.push(expense);

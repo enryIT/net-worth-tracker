@@ -56,4 +56,13 @@ export const queryKeys = {
   portfolio: {
     exposure: (userId: string) => ['portfolio', 'exposure', userId] as const,
   },
+
+  // Cost centers (list + per-center spend stats derived from expenses).
+  // Both keys share the ['cost-centers', userId] prefix so invalidating `all`
+  // also refreshes any open detail view via prefix match.
+  costCenters: {
+    all: (userId: string) => ['cost-centers', userId] as const,
+    expenses: (userId: string, centerId: string) =>
+      ['cost-centers', userId, centerId, 'expenses'] as const,
+  },
 } as const;

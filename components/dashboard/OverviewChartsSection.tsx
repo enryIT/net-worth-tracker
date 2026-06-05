@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { PieChart as PieChartComponent } from '@/components/ui/pie-chart';
+import { EmptyState, ChartEmptyIcon } from '@/components/ui/empty-state';
 import { springLayoutTransition } from '@/lib/utils/motionVariants';
 import { useChartColors } from '@/lib/hooks/useChartColors';
 import { PieChartData } from '@/types/assets';
@@ -190,6 +191,13 @@ const OverviewChartsSectionInner = ({
             {/* Chart + legend */}
             {!chartRenderReady ? (
               <LoadingPlaceholder />
+            ) : activeSection.data.length === 0 ? (
+              <EmptyState
+                icon={ChartEmptyIcon}
+                title="Nessun dato disponibile"
+                description="Aggiungi assets per visualizzare il grafico."
+                className="h-[150px]"
+              />
             ) : (
               <div className="flex items-center gap-5">
                 <div className="flex-shrink-0">
@@ -241,6 +249,13 @@ const OverviewChartsSectionInner = ({
               </p>
               {!chartRenderReady ? (
                 <LoadingPlaceholder />
+              ) : section.data.length === 0 ? (
+                <EmptyState
+                  icon={ChartEmptyIcon}
+                  title="Nessun dato disponibile"
+                  description="Aggiungi assets per visualizzare il grafico."
+                  className="h-[160px]"
+                />
               ) : (
                 <div className="flex items-center gap-4">
                   <div className="flex-shrink-0">
@@ -257,7 +272,7 @@ const OverviewChartsSectionInner = ({
                     {section.data
                       .filter(item => item.percentage >= 5)
                       .map((item, i) => (
-                        <LegendRow key={item.name} item={item} index={i} />
+                        <LegendRow key={`${item.name}-${i}`} item={item} index={i} />
                       ))}
                   </div>
                 </div>

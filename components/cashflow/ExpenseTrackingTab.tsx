@@ -36,9 +36,14 @@ import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,195 +54,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Filter, ChevronDown, Check, X, Trash2, Pencil } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, X, Search, Download } from 'lucide-react';
+
 import { ExpenseDialog } from '@/components/expenses/ExpenseDialog';
 import { ExpenseTable } from '@/components/expenses/ExpenseTable';
+
+import { CategoryBreakdownList } from '@/components/cashflow/CategoryBreakdownList';
+import { CashflowWidget } from '@/components/cashflow/cashflow-kpi/CashflowWidget';
 import { Badge } from '@/components/ui/badge';
+
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useChartColors } from '@/lib/hooks/useChartColors';
-
-const MONTHS = [
-  { value: '1', label: 'Gennaio' },
-  { value: '2', label: 'Febbraio' },
-  { value: '3', label: 'Marzo' },
-  { value: '4', label: 'Aprile' },
-  { value: '5', label: 'Maggio' },
-  { value: '6', label: 'Giugno' },
-  { value: '7', label: 'Luglio' },
-  { value: '8', label: 'Agosto' },
-  { value: '9', label: 'Settembre' },
-  { value: '10', label: 'Ottobre' },
-  { value: '11', label: 'Novembre' },
-  { value: '12', label: 'Dicembre' },
-];
-
-// Coverage ratio → Italian health label (mirrors the same function in the dashboard overview page).
-function coverageHealthLabel(ratio: number): string {
-  if (ratio >= 2.0) return 'Salute ottima';
-  if (ratio >= 1.3) return 'Salute buona';
-  if (ratio >= 1.0) return 'In pareggio';
-  return 'In deficit';
-}
-
-// Safely coerce Expense.date (Date | Timestamp | string) to a native Date.
-const getExpenseDate = (d: Expense['date']): Date => {
-  if (d instanceof Date) return d;
-  if (typeof d === 'string') return new Date(d);
-  return (d as { toDate(): Date }).toDate();
-};
-
-// Tailwind dot-color classes keyed by expense type for the mobile list rows.
-// All four entries use CSS variable / semantic token references so they remain
-// theme-aware across all 6 colour themes. `income` uses emerald-* (semantic
-// positive) instead of green-* for parity with the project token convention.
-const TYPE_DOT_CLASS: Record<ExpenseType, string> = {
-  income: 'bg-emerald-500 dark:bg-emerald-400',
-  fixed: 'bg-[var(--chart-2)]',
-  variable: 'bg-[var(--chart-4)]',
-  debt: 'bg-[var(--chart-3)]',
-};
-
-// ─── MobileExpenseRow ─────────────────────────────────────────────────────────
-
-interface MobileExpenseRowProps {
-  expense: Expense;
-  isExpanded: boolean;
-  onToggleExpand: (id: string) => void;
-  onEdit: (expense: Expense) => void;
-  onDelete: (expense: Expense) => void;
-  isPendingDelete: boolean;
-  isDemo: boolean;
-}
-
-/**
- * Flat list row for mobile expense display (Trade Republic divide-y style).
- *
- * Interaction pattern:
- * - Tapping the row body toggles an inline action area (Modifica + Elimina).
- * - Elimina reuses the parent's 2-click arm pattern — isPendingDelete drives
- *   the visual "confirm" state; actual logic lives in the parent handler.
- * - Complex expenses (installments/recurring) open an AlertDialog on first tap
- *   of Elimina, so no 2-click arm is needed; the parent handles the distinction.
- */
-function MobileExpenseRow({
-  expense,
-  isExpanded,
-  onToggleExpand,
-  onEdit,
-  onDelete,
-  isPendingDelete,
-  isDemo,
-}: MobileExpenseRowProps) {
-  const date = getExpenseDate(expense.date);
-  const isIncome = expense.type === 'income';
-
-  // "20/5" short date shown in the subtitle (no year, no zero-padding).
-  const shortDate = format(date, 'd/M');
-
-  // Subtitle: category · subcategory · date — omit subcategory when absent.
-  const subtitle = [expense.categoryName, expense.subCategoryName || null, shortDate]
-    .filter(Boolean)
-    .join(' · ');
-
-  // Title: user-entered notes take priority; fall back to category name.
-  const title = expense.notes?.trim() || expense.categoryName;
-
-  const amountLabel = `${isIncome ? '+' : ''}${cachedFormatCurrencyEUR(Math.abs(expense.amount))}`;
-
-  return (
-    <div className="py-3">
-      {/* Tappable row — shows dot, title, subtitle and amount */}
-      <button
-        type="button"
-        className="w-full flex items-center gap-3 text-left"
-        onClick={() => onToggleExpand(expense.id)}
-        aria-expanded={isExpanded}
-      >
-        {/* Type color dot */}
-        <span
-          className={cn(
-            'w-2 h-2 rounded-full flex-shrink-0',
-            TYPE_DOT_CLASS[expense.type] ?? 'bg-muted-foreground',
-          )}
-        />
-
-        {/* Title + badges + subtitle */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[14px] font-medium text-foreground truncate">{title}</span>
-            {expense.isInstallment && expense.installmentNumber && expense.installmentTotal && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0">
-                {expense.installmentNumber}/{expense.installmentTotal}
-              </Badge>
-            )}
-            {expense.isRecurring && !expense.isInstallment && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 flex-shrink-0">
-                Ric.
-              </Badge>
-            )}
-          </div>
-          <p className="text-[12px] text-muted-foreground truncate mt-0.5">{subtitle}</p>
-        </div>
-
-        {/* Amount — positive income uses emerald semantic token; expenses use
-            text-destructive so both adapt to the active colour theme */}
-        <span
-          className={cn(
-            'text-[14px] font-bold font-mono tabular-nums flex-shrink-0',
-            isIncome
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-destructive',
-          )}
-        >
-          {amountLabel}
-        </span>
-      </button>
-
-      {/* Inline action area — animated height 0 → auto on expand */}
-      <AnimatePresence initial={false}>
-        {isExpanded && (
-          <motion.div
-            key="actions"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <div className="flex gap-2 mt-3 pl-5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onEdit(expense)}
-                disabled={isDemo}
-                title={isDemo ? 'Non disponibile in modalità demo' : undefined}
-                className="flex-1 h-9"
-              >
-                <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Modifica
-              </Button>
-              {/* Delete: first tap arms (destructive style), second tap confirms */}
-              <Button
-                variant={isPendingDelete ? 'destructive' : 'outline'}
-                size="sm"
-                onClick={() => onDelete(expense)}
-                disabled={isDemo}
-                title={isDemo ? 'Non disponibile in modalità demo' : undefined}
-                className="flex-1 h-9"
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                {isPendingDelete ? 'Conferma' : 'Elimina'}
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+import { PeriodPicker } from '@/components/ui/period-picker';
+import {
+  type Period,
+  periodToRange,
+  periodLabel,
+  currentMonthPeriod,
+  isCurrentMonth,
+} from '@/lib/utils/period';
+import { MultiSelect, type MultiSelectGroup } from '@/components/ui/multi-select';
+import { getExpenseDate } from '@/lib/utils/expenseHelpers';
+import { CashflowTrackingMobile } from '@/components/cashflow/CashflowTrackingMobile';
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -246,6 +85,8 @@ interface ExpenseTrackingTabProps {
   categories: ExpenseCategory[];
   loading: boolean;
   onRefresh: () => Promise<void>;
+  /** id→name map for cash assets; built in the parent to avoid a cross-domain subscription here. */
+  assetNameMap: Map<string, string>;
 }
 
 /**
@@ -256,25 +97,31 @@ interface ExpenseTrackingTabProps {
  * 4. Update typeOptions array in this file
  * 5. Add type validation in ExpenseDialog schema
  */
-export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh }: ExpenseTrackingTabProps) {
+export function ExpenseTrackingTab({
+  allExpenses,
+  categories,
+  loading,
+  onRefresh,
+  assetNameMap,
+}: ExpenseTrackingTabProps) {
   const { user } = useAuth();
   const isDemo = useDemoMode();
   const queryClient = useQueryClient();
-  const chartColors = useChartColors();
-  const currentYear = new Date().getFullYear();
-  const currentMonth = String(new Date().getMonth() + 1); // 1-based month (1-12)
+  // chartColors removed — CategoryBreakdownList manages its own useChartColors() internally.
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   // Opens the add-expense dialog when the bottom-nav "+" button fires the custom event.
   useEffect(() => {
-    const handler = () => { setEditingExpense(null); setDialogOpen(true); };
+    const handler = () => {
+      setEditingExpense(null);
+      setDialogOpen(true);
+    };
     window.addEventListener('cashflow:add-expense', handler);
     return () => window.removeEventListener('cashflow:add-expense', handler);
   }, []);
-  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
-  const [filtersOpen, setFiltersOpen] = useState<boolean>(false);
+  // Unified period filter (replaces separate selectedYear + selectedMonth)
+  const [period, setPeriod] = useState<Period>(() => currentMonthPeriod());
 
   // Tracks which mobile row is expanded (shows Modifica + Elimina actions).
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
@@ -293,143 +140,88 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   // Mobile load-more state
   const [mobileShowCount, setMobileShowCount] = useState<number>(20);
 
-  // Separate state for each filter level enables independent reset logic.
-  // Single state object would complicate cascading resets (Type → Category → Subcategory).
-  const [selectedType, setSelectedType] = useState<string>('all');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  // Free-text search — applied after type/category filters.
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Sort key for the mobile/tablet flat list.
+  const [mobileSortKey, setMobileSortKey] = useState<
+    'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc' | 'category-asc'
+  >('date-desc');
+
+  // Multi-select category filter: selectedTypes covers all categories of a type;
+  // selectedCatIds covers individually picked categories.
+  const [selectedTypes, setSelectedTypes] = useState<ExpenseType[]>([]);
+  const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState<string>('all');
 
-  // Search states for comboboxes
-  const [searchQueryType, setSearchQueryType] = useState<string>('');
-  const [searchQueryCategory, setSearchQueryCategory] = useState<string>('');
-  const [searchQuerySubCategory, setSearchQuerySubCategory] = useState<string>('');
-
-  // Dropdown open states
-  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-  const [isSubCategoryDropdownOpen, setIsSubCategoryDropdownOpen] = useState(false);
-
-  /**
-   * Refs for click-outside detection on custom dropdowns
-   *
-   * Pattern: Listen for document mousedown, check if click target is outside ref
-   * Why mousedown? Fires before blur, prevents race condition with item selection
-   * See useEffect at line ~192 for implementation
-   */
-  const typeDropdownRef = useRef<HTMLDivElement>(null);
-  const categoryDropdownRef = useRef<HTMLDivElement>(null);
-  const subCategoryDropdownRef = useRef<HTMLDivElement>(null);
+  // Conto corrente filter — 'all' means no account filter applied.
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
   // Generate available years from ALL expenses (not filtered)
   const availableYears = useMemo(() => {
     if (allExpenses.length === 0) return [];
-
-    const years = allExpenses.map(expense => {
-      const date = expense.date instanceof Date ? expense.date : expense.date.toDate();
-      return date.getFullYear();
-    });
-
-    const uniqueYears = Array.from(new Set(years)).sort((a, b) => b - a);
-    return uniqueYears;
+    const years = allExpenses.map((e) => getExpenseDate(e.date).getFullYear());
+    return Array.from(new Set(years)).sort((a, b) => b - a);
   }, [allExpenses]);
 
-  const handleYearChange = (year: number) => {
-    setSelectedYear(year);
-    // Reset month when changing year
-    setSelectedMonth('all');
-  };
-
-  const handleCurrentMonth = () => {
-    setSelectedYear(currentYear);
-    setSelectedMonth(currentMonth);
-  };
-
-  /**
-   * Cascading filter reset handler
-   *
-   * Reset Rules:
-   * - Close dropdown (user made selection)
-   * - Clear search query
-   * - Reset downstream filters (Category + Subcategory)
-   *
-   * Why? Prevents invalid combinations when Type changes.
-   * Example: User selects Type="fixed" → Category="rent" → Subcategory="mortgage"
-   *          Then changes Type to "income"
-   *          Result: Category and Subcategory reset (income has different categories)
-   */
-  const handleSelectType = (type: string) => {
-    setSelectedType(type);
-    setIsTypeDropdownOpen(false);
-    setSearchQueryType('');
-    // Reset category and subcategory when type changes
-    setSelectedCategoryId('all');
+  // Receives individual category IDs from MultiSelect; promotes to type-level when
+  // ALL categories of a type are selected (covers deleted-category edge case).
+  const handleSelectCategories = (values: string[]) => {
+    const ORDER: ExpenseType[] = ['income', 'fixed', 'variable', 'debt'];
+    const newTypes: ExpenseType[] = [];
+    const newCatIds: string[] = [];
+    for (const type of ORDER) {
+      const typeCats = categories.filter((c) => c.type === type);
+      if (typeCats.length === 0) continue;
+      if (typeCats.every((c) => values.includes(c.id))) {
+        newTypes.push(type);
+      } else {
+        typeCats.filter((c) => values.includes(c.id)).forEach((c) => newCatIds.push(c.id));
+      }
+    }
+    setSelectedTypes(newTypes);
+    setSelectedCatIds(newCatIds);
     setSelectedSubCategoryId('all');
-  };
-
-  const handleSelectCategory = (categoryId: string) => {
-    setSelectedCategoryId(categoryId);
-    setIsCategoryDropdownOpen(false);
-    setSearchQueryCategory('');
-    // Reset subcategory when category changes
-    setSelectedSubCategoryId('all');
-  };
-
-  const handleSelectSubCategory = (subCategoryId: string) => {
-    setSelectedSubCategoryId(subCategoryId);
-    setIsSubCategoryDropdownOpen(false);
-    setSearchQuerySubCategory('');
   };
 
   const handleResetFilters = () => {
-    setSelectedMonth('all');
-    setSelectedType('all');
-    setSelectedCategoryId('all');
+    setPeriod(currentMonthPeriod());
+    setSelectedTypes([]);
+    setSelectedCatIds([]);
     setSelectedSubCategoryId('all');
-    setSearchQueryType('');
-    setSearchQueryCategory('');
-    setSearchQuerySubCategory('');
+    setSearchQuery('');
+    setSelectedAccountId('all');
+    setMobileSortKey('date-desc');
   };
 
-  // Clearing Type also clears dependent filters AND their search queries.
-  // Prevents "phantom selections" where UI shows "all" but search input
-  // retains previous query text.
-  const handleClearType = () => {
-    setSelectedType('all');
-    setSelectedCategoryId('all');
-    setSelectedSubCategoryId('all');
-    setSearchQueryType('');
-    setSearchQueryCategory('');
-    setSearchQuerySubCategory('');
-  };
+  // A filter is "active" (non-default) if period ≠ current month or any taxonomy filter is set.
+  const hasActiveFilters =
+    !isCurrentMonth(period) ||
+    selectedTypes.length > 0 ||
+    selectedCatIds.length > 0 ||
+    selectedSubCategoryId !== 'all' ||
+    searchQuery !== '' ||
+    selectedAccountId !== 'all';
 
-  const handleClearCategory = () => {
-    setSelectedCategoryId('all');
-    setSelectedSubCategoryId('all');
-    setSearchQueryCategory('');
-    setSearchQuerySubCategory('');
-  };
+  // Count of active drawer-internal filters shown on the mobile "Filtri" badge.
+  // Period and search are excluded — they are always visible inline on mobile.
+  const mobileActiveFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim() !== '') count++;
+    if (selectedTypes.length > 0 || selectedCatIds.length > 0) count++;
+    if (selectedSubCategoryId !== 'all') count++;
+    if (selectedAccountId !== 'all') count++;
+    return count;
+  }, [searchQuery, selectedTypes, selectedCatIds, selectedSubCategoryId, selectedAccountId]);
 
-  const handleClearSubCategory = () => {
-    setSelectedSubCategoryId('all');
-    setSearchQuerySubCategory('');
-  };
-
-  // Check if any filter is active
-  const hasActiveFilters = selectedMonth !== 'all' || selectedType !== 'all' || selectedCategoryId !== 'all' || selectedSubCategoryId !== 'all';
-
-  // Derive year+month slice from allExpenses synchronously — no extra render on filter change.
+  // Derive period slice from allExpenses synchronously.
   const expenses = useMemo(() => {
-    return allExpenses.filter(expense => {
-      const date = expense.date instanceof Date ? expense.date : expense.date.toDate();
-      const expenseYear = date.getFullYear();
-      const expenseMonth = date.getMonth() + 1; // 1-based
-
-      if (expenseYear !== selectedYear) return false;
-      if (selectedMonth !== 'all' && expenseMonth !== parseInt(selectedMonth)) return false;
-
-      return true;
+    const { from, to } = periodToRange(period);
+    return allExpenses.filter((expense) => {
+      const date = getExpenseDate(expense.date);
+      return date >= from && date <= to;
     });
-  }, [allExpenses, selectedYear, selectedMonth]);
+  }, [allExpenses, period]);
 
   // Cleanup pending delete timer on unmount
   useEffect(() => {
@@ -441,42 +233,68 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   // Reset mobile show count when filters change
   useEffect(() => {
     setMobileShowCount(20);
-  }, [selectedYear, selectedMonth, selectedType, selectedCategoryId, selectedSubCategoryId]);
-
-  /**
-   * Click-outside handler for custom dropdowns
-   *
-   * Why mousedown instead of click?
-   * - mousedown fires before blur events
-   * - Prevents race condition where blur closes dropdown before click registers
-   *
-   * Memory Management: Return cleanup function removes listener on unmount
-   */
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target as Node)) {
-        setIsTypeDropdownOpen(false);
-      }
-      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
-        setIsCategoryDropdownOpen(false);
-      }
-      if (subCategoryDropdownRef.current && !subCategoryDropdownRef.current.contains(event.target as Node)) {
-        setIsSubCategoryDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [
+    period,
+    selectedTypes,
+    selectedCatIds,
+    selectedSubCategoryId,
+    searchQuery,
+    selectedAccountId,
+  ]);
 
   // Toggling another row collapses the previously expanded one (accordion pattern).
   const handleToggleExpand = useCallback((id: string) => {
-    setExpandedRowId(prev => (prev === id ? null : id));
+    setExpandedRowId((prev) => (prev === id ? null : id));
   }, []);
 
   const handleAddExpense = () => {
     setEditingExpense(null);
     setDialogOpen(true);
+  };
+
+  /**
+   * Export the current filtered view as a semicolon-delimited CSV.
+   * Semicolon delimiter is standard in Italian Excel. BOM ensures UTF-8 recognition.
+   */
+  // Sanitize a cell value against CSV formula injection (OWASP A03).
+  // Strings starting with =, +, -, @, TAB, or CR are prefixed with a single quote,
+  // which Excel/LibreOffice treat as a text literal, not a formula.
+  const sanitizeCSVCell = (s: string): string => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
+
+  const handleExportCSV = () => {
+    const headers = [
+      'Data',
+      'Tipo',
+      'Categoria',
+      'Sottocategoria',
+      'Importo (\u20ac)',
+      'Note',
+      'Conto',
+      'Link',
+    ];
+    const rows = filteredExpenses.map((e) => [
+      format(getExpenseDate(e.date), 'dd/MM/yyyy'),
+      EXPENSE_TYPE_LABELS[e.type] || e.type,
+      sanitizeCSVCell(e.categoryName),
+      sanitizeCSVCell(e.subCategoryName || ''),
+      e.amount.toFixed(2).replace('.', ','),
+      sanitizeCSVCell(e.notes || ''),
+      sanitizeCSVCell(e.linkedCashAssetId ? (assetNameMap.get(e.linkedCashAssetId) ?? '') : ''),
+      sanitizeCSVCell(e.link || ''),
+    ]);
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';'))
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cashflow-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+    toast.success('Export completato');
   };
 
   const handleEditExpense = (expense: Expense) => {
@@ -494,54 +312,62 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     await onRefresh();
   };
 
+  const deleteSingleExpense = useCallback(
+    async (expense: Expense) => {
+      try {
+        // Reverse the balance effect on the linked cash asset before deleting
+        if (expense.linkedCashAssetId) {
+          await updateCashAssetBalance(expense.linkedCashAssetId, -expense.amount);
+          if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+        }
+        const { deleteExpense } = await import('@/lib/services/expenseService');
+        await deleteExpense(expense.id);
+        if (user) queryClient.invalidateQueries({ queryKey: queryKeys.costCenters.all(user.uid) });
+        toast.success('Voce eliminata con successo');
+        await onRefresh();
+      } catch (error) {
+        console.error('Error deleting expense:', error);
+        toast.error("Errore nell'eliminazione della voce");
+      }
+    },
+    [user, queryClient, onRefresh],
+  );
+
   /**
    * 2-click inline delete: first click arms the button (3s disarm timer),
    * second click executes. For installments/recurring, opens AlertDialog
    * so the user can choose between single or bulk delete.
    */
-  const handleDeleteExpense = useCallback((expense: Expense) => {
-    const isComplex = (expense.isInstallment && expense.installmentParentId) ||
-      (expense.isRecurring && expense.recurringParentId);
+  const handleDeleteExpense = useCallback(
+    (expense: Expense) => {
+      const isComplex =
+        (expense.isInstallment && expense.installmentParentId) ||
+        (expense.isRecurring && expense.recurringParentId);
 
-    if (isComplex) {
-      // Open AlertDialog for bulk delete choice
-      const mode = expense.isInstallment ? 'installment' : 'recurring';
-      setBulkDeleteDialog({ open: true, expense, mode });
-      return;
-    }
-
-    // 2-click inline for regular expenses
-    if (pendingDeleteId === expense.id) {
-      // Second click: confirm
-      if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
-      setPendingDeleteId(null);
-      void deleteSingleExpense(expense);
-    } else {
-      // First click: arm
-      if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
-      setPendingDeleteId(expense.id);
-      pendingDeleteTimerRef.current = setTimeout(() => {
-        setPendingDeleteId(null);
-      }, 3000);
-    }
-  }, [pendingDeleteId]);
-
-  const deleteSingleExpense = async (expense: Expense) => {
-    try {
-      // Reverse the balance effect on the linked cash asset before deleting
-      if (expense.linkedCashAssetId) {
-        await updateCashAssetBalance(expense.linkedCashAssetId, -expense.amount);
-        if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+      if (isComplex) {
+        // Open AlertDialog for bulk delete choice
+        const mode = expense.isInstallment ? 'installment' : 'recurring';
+        setBulkDeleteDialog({ open: true, expense, mode });
+        return;
       }
-      const { deleteExpense } = await import('@/lib/services/expenseService');
-      await deleteExpense(expense.id);
-      toast.success('Voce eliminata con successo');
-      await onRefresh();
-    } catch (error) {
-      console.error('Error deleting expense:', error);
-      toast.error("Errore nell'eliminazione della voce");
-    }
-  };
+
+      // 2-click inline for regular expenses
+      if (pendingDeleteId === expense.id) {
+        // Second click: confirm
+        if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
+        setPendingDeleteId(null);
+        void deleteSingleExpense(expense);
+      } else {
+        // First click: arm
+        if (pendingDeleteTimerRef.current) clearTimeout(pendingDeleteTimerRef.current);
+        setPendingDeleteId(expense.id);
+        pendingDeleteTimerRef.current = setTimeout(() => {
+          setPendingDeleteId(null);
+        }, 3000);
+      }
+    },
+    [pendingDeleteId, deleteSingleExpense],
+  );
 
   const deleteAllRecurringExpenses = async (recurringParentId: string) => {
     try {
@@ -552,11 +378,12 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
+      if (user && seriesExpenses.some((e) => e.linkedCashAssetId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
       }
       const { deleteRecurringExpenses } = await import('@/lib/services/expenseService');
       await deleteRecurringExpenses(recurringParentId);
+      if (user) queryClient.invalidateQueries({ queryKey: queryKeys.costCenters.all(user.uid) });
       toast.success('Tutte le voci ricorrenti sono state eliminate');
       await onRefresh();
     } catch (error) {
@@ -574,11 +401,12 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
+      if (user && seriesExpenses.some((e) => e.linkedCashAssetId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
       }
       const { deleteInstallmentExpenses } = await import('@/lib/services/expenseService');
       await deleteInstallmentExpenses(installmentParentId);
+      if (user) queryClient.invalidateQueries({ queryKey: queryKeys.costCenters.all(user.uid) });
       toast.success('Tutte le rate sono state eliminate');
       await onRefresh();
     } catch (error) {
@@ -587,66 +415,66 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
     }
   };
 
-  // Filter options for Type
-  const typeOptions = useMemo(() => {
-    const types = [
-      { value: 'all', label: 'Tutte' },
-      { value: 'income', label: EXPENSE_TYPE_LABELS.income },
-      { value: 'fixed', label: EXPENSE_TYPE_LABELS.fixed },
-      { value: 'variable', label: EXPENSE_TYPE_LABELS.variable },
-      { value: 'debt', label: EXPENSE_TYPE_LABELS.debt },
-    ];
+  // Build grouped MultiSelect options: one group per ExpenseType with real categories.
+  // The MultiSelect component handles group-level select-all natively via its toggleGroup.
+  const categoryMultiSelectOptions = useMemo((): MultiSelectGroup[] => {
+    const ORDER: ExpenseType[] = ['income', 'fixed', 'variable', 'debt', 'transfer'];
+    return ORDER.map((type) => {
+      const cats = categories.filter((c) => c.type === type);
+      if (cats.length === 0) return null;
+      return {
+        heading: EXPENSE_TYPE_LABELS[type],
+        options: cats.map((cat) => ({ value: cat.id, label: cat.name })),
+        collapseGroupBadge: true,
+      };
+    }).filter((g): g is NonNullable<typeof g> => g !== null);
+  }, [categories]);
 
-    if (!searchQueryType.trim()) {
-      return types;
+  // Expand type-level selections to individual IDs so MultiSelect checkboxes stay in sync.
+  const multiSelectValue = useMemo(() => {
+    const result: string[] = [];
+    for (const type of selectedTypes) {
+      categories.filter((c) => c.type === type).forEach((c) => result.push(c.id));
     }
+    result.push(...selectedCatIds);
+    return result;
+  }, [selectedTypes, selectedCatIds, categories]);
 
-    const query = searchQueryType.toLowerCase();
-    return types.filter(type => type.label.toLowerCase().includes(query));
-  }, [searchQueryType]);
+  // Subcategory options: only when exactly ONE plain category is selected.
+  const soloSelectedCategory = useMemo(() => {
+    if (selectedCatIds.length !== 1) return null;
+    return categories.find((c) => c.id === selectedCatIds[0]) ?? null;
+  }, [categories, selectedCatIds]);
 
-  // Filter options for Category based on selected type
-  const categoryOptions = useMemo(() => {
-    // Only show categories if a specific type is selected
-    if (selectedType === 'all') {
-      return [];
-    }
-
-    let filtered = categories.filter(cat => cat.type === selectedType);
-
-    // Filter by search query
-    if (searchQueryCategory.trim()) {
-      const query = searchQueryCategory.toLowerCase();
-      filtered = filtered.filter(cat => cat.name.toLowerCase().includes(query));
-    }
-
-    return filtered;
-  }, [categories, selectedType, searchQueryCategory]);
-
-  // Filter options for Subcategory based on selected category
   const subCategoryOptions = useMemo(() => {
-    // Only show subcategories if a specific category is selected
-    if (selectedCategoryId === 'all') {
-      return [];
-    }
-
-    // Show subcategories only from selected category
-    const selectedCategory = categories.find(cat => cat.id === selectedCategoryId);
-    if (!selectedCategory) return [];
-
-    let filtered = selectedCategory.subCategories.map(sub => ({
+    if (!soloSelectedCategory) return [];
+    return soloSelectedCategory.subCategories.map((sub) => ({
       ...sub,
-      categoryName: selectedCategory.name,
-      categoryId: selectedCategory.id,
+      categoryName: soloSelectedCategory.name,
+      categoryId: soloSelectedCategory.id,
     }));
+  }, [soloSelectedCategory]);
 
-    if (searchQuerySubCategory.trim()) {
-      const query = searchQuerySubCategory.toLowerCase();
-      filtered = filtered.filter(sub => sub.name.toLowerCase().includes(query));
+  // Account options: accounts that appear in the current period expenses.
+  // Only shown when at least 2 distinct accounts exist (otherwise the filter is useless).
+  const accountOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of expenses) {
+      if (e.linkedCashAssetId) ids.add(e.linkedCashAssetId);
     }
+    return Array.from(ids).map((id) => ({
+      id,
+      name: assetNameMap.get(id) ?? id,
+    }));
+  }, [expenses, assetNameMap]);
 
-    return filtered;
-  }, [categories, selectedCategoryId, searchQuerySubCategory]);
+  // Auto-reset account filter when the selected account is no longer present in the
+  // current period (e.g. user changed period to a month with no transactions for that account).
+  useEffect(() => {
+    if (selectedAccountId !== 'all' && !accountOptions.some((a) => a.id === selectedAccountId)) {
+      setSelectedAccountId('all');
+    }
+  }, [accountOptions, selectedAccountId]);
 
   /**
    * Cumulative AND filtering (progressive narrowing)
@@ -666,23 +494,70 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   const filteredExpenses = useMemo(() => {
     let filtered = [...expenses];
 
-    // Filter by type
-    if (selectedType !== 'all') {
-      filtered = filtered.filter(expense => expense.type === selectedType);
+    if (selectedTypes.length > 0 || selectedCatIds.length > 0) {
+      const typeSet = new Set(selectedTypes);
+      const catIdSet = new Set(selectedCatIds);
+      filtered = filtered.filter((e) => typeSet.has(e.type) || catIdSet.has(e.categoryId));
     }
 
-    // Filter by category (only if a type is selected)
-    if (selectedType !== 'all' && selectedCategoryId !== 'all') {
-      filtered = filtered.filter(expense => expense.categoryId === selectedCategoryId);
+    // Subcategory filter only applies when a single category is selected
+    if (soloSelectedCategory && selectedSubCategoryId !== 'all') {
+      filtered = filtered.filter((e) => e.subCategoryId === selectedSubCategoryId);
     }
 
-    // Filter by subcategory (only if a type and category are selected)
-    if (selectedType !== 'all' && selectedCategoryId !== 'all' && selectedSubCategoryId !== 'all') {
-      filtered = filtered.filter(expense => expense.subCategoryId === selectedSubCategoryId);
+    // Free-text search across notes, category name, and subcategory name
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(
+        (e) =>
+          e.notes?.toLowerCase().includes(q) ||
+          e.categoryName.toLowerCase().includes(q) ||
+          e.subCategoryName?.toLowerCase().includes(q),
+      );
+    }
+
+    // Account (conto corrente) filter
+    if (selectedAccountId !== 'all') {
+      filtered = filtered.filter((e) => e.linkedCashAssetId === selectedAccountId);
     }
 
     return filtered;
-  }, [expenses, selectedType, selectedCategoryId, selectedSubCategoryId]);
+  }, [
+    expenses,
+    selectedTypes,
+    selectedCatIds,
+    soloSelectedCategory,
+    selectedSubCategoryId,
+    searchQuery,
+    selectedAccountId,
+  ]);
+
+  // categoryId → { icon, color } lookup for mobile row icon badges.
+  const categoryMetaMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, { icon: c.icon, color: c.color }])),
+    [categories],
+  );
+
+  // Sort the filtered list for the mobile/tablet flat list.
+  // date-desc also gets an explicit sort — never rely on Firestore document order.
+  const mobileSortedExpenses = useMemo(() => {
+    return [...filteredExpenses].sort((a, b) => {
+      switch (mobileSortKey) {
+        case 'date-desc':
+          return getExpenseDate(b.date).getTime() - getExpenseDate(a.date).getTime();
+        case 'date-asc':
+          return getExpenseDate(a.date).getTime() - getExpenseDate(b.date).getTime();
+        case 'amount-desc':
+          return Math.abs(b.amount) - Math.abs(a.amount);
+        case 'amount-asc':
+          return Math.abs(a.amount) - Math.abs(b.amount);
+        case 'category-asc':
+          return a.categoryName.localeCompare(b.categoryName, 'it');
+        default:
+          return 0;
+      }
+    });
+  }, [filteredExpenses, mobileSortKey]);
 
   // Calculate totals from filtered expenses
   const totalIncome = calculateTotalIncome(filteredExpenses);
@@ -690,35 +565,39 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   const netBalance = calculateNetBalance(filteredExpenses);
   const incomeExpenseRatio = calculateIncomeExpenseRatio(filteredExpenses);
 
+  // Transfer total — shown separately, not included in income/expenses/savings
+  const totalTransfers = useMemo(
+    () =>
+      filteredExpenses
+        .filter((e) => e.type === 'transfer')
+        .reduce((sum, e) => sum + Math.abs(e.amount), 0),
+    [filteredExpenses],
+  );
+
   // ─── Hero card derived data ──────────────────────────────────────────────────
 
-  // Header label for the hero card: "MAGGIO 2026" when month selected, else "2026".
-  const heroLabel = useMemo(() => {
-    if (selectedMonth !== 'all')
-      return `${MONTHS.find(m => m.value === selectedMonth)?.label.toUpperCase()} ${selectedYear}`;
-    return String(selectedYear);
-  }, [selectedYear, selectedMonth]);
+  // Header label for the hero card.
+  const heroLabel = useMemo(() => periodLabel(period).toUpperCase(), [period]);
 
-  // Expenses of the period immediately preceding the selected month.
-  // Used to compute MoM delta — only available when a specific month is selected.
+  // Expenses of the period immediately preceding the selected one.
+  // Only available when viewing a single month (for MoM delta).
   const previousPeriodExpenses = useMemo(() => {
-    if (selectedMonth === 'all') return null;
-    const prevMonthNum = parseInt(selectedMonth) - 1;
-    const prevYear = prevMonthNum === 0 ? selectedYear - 1 : selectedYear;
+    if (period.kind !== 'month') return null;
+    const prevMonthNum = period.month - 1;
+    const prevYear = prevMonthNum === 0 ? period.year - 1 : period.year;
     const prevMonth = prevMonthNum === 0 ? 12 : prevMonthNum;
-    return allExpenses.filter(e => {
+    return allExpenses.filter((e) => {
       const date = getExpenseDate(e.date);
       return date.getFullYear() === prevYear && date.getMonth() + 1 === prevMonth;
     });
-  }, [allExpenses, selectedYear, selectedMonth]);
+  }, [allExpenses, period]);
 
   // MoM delta for income and expenses — null when viewing full year (no comparison).
   const heroDelta = useMemo(() => {
     if (!previousPeriodExpenses) return null;
     const prevIncome = calculateTotalIncome(previousPeriodExpenses);
     const prevExpenses = calculateTotalExpenses(previousPeriodExpenses);
-    const calcDelta = (curr: number, prev: number) =>
-      prev > 0 ? ((curr - prev) / prev) * 100 : 0;
+    const calcDelta = (curr: number, prev: number) => (prev > 0 ? ((curr - prev) / prev) * 100 : 0);
     return {
       income: calcDelta(totalIncome, prevIncome),
       expenses: calcDelta(totalExpenses, prevExpenses),
@@ -733,7 +612,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
 
   // Top-5 expense categories aggregated from filteredExpenses for the hero bar chart.
   const heroExpenseCategories = useMemo(() => {
-    const items = filteredExpenses.filter(e => e.type !== 'income');
+    const items = filteredExpenses.filter((e) => e.type !== 'income' && e.type !== 'transfer');
     const total = items.reduce((s, e) => s + Math.abs(e.amount), 0);
     const byCategory = new Map<string, number>();
     for (const e of items)
@@ -750,7 +629,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
 
   // Top-5 income categories aggregated from filteredExpenses for the hero bar chart.
   const heroIncomeCategories = useMemo(() => {
-    const items = filteredExpenses.filter(e => e.type === 'income');
+    const items = filteredExpenses.filter((e) => e.type === 'income');
     const total = items.reduce((s, e) => s + Math.abs(e.amount), 0);
     const byCategory = new Map<string, number>();
     for (const e of items)
@@ -768,37 +647,38 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   if (loading) {
     return (
       <div className="space-y-6">
+        {/* Filters skeleton */}
+        <div className="flex flex-wrap justify-end gap-2">
+          <div className="bg-muted h-9 w-full animate-pulse rounded-md sm:w-[190px]" />
+          <div className="bg-muted h-9 w-full animate-pulse rounded-md sm:w-[260px]" />
+        </div>
         {/* Hero card skeleton */}
-        <div className="rounded-2xl border p-[22px] space-y-4">
-          <div className="h-3 w-36 bg-muted animate-pulse rounded" />
-          <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
-            {[0, 1, 2, 3].map(i => (
-              <div key={i} className="bg-muted/40 rounded-xl p-3.5 space-y-2">
-                <div className="h-2.5 w-14 bg-muted animate-pulse rounded" />
-                <div className="h-6 w-24 bg-muted animate-pulse rounded" />
-                <div className="h-2.5 w-20 bg-muted animate-pulse rounded" />
+        <div className="space-y-4 rounded-xl border p-[22px]">
+          <div className="bg-muted h-3 w-36 animate-pulse rounded" />
+          <div className="grid grid-cols-2 gap-3">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="bg-muted/40 space-y-2 rounded-xl p-3.5">
+                <div className="bg-muted h-2.5 w-14 animate-pulse rounded" />
+                <div className="bg-muted h-6 w-24 animate-pulse rounded" />
+                <div className="bg-muted h-2.5 w-20 animate-pulse rounded" />
               </div>
             ))}
           </div>
         </div>
-        {/* Filters skeleton */}
-        <div className="rounded-lg border p-4">
-          <div className="h-4 w-16 bg-muted animate-pulse rounded mb-3" />
-          <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
-            {[0, 1, 2, 3].map(i => <div key={i} className="h-9 bg-muted animate-pulse rounded" />)}
-          </div>
-        </div>
         {/* List skeleton — flat rows */}
-        <div className="rounded-lg border p-4 divide-y divide-border">
-          <div className="h-4 w-32 bg-muted animate-pulse rounded mb-4" />
-          {[0, 1, 2, 3, 4].map(i => (
-            <div key={i} className="flex items-center gap-3 py-3">
-              <div className="h-2 w-2 rounded-full bg-muted animate-pulse flex-shrink-0" />
+        <div className="divide-border divide-y rounded-xl border">
+          <div className="flex items-center gap-2 px-6 py-4">
+            <div className="bg-muted h-4 w-12 animate-pulse rounded" />
+            <div className="bg-muted h-5 w-6 animate-pulse rounded-full" />
+          </div>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-6 py-3">
+              <div className="bg-muted h-2 w-2 flex-shrink-0 animate-pulse rounded-full" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-3 w-36 bg-muted animate-pulse rounded" />
-                <div className="h-2.5 w-24 bg-muted animate-pulse rounded" />
+                <div className="bg-muted h-3 w-36 animate-pulse rounded" />
+                <div className="bg-muted h-2.5 w-24 animate-pulse rounded" />
               </div>
-              <div className="h-3 w-16 bg-muted animate-pulse rounded" />
+              <div className="bg-muted h-3 w-16 animate-pulse rounded" />
             </div>
           ))}
         </div>
@@ -807,538 +687,228 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
   }
 
   return (
-    <div className="space-y-6">
-      {/* Desktop "Nuova Spesa" button — mobile uses FAB below */}
-      <div className="hidden desktop:flex justify-end">
-        <Button onClick={handleAddExpense} disabled={isDemo} title={isDemo ? 'Non disponibile in modalità demo' : undefined}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuova Spesa
-        </Button>
-      </div>
+    <div className="space-y-4">
+      {/* ── MOBILE: dedicated mobile template (hidden on desktop) ────────────── */}
+      <CashflowTrackingMobile
+        className="desktop:hidden"
+        period={period}
+        onPeriodChange={setPeriod}
+        availableYears={availableYears}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        categoryMultiSelectOptions={categoryMultiSelectOptions}
+        multiSelectValue={multiSelectValue}
+        onCategoryChange={handleSelectCategories}
+        soloSelectedCategory={soloSelectedCategory}
+        subCategoryOptions={subCategoryOptions}
+        selectedSubCategoryId={selectedSubCategoryId}
+        onSubCategoryChange={setSelectedSubCategoryId}
+        accountOptions={accountOptions}
+        selectedAccountId={selectedAccountId}
+        onAccountChange={setSelectedAccountId}
+        activeFilterCount={mobileActiveFilterCount}
+        onReset={handleResetFilters}
+        income={totalIncome}
+        expenses={totalExpenses}
+        net={netBalance}
+        ratio={incomeExpenseRatio}
+        incomeDelta={heroDelta?.income}
+        expensesDelta={heroDelta?.expenses}
+        savingsRate={heroSavingsRate}
+        expenseCategories={heroExpenseCategories}
+        incomeCategories={heroIncomeCategories}
+        categories={categories}
+        transfers={totalTransfers}
+        transactions={mobileSortedExpenses}
+        totalCount={filteredExpenses.length}
+        showCount={mobileShowCount}
+        onLoadMore={() => setMobileShowCount((prev) => prev + 20)}
+        mobileSortKey={mobileSortKey}
+        onSortChange={setMobileSortKey}
+        onEdit={handleEditExpense}
+        onDelete={handleDeleteExpense}
+        pendingDeleteId={pendingDeleteId}
+        isDemo={isDemo}
+        hasActiveFilters={hasActiveFilters}
+        onAddExpense={handleAddExpense}
+        categoryMetaMap={categoryMetaMap}
+      />
 
-      {/* ── Hero Cashflow Card ─────────────────────────────────────────────── */}
-      {/* Mirrors the cashflow card in the Overview/Panoramica page, but driven  */}
-      {/* by filteredExpenses (honours the active time + hierarchy filters).      */}
-      <Card className="rounded-2xl">
-        <CardContent className="p-[22px]">
-          {/* Header label: "MAGGIO 2026" or "2026" depending on filter state */}
-          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-3">
-            Cashflow · {heroLabel}
-          </p>
-
-          {/* 4 KPI chips */}
-          <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
-            {/* ENTRATE */}
-            <div className="bg-muted/40 rounded-xl p-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                Entrate
-              </p>
-              <p className="text-[22px] font-bold font-mono tabular-nums text-emerald-500 dark:text-emerald-400 leading-none">
-                {cachedFormatCurrencyEUR(totalIncome, true)}
-              </p>
-              {heroDelta !== null && (() => {
-                const pos = heroDelta.income >= 0;
-                return (
-                  <p className={cn('text-[12px] font-mono mt-1.5', pos ? 'text-emerald-500 dark:text-emerald-400' : 'text-destructive')}>
-                    {pos ? '+' : ''}{heroDelta.income.toFixed(1)}% vs mese scorso
-                  </p>
-                );
-              })()}
-            </div>
-
-            {/* SPESE */}
-            <div className="bg-muted/40 rounded-xl p-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                Spese
-              </p>
-              <p className="text-[22px] font-bold font-mono tabular-nums text-destructive leading-none">
-                {cachedFormatCurrencyEUR(totalExpenses, true)}
-              </p>
-              {heroDelta !== null && (() => {
-                // For expenses: +% means spent more → destructive (inverted logic vs income).
-                const pos = heroDelta.expenses >= 0;
-                return (
-                  <p className={cn('text-[12px] font-mono mt-1.5', pos ? 'text-destructive' : 'text-emerald-500 dark:text-emerald-400')}>
-                    {pos ? '+' : ''}{heroDelta.expenses.toFixed(1)}% vs mese scorso
-                  </p>
-                );
-              })()}
-            </div>
-
-            {/* RISPARMIO */}
-            <div className="bg-muted/40 rounded-xl p-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                Risparmio
-              </p>
-              <p className={cn(
-                'text-[22px] font-bold font-mono tabular-nums leading-none',
-                netBalance >= 0 ? 'text-foreground' : 'text-destructive',
-              )}>
-                {cachedFormatCurrencyEUR(netBalance, true)}
-              </p>
-              {totalIncome > 0 && (
-                <p className="text-[12px] text-muted-foreground mt-1.5">
-                  {heroSavingsRate}% del reddito
-                </p>
-              )}
-            </div>
-
-            {/* RAPPORTO */}
-            <div className="bg-muted/40 rounded-xl p-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                Rapporto
-              </p>
-              <p className="text-[22px] font-bold font-mono tabular-nums text-foreground leading-none">
-                {incomeExpenseRatio !== null ? `${incomeExpenseRatio.toFixed(2)}×` : '—'}
-              </p>
-              {incomeExpenseRatio !== null && (
-                <p className="text-[12px] text-muted-foreground mt-1.5">
-                  {coverageHealthLabel(incomeExpenseRatio)}
-                </p>
-              )}
-            </div>
+      {/* ── DESKTOP: filter bar ─────────────────────────────────────────────── */}
+      <div className="desktop:flex hidden flex-col gap-2">
+        {/* Row 1: Search + Period */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Ricerca testo */}
+          <div className="relative min-w-[160px] flex-1">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cerca note, categorie..."
+              className="h-9 pr-8 pl-8 text-sm"
+              aria-label="Cerca nelle note, categoria o sottocategoria"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2.5 -translate-y-1/2 transition-colors"
+                aria-label="Cancella ricerca"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Category breakdowns — only shown when there is data */}
-          {(heroExpenseCategories.length > 0 || heroIncomeCategories.length > 0) && (
-            <>
-              <div className="mt-4 border-t border-border" />
-              <div className="grid desktop:grid-cols-2 gap-x-8 gap-y-4 mt-4">
-                {/* Spese per categoria */}
-                {heroExpenseCategories.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-3">
-                      Spese per Categoria
-                    </p>
-                    <div className="space-y-3">
-                      {heroExpenseCategories.map(cat => (
-                        <div key={cat.category} className="space-y-1">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ background: chartColors[0] || 'var(--chart-1)' }}
-                              />
-                              <span className="text-[13px] text-foreground truncate">{cat.category}</span>
-                            </div>
-                            <span className="text-[13px] font-mono tabular-nums text-foreground ml-3 flex-shrink-0">
-                              {cachedFormatCurrencyEUR(cat.amount, true)}
-                            </span>
-                          </div>
-                          <div className="h-[3px] bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{ width: `${cat.percentage}%`, background: chartColors[0] || 'var(--chart-1)' }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          {/* Periodo */}
+          <PeriodPicker
+            value={period}
+            onChange={setPeriod}
+            availableYears={availableYears}
+            className="shrink-0"
+          />
+        </div>
 
-                {/* Entrate per categoria */}
-                {heroIncomeCategories.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-3">
-                      Entrate per Categoria
-                    </p>
-                    <div className="space-y-3">
-                      {heroIncomeCategories.map(cat => (
-                        <div key={cat.category} className="space-y-1">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{ background: chartColors[1] || 'var(--chart-2)' }}
-                              />
-                              <span className="text-[13px] text-foreground truncate">{cat.category}</span>
-                            </div>
-                            <span className="text-[13px] font-mono tabular-nums text-foreground ml-3 flex-shrink-0">
-                              {cachedFormatCurrencyEUR(cat.amount, true)}
-                            </span>
-                          </div>
-                          <div className="h-[3px] bg-muted rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{ width: `${cat.percentage}%`, background: chartColors[1] || 'var(--chart-2)' }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
+        {/* Row 2: Category chips + optional account filter + reset */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Categorie */}
+          <div className="min-w-[200px] flex-1">
+            <MultiSelect
+              options={categoryMultiSelectOptions}
+              defaultValue={multiSelectValue}
+              onValueChange={handleSelectCategories}
+              placeholder="Tutte le categorie"
+              searchable
+              hideSelectAll
+              singleLine
+              maxCount={2}
+              className="w-full"
+              popoverClassName="w-[280px] desktop:w-[320px]"
+              resetOnDefaultValueChange={false}
+            />
+          </div>
+
+          {/* Sottocategoria */}
+          {soloSelectedCategory && subCategoryOptions.length > 0 && (
+            <div className="w-full shrink-0 sm:w-[180px]">
+              <Select value={selectedSubCategoryId} onValueChange={setSelectedSubCategoryId}>
+                <SelectTrigger
+                  id="filter-subcategory"
+                  aria-label="Filtra per sottocategoria"
+                  className="w-full"
+                >
+                  <SelectValue placeholder="Tutte" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tutte</SelectItem>
+                  {subCategoryOptions.map((sub) => (
+                    <SelectItem key={sub.id} value={sub.id}>
+                      {sub.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Filters — includes year selector (integrated, not a separate card) */}
-      <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <Card>
-          <CardHeader>
-            {/* asChild with a <button> (not <div>) — CollapsibleTrigger must
-                render as a focusable element so keyboard users can reach it.
-                A <div> is not in the tab order and ignores Enter/Space. */}
-            <CollapsibleTrigger asChild>
-              <button type="button" className="flex items-center justify-between w-full text-left">
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4 text-muted-foreground" />
-                  <CardTitle className="text-base">Filtri</CardTitle>
-                  {hasActiveFilters && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  )}
-                </div>
-                <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', filtersOpen && 'rotate-180')} />
-              </button>
-            </CollapsibleTrigger>
-          </CardHeader>
-          <CollapsibleContent>
-            <CardContent>
-              <div className="grid grid-cols-1 gap-3 desktop:flex desktop:flex-wrap desktop:items-end desktop:gap-4">
-                {/* Anno filter (integrated — replaces the separate Year card) */}
-                {availableYears.length > 0 && (
-                  // role="group" + aria-labelledby associates the heading with the
-                  // button set. A plain <label> without htmlFor is not linked to
-                  // anything and is invisible to assistive technology.
-                  <div role="group" aria-labelledby="anno-filter-label" className="flex flex-col gap-2 desktop:min-w-[110px]">
-                    <Label id="anno-filter-label">Anno</Label>
-                    <div className="flex flex-wrap gap-1.5">
-                      {availableYears.map(year => (
-                        <Button
-                          key={year}
-                          variant={selectedYear === year ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => handleYearChange(year)}
-                          className="h-8 px-3 text-sm"
-                        >
-                          {year}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          {/* Conto corrente — only shown when 2+ accounts appear in the period */}
+          {accountOptions.length >= 2 && (
+            <div className="w-full shrink-0 sm:w-[180px]">
+              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                <SelectTrigger
+                  id="filter-account"
+                  aria-label="Filtra per conto corrente"
+                  className="w-full"
+                >
+                  <SelectValue placeholder="Tutti i conti" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tutti i conti</SelectItem>
+                  {accountOptions.map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-                {/* Month Filter + current month quick button */}
-                <div className="flex flex-col gap-2 desktop:min-w-[150px]">
-                  <label className="text-sm font-medium">Mese</label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleziona mese" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Tutti</SelectItem>
-                          {MONTHS.map(month => (
-                            <SelectItem key={month.value} value={month.value}>{month.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button onClick={handleCurrentMonth} variant="secondary" size="default" className="shrink-0">
-                      Corrente
-                    </Button>
-                  </div>
-                </div>
+          {/* Ripristina — only when filters are active */}
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleResetFilters}
+              className="text-muted-foreground hover:text-foreground h-9 shrink-0 gap-1.5 px-2.5"
+            >
+              <X className="h-3.5 w-3.5" />
+              Ripristina
+            </Button>
+          )}
+        </div>
+      </div>
+      {/* end desktop filter bar */}
 
-                {/* Type Filter with Search */}
-                <div className="flex flex-col gap-2 desktop:min-w-[150px]">
-                  <Label htmlFor="type-combobox">Tipo</Label>
-                  <div className="relative">
-                    <Input
-                      id="type-combobox"
-                      placeholder="Cerca tipo..."
-                      value={searchQueryType}
-                      onChange={(e) => {
-                        setSearchQueryType(e.target.value);
-                        setIsTypeDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsTypeDropdownOpen(true)}
-                    />
-                    {isTypeDropdownOpen && (
-                      <div
-                        ref={typeDropdownRef}
-                        className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg max-h-60 overflow-auto text-popover-foreground"
-                      >
-                        {typeOptions.length === 0 ? (
-                          <div className="p-3 text-sm text-muted-foreground text-center">
-                            Nessun tipo trovato
-                          </div>
-                        ) : (
-                          typeOptions.map((type) => (
-                            <button
-                              key={type.value}
-                              type="button"
-                              className={cn(
-                                "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left",
-                                selectedType === type.value && "bg-accent text-accent-foreground"
-                              )}
-                              onClick={() => handleSelectType(type.value)}
-                            >
-                              <span className="flex-1">{type.label}</span>
-                              {selectedType === type.value && (
-                                <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                              )}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {selectedType !== 'all' && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md border border-border">
-                      <span className="text-sm font-medium">
-                        {typeOptions.find(t => t.value === selectedType)?.label}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleClearType}
-                        className="ml-1 hover:bg-muted rounded-full p-0.5 transition-colors"
-                        aria-label="Rimuovi filtro tipo"
-                      >
-                        <X className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                    </div>
-                  )}
-                </div>
+      {/* ── DESKTOP: sticky KPI left + transaction list right ────────────────── */}
+      <div className="desktop:grid desktop:grid-cols-[360px_1fr] desktop:gap-6 desktop:items-start hidden">
+        <div className="desktop:sticky desktop:top-4">
+          {/* ── Hero Cashflow Card ─────────────────────────────────────────────── */}
+          <CashflowWidget
+            monthLabel={heroLabel}
+            income={totalIncome}
+            expenses={totalExpenses}
+            net={netBalance}
+            ratio={incomeExpenseRatio}
+            incomeDelta={heroDelta?.income}
+            expensesDelta={heroDelta?.expenses}
+            savingsRate={heroSavingsRate}
+            expenseCategories={heroExpenseCategories}
+            incomeCategories={heroIncomeCategories}
+            categories={categories}
+            transfers={totalTransfers}
+          />
+        </div>
+        {/* end desktop sticky left panel */}
 
-                {/* Category Filter with Search */}
-                <div className="flex flex-col gap-2 desktop:min-w-[150px]">
-                  <Label htmlFor="category-combobox">Categoria</Label>
-                  <div className="relative">
-                    <Input
-                      id="category-combobox"
-                      placeholder={selectedType === 'all' ? 'Seleziona prima un tipo' : 'Cerca categoria...'}
-                      value={searchQueryCategory}
-                      onChange={(e) => {
-                        setSearchQueryCategory(e.target.value);
-                        setIsCategoryDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsCategoryDropdownOpen(true)}
-                      disabled={selectedType === 'all' || categoryOptions.length === 0}
-                    />
-                    {isCategoryDropdownOpen && selectedType !== 'all' && categoryOptions.length > 0 && (
-                      <div
-                        ref={categoryDropdownRef}
-                        className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg max-h-60 overflow-auto text-popover-foreground"
-                      >
-                        {/* Always show "Tutte" option */}
-                        <button
-                          type="button"
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left",
-                            selectedCategoryId === 'all' && "bg-accent text-accent-foreground"
-                          )}
-                          onClick={() => handleSelectCategory('all')}
-                        >
-                          <span className="flex-1">Tutte</span>
-                          {selectedCategoryId === 'all' && (
-                            <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                          )}
-                        </button>
-                        {categoryOptions.map((category) => (
-                          <button
-                            key={category.id}
-                            type="button"
-                            className={cn(
-                              "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left",
-                              selectedCategoryId === category.id && "bg-accent text-accent-foreground"
-                            )}
-                            onClick={() => handleSelectCategory(category.id)}
-                          >
-                            {category.color && (
-                              <div
-                                className="w-3 h-3 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: category.color }}
-                              />
-                            )}
-                            <span className="flex-1">{category.name}</span>
-                            {selectedCategoryId === category.id && (
-                              <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {selectedCategoryId !== 'all' && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md border border-border">
-                      {categories.find(c => c.id === selectedCategoryId)?.color && (
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: categories.find(c => c.id === selectedCategoryId)?.color }}
-                        />
-                      )}
-                      <span className="text-sm font-medium">
-                        {categories.find(c => c.id === selectedCategoryId)?.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleClearCategory}
-                        className="ml-1 hover:bg-muted rounded-full p-0.5 transition-colors"
-                        aria-label="Rimuovi filtro categoria"
-                      >
-                        <X className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Subcategory Filter with Search */}
-                <div className="flex flex-col gap-2 desktop:min-w-[150px]">
-                  <Label htmlFor="subcategory-combobox">Sottocategoria</Label>
-                  <div className="relative">
-                    <Input
-                      id="subcategory-combobox"
-                      placeholder={selectedCategoryId === 'all' ? 'Seleziona prima una categoria' : 'Cerca sottocategoria...'}
-                      value={searchQuerySubCategory}
-                      onChange={(e) => {
-                        setSearchQuerySubCategory(e.target.value);
-                        setIsSubCategoryDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsSubCategoryDropdownOpen(true)}
-                      disabled={selectedCategoryId === 'all' || subCategoryOptions.length === 0}
-                    />
-                    {isSubCategoryDropdownOpen && selectedCategoryId !== 'all' && subCategoryOptions.length > 0 && (
-                      <div
-                        ref={subCategoryDropdownRef}
-                        className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg max-h-60 overflow-auto text-popover-foreground"
-                      >
-                        {/* Always show "Tutte" option */}
-                        <button
-                          type="button"
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left",
-                            selectedSubCategoryId === 'all' && "bg-accent text-accent-foreground"
-                          )}
-                          onClick={() => handleSelectSubCategory('all')}
-                        >
-                          <span className="flex-1">Tutte</span>
-                          {selectedSubCategoryId === 'all' && (
-                            <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                          )}
-                        </button>
-                        {subCategoryOptions.map((subCategory) => (
-                          <button
-                            key={subCategory.id}
-                            type="button"
-                            className={cn(
-                              "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer text-left",
-                              selectedSubCategoryId === subCategory.id && "bg-accent text-accent-foreground"
-                            )}
-                            onClick={() => handleSelectSubCategory(subCategory.id)}
-                          >
-                            <span className="flex-1">{subCategory.name}</span>
-                            {selectedSubCategoryId === subCategory.id && (
-                              <Check className="h-4 w-4 text-primary flex-shrink-0" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {selectedSubCategoryId !== 'all' && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-md border border-border">
-                      <span className="text-sm font-medium">
-                        {subCategoryOptions.find(s => s.id === selectedSubCategoryId)?.name}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleClearSubCategory}
-                        className="ml-1 hover:bg-muted rounded-full p-0.5 transition-colors"
-                        aria-label="Rimuovi filtro sottocategoria"
-                      >
-                        <X className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Reset Filters Button */}
-                {hasActiveFilters && (
-                  <div className="flex items-end desktop:flex-none">
-                    <Button
-                      variant="outline"
-                      onClick={handleResetFilters}
-                      className="w-full desktop:w-auto"
-                    >
-                      Ripristina Filtri
-                    </Button>
-                  </div>
-                )}
+        {/* RIGHT: transaction list */}
+        <Card className="gap-0 py-0">
+          <CardHeader className="px-5 pt-5 pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <CardTitle className="text-base">Elenco delle spese</CardTitle>
+                <Badge variant="secondary" className="text-xs tabular-nums">
+                  {filteredExpenses.length}
+                </Badge>
+                <span className="text-muted-foreground text-sm">{periodLabel(period)}</span>
               </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
-      {/* Expenses - Desktop Table / Mobile Cards */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {selectedMonth !== 'all'
-              ? `Voci di ${MONTHS.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
-              : `Voci del ${selectedYear}`}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Desktop: Table */}
-          <div className="hidden desktop:block">
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportCSV}
+                  disabled={filteredExpenses.length === 0}
+                  aria-label="Esporta voci come CSV"
+                  className="text-muted-foreground hover:text-foreground h-8 gap-1.5 px-2.5 text-xs"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Esporta CSV
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="px-5 pb-5">
             <ExpenseTable
               expenses={filteredExpenses}
               onEdit={handleEditExpense}
               onRefresh={onRefresh}
               isDemo={isDemo}
+              hasActiveFilters={hasActiveFilters}
+              categories={categories}
             />
-          </div>
-
-          {/* Mobile: flat divide-y list with tap-to-expand actions */}
-          <div className="desktop:hidden">
-            {filteredExpenses.length === 0 ? (
-              <div className="rounded-md border border-dashed p-8 text-center">
-                <p className="text-muted-foreground">Nessuna voce trovata</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Usa il pulsante + per aggiungere la prima voce
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="divide-y divide-border">
-                  {filteredExpenses.slice(0, mobileShowCount).map(expense => (
-                    <MobileExpenseRow
-                      key={expense.id}
-                      expense={expense}
-                      isExpanded={expandedRowId === expense.id}
-                      onToggleExpand={handleToggleExpand}
-                      onEdit={handleEditExpense}
-                      onDelete={handleDeleteExpense}
-                      isPendingDelete={pendingDeleteId === expense.id}
-                      isDemo={isDemo}
-                    />
-                  ))}
-                </div>
-                {filteredExpenses.length > mobileShowCount && (
-                  <div className="pt-4 text-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setMobileShowCount(prev => prev + 20)}
-                    >
-                      Carica altri {Math.min(20, filteredExpenses.length - mobileShowCount)}
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {mobileShowCount} di {filteredExpenses.length} voci
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
+      {/* end desktop two-column grid */}
 
       {/* Expense Dialog */}
       <ExpenseDialog
@@ -1363,8 +933,7 @@ export function ExpenseTrackingTab({ allExpenses, categories, loading, onRefresh
             <AlertDialogDescription>
               {bulkDeleteDialog.mode === 'installment' && bulkDeleteDialog.expense
                 ? `Questa è la rata ${bulkDeleteDialog.expense.installmentNumber}/${bulkDeleteDialog.expense.installmentTotal}. Vuoi eliminare solo questa rata o tutte le ${bulkDeleteDialog.expense.installmentTotal} rate?`
-                : 'Questa è una voce ricorrente. Vuoi eliminare solo questa voce o tutte le occorrenze correlate?'
-              }
+                : 'Questa è una voce ricorrente. Vuoi eliminare solo questa voce o tutte le occorrenze correlate?'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
