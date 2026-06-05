@@ -14,7 +14,7 @@ import type {
 } from '@/lib/server/imports/types';
 
 const DEFAULT_LOCALE: LocaleNormalizationOptions = {
-  dateFormats: ['dd/MM/yyyy', 'yyyy-MM-dd'],
+  dateFormats: ['dd/MM/yyyy', 'dd/MM/yy', 'yyyy-MM-dd'],
   decimalSeparator: ',',
   thousandsSeparator: '.',
   defaultCurrency: 'EUR',
@@ -204,5 +204,34 @@ describe('csv import foundation', () => {
 
     expect(preview.summary.totalRows).toBe(5000);
     expect(preview.rows).toHaveLength(5000);
+  });
+
+  it('keeps a 5,000-row bank CSV valid with short-year Italian dates, quoted semicolons, and apostrophe thousands separators', () => {
+    const bankLocale: LocaleNormalizationOptions = {
+      ...DEFAULT_LOCALE,
+      thousandsSeparator: "'",
+    };
+    const rows = Array.from({ length: 5001 }, (_, index) => (
+      index === 0
+        ? `01/05/26;"Ordine acquisto; broker diretto";1'234,56`
+        : `02/05/25;Movimento ${index + 1};12,34`
+    ));
+
+    const preview = buildCsvImportPreview({
+      csvText: ['Data;Descrizione;Importo', ...rows].join('\n'),
+      mapping: {
+        date: 'Data',
+        description: 'Descrizione',
+        amount: 'Importo',
+      },
+      locale: bankLocale,
+    });
+
+    expect(preview.summary.totalRows).toBe(5000);
+    expect(preview.rows).toHaveLength(5000);
+    expect(preview.summary.blockingRows).toBe(0);
+    expect(preview.rows[0].canonicalFields.date).toBe('2026-05-01');
+    expect(preview.rows[0].canonicalFields.amount).toBe(1234.56);
+    expect(preview.rows[0].rawPreview.Descrizione).toBe('Ordine acquisto; broker diretto');
   });
 });

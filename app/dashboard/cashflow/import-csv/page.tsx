@@ -43,6 +43,8 @@ const DEFAULT_CSV = [
   '02/05/2026;Spesa supermercato;-95,30',
 ].join('\n');
 
+const DEFAULT_DATE_FORMATS = ['dd/MM/yyyy', 'dd/MM/yy', 'yyyy-MM-dd'];
+
 const MOVEMENT_KIND_LABELS: Record<ImportMovementKind, string> = {
   cashflow: 'Cashflow',
   transfer: 'Trasferimento',
@@ -623,7 +625,7 @@ function ImportCsvPage() {
       amount: amountColumn,
     },
     locale: {
-      dateFormats: ['dd/MM/yyyy', 'yyyy-MM-dd'],
+      dateFormats: DEFAULT_DATE_FORMATS,
       decimalSeparator,
       thousandsSeparator,
       defaultCurrency: defaultCurrency.trim() || 'EUR',
@@ -853,7 +855,7 @@ function ImportCsvPage() {
             amount: amountColumn,
           },
           locale: {
-            dateFormats: ['dd/MM/yyyy', 'yyyy-MM-dd'],
+            dateFormats: DEFAULT_DATE_FORMATS,
             decimalSeparator,
             thousandsSeparator,
             defaultCurrency: defaultCurrency.trim() || 'EUR',

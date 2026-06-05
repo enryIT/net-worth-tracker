@@ -65,4 +65,11 @@ describe('csv import preview UI', () => {
     expect(source).toContain('Le righe con errori bloccanti non possono essere marcate come pronte.');
     expect(source).toContain('processato nel browser');
   });
+
+  it('keeps the default import locale aligned with short-year Italian bank and broker dates', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toMatch(/const DEFAULT_DATE_FORMATS = \['dd\/MM\/yyyy', 'dd\/MM\/yy', 'yyyy-MM-dd'\];/);
+    expect(source.match(/dateFormats:\s*DEFAULT_DATE_FORMATS/g) ?? []).toHaveLength(2);
+  });
 });

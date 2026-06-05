@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. Milestone 8 is currently implemented as a narrower operational slice for import history and rollback UI: the page shows committed and `rolledBack` batches and supports explicit rollback confirmation, while large fixture/performance hardening and operational rollout docs remain deferred. The document remains the design reference for the rest of the importer.
+Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. Milestone 8 is currently implemented as a narrower operational slice for import history and rollback UI: the page shows committed and `rolledBack` batches and supports explicit rollback confirmation. Milestone 9 is implemented as the deferred hardening/release slice for 5,000-row validation, Italian date/number/bank-broker quirks, and rollout docs. The document remains the design reference for the rest of the importer.
 
 ## Context
 
@@ -318,9 +318,9 @@ This intentionally avoids complex state restoration in the first implementation.
 
 ## Milestones and acceptance criteria
 
-### Current implementation status after Milestones 1-8
+### Current implementation status after Milestones 1-9
 
-Milestones 1-7 are implemented as narrow slices. Milestone 8 currently has a narrow operational slice for import history and explicit rollback UI; large fixture/performance hardening and operational docs remain deferred. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, dividend/coupon plus standalone fee/tax commit/rollback, and import history with committed/`rolledBack` batches plus explicit rollback confirmation. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
+Milestones 1-9 are implemented as narrow slices. Milestone 8 currently has a narrow operational slice for import history and explicit rollback UI. Milestone 9 adds the release hardening for 5,000-row validation, Italian date/number/bank-broker quirks, and operational release/rollback docs. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, dividend/coupon plus standalone fee/tax commit/rollback, and import history with committed/`rolledBack` batches plus explicit rollback confirmation. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
 
 Implementation commits:
 
@@ -333,11 +333,12 @@ Implementation commits:
 | 5. Internal transfers | Implemented with M4 | `1a6e122` | Transfer validation, neutral internal transfers, mixed batch metadata, mixed rollback, tests. |
 | 6. Investment operations | Implemented | Current slice | Buy/sell validation, asset resolution by confirmed reference, weighted-average-cost/realized-gain semantics, optional cash-account impact, batch metadata, safe rollback, UI commit wiring, tests. |
 | 7. Dividends, coupons, fees, and taxes | Implemented | Current slice | Dividend/coupon rows plus standalone fee/tax rows, batch metadata, safe rollback, UI commit wiring, tests. |
-| 8. Import history, hardening, and rollout | Implemented as narrow slice | Current slice | Import history shows committed/`rolledBack` batches and rollback metadata; explicit rollback confirmation UI is in place. Large-fixture, performance, fixture-expansion, and operational-doc work remains deferred. |
+| 8. Import history, hardening, and rollout | Implemented as narrow slice | Current slice | Import history shows committed/`rolledBack` batches and rollback metadata; explicit rollback confirmation UI is in place. |
+| 9. Release hardening and locale quirks | Implemented | Current slice | 5,000-row validation, short-year Italian dates, bank/broker number quirks, and operational release/rollback docs. |
 
-The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, and the current Milestone 8 history/rollback slice should still be manually release-checked before wider rollout. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
+The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, and the current Milestone 9 hardening slice should still be manually release-checked before wider rollout. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
 
-#### Known deferred scope after the current Milestone 8 slice
+#### Known deferred scope after the current Milestone 9 slice
 
 The following items are intentionally not implemented yet:
 
@@ -347,11 +348,9 @@ The following items are intentionally not implemented yet:
 - Additional rollback UX hardening beyond the current explicit rollback UI and unsafe-rollback messaging.
 - Automatic creation of missing assets, accounts, categories, or subcategories; current reconciliation surfaces missing references and keeps creation/linking explicit.
 - Existing-record updates; first-release rollback only handles records created by the import batch.
-- Large fixture and UX/performance hardening around 5,000-row previews and chunked commits.
-- Virtualized or paginated preview hardening for very large CSVs.
-- Operational rollout documentation for supported mappings, limitations, dedupe behavior, and rollback behavior.
+- Chunked server commits and virtualized or paginated preview hardening for imports that exceed the validated 5,000-row slice.
 
-These items are mapped to Milestone 8 below. Do not treat Milestones 1-7 as a full CSV importer release; treat them as the committed foundation and first durable movement families.
+These items remain deferred beyond Milestone 9. Do not treat Milestones 1-9 as a full CSV importer release; treat them as the committed foundation and first durable movement families plus the release-hardening slice.
 
 ### Milestone 1: Pure import foundation
 
@@ -626,7 +625,7 @@ Acceptance criteria:
 
 ### Milestone 8: Import history, hardening, and rollout
 
-Approach: make the importer operationally safe after all movement families are supported. The current narrow slice covers import history and explicit rollback; performance hardening and operational docs are deferred to later work.
+Approach: make the importer operationally safe after all movement families are supported. The current narrow slice covers import history and explicit rollback; the deferred hardening and rollout docs are captured in Milestone 9.
 
 Scope:
 
@@ -637,9 +636,9 @@ Action items:
 
 - [x] Add import history showing batch status, row counts, duplicate counts, created records, failed chunks, and rollback status.
 - [x] Add rollback UI guarded by explicit confirmation and clear unsafe rollback messaging.
-- [ ] Add large-fixture validation around 5,000 rows.
-- [ ] Add fixture coverage for Italian date/number formats and common bank/broker CSV quirks.
-- [ ] Add operational docs for supported mapping fields, import limitations, and rollback behavior.
+- [x] Add large-fixture validation around 5,000 rows.
+- [x] Add fixture coverage for Italian date/number formats and common bank/broker CSV quirks.
+- [x] Add operational docs for supported mapping fields, import limitations, and rollback behavior.
 - [ ] Run targeted tests for the history/rollback slice plus relevant TypeScript checks.
 - [ ] Verify no raw CSV persistence and no forbidden broad writes.
 
@@ -666,6 +665,46 @@ Rollback checklist (Milestone 8, history/rollback slice):
 - [ ] Keep existing batch records readable only through the remaining authenticated surface, or remove the endpoints entirely if the slice is being reverted.
 - [ ] Re-run the history/rollback route and service tests after removal or guarding.
 - [ ] No CSV data backfill or record deletion is required for this slice rollback, because the change is limited to history/rollback presentation and controls.
+
+### Milestone 9: Release hardening and locale quirks
+
+Approach: close the deferred release-hardening slice without expanding the importer scope. This milestone proves the importer stays stable on 5,000-row broker-style fixtures and on short-year Italian dates, then records the narrow verification and rollback steps for the release slice.
+
+Scope:
+
+- In: 5,000-row fixture validation, short-year Italian date parsing, apostrophe-thousands and comma-decimal number quirks, semicolon-delimited broker exports, operational release/rollback docs, targeted regression tests.
+- Out: broker-specific templates, AI classification, preview virtualization, chunked server commits beyond the validated 5,000-row slice, raw CSV persistence, new data model work.
+
+Action items:
+
+- [x] Add a red regression test that exercises a 5,000-row broker-style CSV with `dd/MM/yy`, quoted semicolons, and apostrophe thousands separators.
+- [x] Extend date normalization to accept `dd/MM/yy` while preserving strict validation for `dd/MM/yyyy`.
+- [x] Align the import page's default locale with short-year Italian bank/broker date formats.
+- [x] Document the release verification and rollback steps/checklists for the hardening slice.
+- [x] Verify the targeted importer tests and TypeScript compilation.
+
+Acceptance criteria:
+
+- A 5,000-row bank/broker CSV validates without blocking rows when dates, numbers, delimiters, and quotes follow the supported Italian formats.
+- Short-year Italian dates normalize consistently with the browser preview defaults.
+- The import page keeps raw CSV processing in the browser and preserves the existing UI surface.
+- Release and rollback steps are documented, actionable, and narrow to this slice.
+- No raw CSV persistence or broader importer architecture changes are introduced.
+
+Release verification checklist (Milestone 9, hardening/release slice):
+
+- [x] `npm test -- --run __tests__/csvImportFoundation.test.ts __tests__/csvImportPreviewUi.test.ts` passes.
+- [x] `npx tsc --noEmit` passes.
+- [x] `/dashboard/cashflow/import-csv` defaults to short-year Italian date support while keeping the raw CSV browser-only copy unchanged.
+- [x] A 5,000-row bank/broker fixture using `dd/MM/yy`, semicolon delimiters, quoted descriptions, and apostrophe thousands separators validates with `blockingRows === 0`.
+- [x] `POST /api/imports/validate` continues to return preview-only payloads and does not write financial records.
+
+Rollback checklist (Milestone 9, hardening/release slice):
+
+- [x] Remove `dd/MM/yy` from the default import locale if the short-year bank/broker format needs to be withdrawn.
+- [x] Revert the `dd/MM/yy` normalization branch in `lib/server/imports/normalization.ts` if the format must be disabled.
+- [x] Re-run the importer foundation and preview UI tests after rollback.
+- [x] No data rollback is required because this slice changes validation behavior and docs only.
 
 ## Risks and mitigations
 

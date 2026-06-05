@@ -41,13 +41,21 @@ function parseDateByFormat(value: string, format: string): string | null {
     return `${yearRaw}-${monthRaw}-${dayRaw}`;
   }
 
-  if (format === 'dd/MM/yyyy') {
-    const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (format === 'dd/MM/yyyy' || format === 'dd/MM/yy') {
+    const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
     if (!match) return null;
     const [, dayRaw, monthRaw, yearRaw] = match;
     const day = Number(dayRaw);
     const month = Number(monthRaw);
-    const year = Number(yearRaw);
+    if (format === 'dd/MM/yyyy' && yearRaw.length !== 4) {
+      return null;
+    }
+
+    if (format === 'dd/MM/yy' && yearRaw.length !== 2) {
+      return null;
+    }
+
+    const year = yearRaw.length === 2 ? 2000 + Number(yearRaw) : Number(yearRaw);
 
     const parsed = new Date(Date.UTC(year, month - 1, day));
     if (
@@ -60,7 +68,7 @@ function parseDateByFormat(value: string, format: string): string | null {
 
     const monthPadded = String(month).padStart(2, '0');
     const dayPadded = String(day).padStart(2, '0');
-    return `${yearRaw}-${monthPadded}-${dayPadded}`;
+    return `${String(year).padStart(4, '0')}-${monthPadded}-${dayPadded}`;
   }
 
   return null;
