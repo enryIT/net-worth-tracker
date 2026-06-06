@@ -101,11 +101,55 @@ const commitBodySchema = z
   .object({
     userId: z.string().trim().min(1),
     idempotencyKey: z.string().trim().min(1),
+    importRunId: z.string().trim().min(1).nullable().optional(),
+    importChunkIndex: z.number().int().positive().nullable().optional(),
+    importChunkCount: z.number().int().positive().nullable().optional(),
     presetId: z.string().trim().min(1).nullable().optional(),
     sourceFingerprint: z.string().trim().min(1).nullable().optional(),
     rows: z.array(commitRowSchema).min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((body, ctx) => {
+    const hasImportRunId = Boolean(body.importRunId?.trim());
+    const hasImportChunkIndex = body.importChunkIndex !== undefined && body.importChunkIndex !== null;
+    const hasImportChunkCount = body.importChunkCount !== undefined && body.importChunkCount !== null;
+
+    if (!hasImportRunId && !hasImportChunkIndex && !hasImportChunkCount) {
+      return;
+    }
+
+    if (!hasImportRunId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'importRunId obbligatorio quando si inviano i metadati del run',
+        path: ['importRunId'],
+      });
+    }
+
+    if (!hasImportChunkIndex) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'importChunkIndex obbligatorio quando si inviano i metadati del run',
+        path: ['importChunkIndex'],
+      });
+    }
+
+    if (!hasImportChunkCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'importChunkCount obbligatorio quando si inviano i metadati del run',
+        path: ['importChunkCount'],
+      });
+    }
+
+    if (hasImportChunkIndex && hasImportChunkCount && body.importChunkIndex! > body.importChunkCount!) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'importChunkIndex non può superare importChunkCount',
+        path: ['importChunkIndex'],
+      });
+    }
+  });
 
 export async function POST(request: NextRequest) {
   try {

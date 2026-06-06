@@ -26,7 +26,11 @@ import { authenticatedFetch } from '@/lib/utils/authFetch';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { toDate } from '@/lib/utils/dateHelpers';
-import type { CsvImportCashflowBatch, CsvImportCashflowCreatedRecord } from '@/lib/server/imports/cashflowCommitTypes';
+import type {
+  CsvImportCashflowBatch,
+  CsvImportCashflowCreatedRecord,
+  CsvImportCashflowImportRun,
+} from '@/lib/server/imports/cashflowCommitTypes';
 import type { CsvImportPreviewResult, ImportDedupeStatus, ImportIssue, ImportMovementKind, NormalizedImportRow } from '@/lib/server/imports/types';
 import type { CsvImportPreset } from '@/lib/server/imports/presetTypes';
 import type { ExpenseCategory } from '@/types/expenses';
@@ -34,8 +38,9 @@ import type { ExpenseCategory } from '@/types/expenses';
 const VALIDATE_ENDPOINT = '/api/imports/validate';
 const PRESET_ENDPOINT = '/api/imports/presets';
 const COMMIT_ENDPOINT = '/api/imports/commit';
-const HISTORY_ENDPOINT = '/api/imports/history';
+const HISTORY_ENDPOINT = '/api/imports/runs';
 const ROLLBACK_ENDPOINT_PREFIX = '/api/imports';
+const ROLLBACK_RUN_ENDPOINT_PREFIX = '/api/imports/runs';
 
 const DEFAULT_CSV = [
   'Data;Descrizione;Importo',
@@ -113,6 +118,13 @@ interface CsvImportCashflowBatchApiRecord extends Omit<CsvImportCashflowBatch, '
   rolledBackAt: string | null;
 }
 
+interface CsvImportCashflowImportRunApiRecord extends Omit<CsvImportCashflowImportRun, 'createdAt' | 'committedAt' | 'rolledBackAt' | 'childBatches'> {
+  createdAt: string;
+  committedAt: string;
+  rolledBackAt: string | null;
+  childBatches: CsvImportCashflowBatchApiRecord[];
+}
+
 interface BatchCreatedRecordSummary {
   kind: HistoryCreatedRecordKind;
   label: string;
@@ -123,6 +135,13 @@ interface ImportHistoryBatch extends Omit<CsvImportCashflowBatch, 'createdAt' | 
   createdAt: Date;
   committedAt: Date;
   rolledBackAt: Date | null;
+}
+
+interface ImportHistoryRun extends Omit<CsvImportCashflowImportRun, 'createdAt' | 'committedAt' | 'rolledBackAt' | 'childBatches'> {
+  createdAt: Date;
+  committedAt: Date;
+  rolledBackAt: Date | null;
+  childBatches: ImportHistoryBatch[];
 }
 
 function getMovementKindLabel(kind: ImportMovementKind): string {
@@ -397,6 +416,32 @@ function normalizeImportHistoryBatch(batch: CsvImportCashflowBatchApiRecord): Im
   };
 }
 
+function normalizeImportHistoryRun(run: CsvImportCashflowImportRunApiRecord): ImportHistoryRun {
+  return {
+    ...run,
+    createdAt: toDate(run.createdAt),
+    committedAt: toDate(run.committedAt),
+    rolledBackAt: run.rolledBackAt ? toDate(run.rolledBackAt) : null,
+    childBatches: run.childBatches.map(normalizeImportHistoryBatch),
+  };
+}
+
+function getImportHistoryRunStatusLabel(status: CsvImportCashflowImportRun['status']): string {
+  if (status === 'partial') {
+    return 'Parziale';
+  }
+
+  return status === 'rolledBack' ? 'Annullata' : 'Confermata';
+}
+
+function getImportHistoryRunStatusBadgeClass(status: CsvImportCashflowImportRun['status']): string {
+  return status === 'rolledBack'
+    ? 'border-slate-300 bg-slate-100 text-slate-700'
+    : status === 'partial'
+      ? 'border-amber-300 bg-amber-50 text-amber-700'
+    : 'border-emerald-300 bg-emerald-50 text-emerald-700';
+}
+
 function getImportHistoryBatchStatusLabel(status: CsvImportCashflowBatch['status']): string {
   return status === 'rolledBack' ? 'Annullato' : 'Confermato';
 }
@@ -433,6 +478,9 @@ function formatImportHistoryBatchTimestamp(date: Date | null): string {
 
 interface CommitBatchSummary {
   batchId: string;
+  importRunId: string | null;
+  importChunkIndex: number | null;
+  importChunkCount: number | null;
   createdRecordCount: number;
   wasIdempotent: boolean;
   status: 'committed' | 'rolledBack';
@@ -559,11 +607,12 @@ function ImportCsvPage() {
   const [showOnlyMissingReferences, setShowOnlyMissingReferences] = useState(false);
   const [movementKindFilter, setMovementKindFilter] = useState<MovementKindFilter>('all');
   const commitIdempotencyKeyRef = useRef<string | null>(null);
+  const commitRunIdRef = useRef<string | null>(null);
   const [isCommitting, setIsCommitting] = useState(false);
   const [isRollingBack, setIsRollingBack] = useState(false);
   const [commitBatchSummary, setCommitBatchSummary] = useState<CommitBatchSummary | null>(null);
   const [commitRunState, setCommitRunState] = useState<CommitRunState | null>(null);
-  const [importHistoryRollbackTarget, setImportHistoryRollbackTarget] = useState<ImportHistoryBatch | null>(null);
+  const [importHistoryRollbackTarget, setImportHistoryRollbackTarget] = useState<ImportHistoryRun | null>(null);
 
   const selectedPreset = useMemo(
     () => presets.find((preset) => preset.id === selectedPresetId) ?? null,
@@ -572,6 +621,7 @@ function ImportCsvPage() {
 
   useEffect(() => {
     commitIdempotencyKeyRef.current = null;
+    commitRunIdRef.current = null;
   }, [expenseCategories, rowOverrides, selectedPresetId]);
 
   const loadPresets = useCallback(async () => {
@@ -622,7 +672,7 @@ function ImportCsvPage() {
   }, [loadPresets]);
 
   const importHistoryQuery = useQuery({
-    queryKey: queryKeys.imports.history(user?.uid ?? ''),
+    queryKey: queryKeys.imports.runs(user?.uid ?? ''),
     enabled: Boolean(user?.uid),
     queryFn: async () => {
       const response = await authenticatedFetch(HISTORY_ENDPOINT);
@@ -636,10 +686,10 @@ function ImportCsvPage() {
       }
 
       const history = Array.isArray(payload?.data)
-        ? (payload.data as CsvImportCashflowBatchApiRecord[])
+        ? (payload.data as CsvImportCashflowImportRunApiRecord[])
         : [];
 
-      return history.map(normalizeImportHistoryBatch);
+      return history.map(normalizeImportHistoryRun);
     },
   });
 
@@ -1217,6 +1267,7 @@ function ImportCsvPage() {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.transfers(user.uid) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.overview(user.uid) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.imports.history(user.uid) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.imports.runs(user.uid) }),
       ]);
     } catch (error) {
       console.error('[POST /api/imports/commit] Unable to invalidate import-related queries:', error);
@@ -1283,9 +1334,7 @@ function ImportCsvPage() {
       setCommitBatchSummary((currentSummary) => (
         currentSummary?.batchId === batchId && currentSummary.status === 'committed'
           ? {
-              batchId: result.batch.id,
-              createdRecordCount: currentSummary.createdRecordCount,
-              wasIdempotent: currentSummary.wasIdempotent,
+              ...currentSummary,
               status: 'rolledBack',
               removedRecordCount: result.removedRecordCount,
             }
@@ -1295,6 +1344,83 @@ function ImportCsvPage() {
       await invalidateImportRelatedQueries();
 
       toast.success(`Batch ${result.batch.id} annullato`);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+      return false;
+    } finally {
+      setIsRollingBack(false);
+    }
+  }, [invalidateImportRelatedQueries, user]);
+
+  const rollbackImportRun = useCallback(async (
+    importRunId: string,
+    rollbackReason = 'annullamento raggruppato'
+  ): Promise<boolean> => {
+    if (!user) {
+      toast.error('Utente non autenticato');
+      return false;
+    }
+
+    if (!importRunId.trim()) {
+      toast.error('Importazione raggruppata non valida');
+      return false;
+    }
+
+    try {
+      setIsRollingBack(true);
+
+      const response = await authenticatedFetch(
+        `${ROLLBACK_RUN_ENDPOINT_PREFIX}/${importRunId}/rollback`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rollbackReason,
+          }),
+        }
+      );
+
+      const payload = await response.json();
+      if (!response.ok) {
+        const message = typeof payload?.error === 'string'
+          ? payload.error
+          : 'Errore durante l\'annullamento dell\'importazione raggruppata';
+        toast.error(message);
+        return false;
+      }
+
+      const result = payload?.data as {
+        importRunId: string;
+        status: 'rolledBack' | 'partial' | 'unsafe';
+        removedRecordCount: number;
+        childBatchCount: number;
+        rolledBackChildBatchCount: number;
+      };
+
+      commitIdempotencyKeyRef.current = null;
+      commitRunIdRef.current = null;
+      setCommitBatchSummary((currentSummary) => (
+        currentSummary?.importRunId === importRunId && currentSummary.status === 'committed'
+          ? {
+              ...currentSummary,
+              status: 'rolledBack',
+              removedRecordCount: result.removedRecordCount,
+            }
+          : currentSummary
+      ));
+
+      await invalidateImportRelatedQueries();
+
+      if (result.status === 'rolledBack') {
+        toast.success(`Importazione raggruppata ${result.importRunId} annullata`);
+      } else {
+        toast.error(`Importazione raggruppata ${result.importRunId} annullata parzialmente`);
+      }
+
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1322,7 +1448,12 @@ function ImportCsvPage() {
       ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
         ? crypto.randomUUID()
         : `cashflow-import-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    const importRunId = commitRunIdRef.current
+      ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `cashflow-import-run-${Date.now()}-${Math.random().toString(16).slice(2)}`);
     commitIdempotencyKeyRef.current = baseIdempotencyKey;
+    commitRunIdRef.current = importRunId;
 
     setIsCommitting(true);
     setCommitBatchSummary(null);
@@ -1364,6 +1495,9 @@ function ImportCsvPage() {
           },
           body: JSON.stringify({
             userId: user.uid,
+            importRunId,
+            importChunkIndex: chunkNumber,
+            importChunkCount: commitChunks.length,
             idempotencyKey: chunkIdempotencyKey,
             presetId: selectedPresetId || null,
             sourceFingerprint: null,
@@ -1384,7 +1518,12 @@ function ImportCsvPage() {
         }
 
         const result = payload?.data as {
-          batch: { id: string };
+          batch: {
+            id: string;
+            importRunId: string | null;
+            importChunkIndex: number | null;
+            importChunkCount: number | null;
+          };
           createdRecordCount: number;
           wasIdempotent: boolean;
         } | undefined;
@@ -1402,6 +1541,9 @@ function ImportCsvPage() {
 
         setCommitBatchSummary({
           batchId: result.batch.id,
+          importRunId: result.batch.importRunId ?? null,
+          importChunkIndex: result.batch.importChunkIndex ?? null,
+          importChunkCount: result.batch.importChunkCount ?? null,
           createdRecordCount: totalCreatedRecordCount,
           wasIdempotent: latestSuccessfulBatchWasIdempotent,
           status: 'committed',
@@ -1464,8 +1606,13 @@ function ImportCsvPage() {
       return;
     }
 
+    if (commitBatchSummary.importRunId && (commitBatchSummary.importChunkCount ?? 1) > 1) {
+      await rollbackImportRun(commitBatchSummary.importRunId);
+      return;
+    }
+
     await rollbackImportBatch(commitBatchSummary.batchId);
-  }, [commitBatchSummary, rollbackImportBatch]);
+  }, [commitBatchSummary, rollbackImportBatch, rollbackImportRun]);
 
   const selectedRowTitle = selectedRow
     ? `Riga ${selectedRow.rowIndex}`
@@ -1881,44 +2028,49 @@ function ImportCsvPage() {
                   <p className="mt-4 text-sm text-muted-foreground">Caricamento storico import...</p>
                 ) : importHistory.length > 0 ? (
                   <div className="mt-4 space-y-4">
-                    {importHistory.map((batch) => {
-                      const recordSummaries = groupBatchCreatedRecords(batch.createdRecords);
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Importazioni collegate
+                    </p>
+                    {importHistory.map((run) => {
+                      const runRecordSummaries = groupBatchCreatedRecords(
+                        run.childBatches.flatMap((childBatch) => childBatch.createdRecords)
+                      );
 
                       return (
-                        <div key={batch.id} className="rounded-lg border bg-muted/20 p-4">
+                        <div key={run.importRunId} className="rounded-lg border bg-muted/20 p-4">
                           <div className="flex flex-col gap-3 desktop:flex-row desktop:items-start desktop:justify-between">
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-medium">Batch {batch.id}</p>
+                                <p className="text-sm font-medium">Importazione raggruppata {run.importRunId}</p>
                                 <Badge
                                   variant="outline"
-                                  className={getImportHistoryBatchStatusBadgeClass(batch.status)}
+                                  className={getImportHistoryRunStatusBadgeClass(run.status)}
                                 >
-                                  {getImportHistoryBatchStatusLabel(batch.status)}
+                                  {getImportHistoryRunStatusLabel(run.status)}
                                 </Badge>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                {batch.status === 'rolledBack'
-                                  ? `Annullato il ${formatImportHistoryBatchTimestamp(batch.rolledBackAt)}`
-                                  : `Confermato il ${formatImportHistoryBatchTimestamp(batch.committedAt)}`}
-                                {batch.status === 'rolledBack' && batch.rollbackReason
-                                  ? ` · Motivo: ${batch.rollbackReason}`
+                                {run.status === 'rolledBack'
+                                  ? `Annullata il ${formatImportHistoryBatchTimestamp(run.rolledBackAt)}`
+                                  : `Confermata il ${formatImportHistoryBatchTimestamp(run.committedAt)}`}
+                                {run.status === 'rolledBack' && run.rollbackReason
+                                  ? ` · Motivo: ${run.rollbackReason}`
                                   : ''}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {batch.rowCount} righe · {batch.createdRecordCount} record creati · {batch.duplicateCount} duplicati · {batch.errorCount} errori
+                                {run.childBatchCount} chunk collegati · {run.rowCount} righe · {run.createdRecordCount} record creati · {run.duplicateCount} duplicati · {run.errorCount} errori
                               </p>
                             </div>
 
-                            {batch.status === 'committed' && (
+                            {run.canRollbackGrouped && (
                               <div className="flex flex-wrap gap-2">
                                 <Button
                                   type="button"
                                   variant="destructive"
-                                  onClick={() => setImportHistoryRollbackTarget(batch)}
+                                  onClick={() => setImportHistoryRollbackTarget(run)}
                                   disabled={isRollingBack}
                                 >
-                                  Annulla batch
+                                  Annulla importazione raggruppata
                                 </Button>
                               </div>
                             )}
@@ -1928,13 +2080,81 @@ function ImportCsvPage() {
                             <p className="w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Record creati per tipo
                             </p>
-                            {recordSummaries.length > 0 ? recordSummaries.map((summary) => (
+                            {runRecordSummaries.length > 0 ? runRecordSummaries.map((summary) => (
                               <Badge key={summary.kind} variant="outline" className="border-border bg-background text-foreground">
                                 {summary.label}: {summary.count}
                               </Badge>
                             )) : (
                               <p className="text-sm text-muted-foreground">Nessun record creato.</p>
                             )}
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Chunk collegati
+                            </p>
+                            <div className="space-y-3">
+                              {run.childBatches.map((childBatch) => {
+                                const childRecordSummaries = groupBatchCreatedRecords(childBatch.createdRecords);
+
+                                return (
+                                  <div key={childBatch.id} className="rounded-lg border bg-background p-3">
+                                    <div className="flex flex-col gap-3 desktop:flex-row desktop:items-start desktop:justify-between">
+                                      <div className="space-y-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-medium">Batch {childBatch.id}</p>
+                                          <Badge
+                                            variant="outline"
+                                            className={getImportHistoryBatchStatusBadgeClass(childBatch.status)}
+                                          >
+                                            {getImportHistoryBatchStatusLabel(childBatch.status)}
+                                          </Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                          {childBatch.status === 'rolledBack'
+                                            ? `Annullato il ${formatImportHistoryBatchTimestamp(childBatch.rolledBackAt)}`
+                                            : `Confermato il ${formatImportHistoryBatchTimestamp(childBatch.committedAt)}`}
+                                          {childBatch.status === 'rolledBack' && childBatch.rollbackReason
+                                            ? ` · Motivo: ${childBatch.rollbackReason}`
+                                            : ''}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">
+                                          Chunk {childBatch.importChunkIndex ?? '—'}/{childBatch.importChunkCount ?? '—'} · {childBatch.rowCount} righe · {childBatch.createdRecordCount} record creati · {childBatch.duplicateCount} duplicati · {childBatch.errorCount} errori
+                                        </p>
+                                      </div>
+
+                                      {childBatch.status === 'committed' && (
+                                        <div className="flex flex-wrap gap-2">
+                                          <Button
+                                            type="button"
+                                            variant="destructive"
+                                            onClick={async () => {
+                                              await rollbackImportBatch(childBatch.id);
+                                            }}
+                                            disabled={isRollingBack}
+                                          >
+                                            Annulla batch
+                                          </Button>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <p className="w-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        Record creati per tipo
+                                      </p>
+                                      {childRecordSummaries.length > 0 ? childRecordSummaries.map((summary) => (
+                                        <Badge key={summary.kind} variant="outline" className="border-border bg-background text-foreground">
+                                          {summary.label}: {summary.count}
+                                        </Badge>
+                                      )) : (
+                                        <p className="text-sm text-muted-foreground">Nessun record creato.</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
                       );
@@ -1957,22 +2177,39 @@ function ImportCsvPage() {
                   {importHistoryRollbackTarget && (
                     <>
                       <DialogHeader>
-                        <DialogTitle>Annulla batch import</DialogTitle>
+                        <DialogTitle>Annulla importazione raggruppata</DialogTitle>
                         <DialogDescription>
-                          L&apos;annullamento rimuove solo i record creati da questo batch. Se questi record sono stati modificati manualmente, il server può bloccare l&apos;operazione.
+                          L&apos;annullamento rimuove solo i record creati da questo import raggruppato, inclusi tutti i chunk collegati. Se alcuni record sono stati modificati manualmente, il server può bloccare l&apos;operazione.
                         </DialogDescription>
                       </DialogHeader>
 
                       <div className="space-y-3 text-sm">
-                        <p className="font-medium text-foreground">Batch {importHistoryRollbackTarget.id}</p>
+                        <p className="font-medium text-foreground">Importazione raggruppata {importHistoryRollbackTarget.importRunId}</p>
                         <p className="text-muted-foreground">
-                          {importHistoryRollbackTarget.rowCount} righe · {importHistoryRollbackTarget.createdRecordCount} record creati · {importHistoryRollbackTarget.duplicateCount} duplicati · {importHistoryRollbackTarget.errorCount} errori
+                          {importHistoryRollbackTarget.childBatchCount} chunk collegati · {importHistoryRollbackTarget.rowCount} righe · {importHistoryRollbackTarget.createdRecordCount} record creati · {importHistoryRollbackTarget.duplicateCount} duplicati · {importHistoryRollbackTarget.errorCount} errori
                         </p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Chunk collegati
+                        </p>
+                        <div className="space-y-2">
+                          {importHistoryRollbackTarget.childBatches.map((childBatch) => (
+                            <div key={childBatch.id} className="rounded-md border bg-muted/20 p-3">
+                              <p className="font-medium text-foreground">Batch {childBatch.id}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Chunk {childBatch.importChunkIndex ?? '—'}/{childBatch.importChunkCount ?? '—'} · {childBatch.status === 'rolledBack'
+                                  ? `Annullato il ${formatImportHistoryBatchTimestamp(childBatch.rolledBackAt)}`
+                                  : `Confermato il ${formatImportHistoryBatchTimestamp(childBatch.committedAt)}`}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           Record creati per tipo
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          {groupBatchCreatedRecords(importHistoryRollbackTarget.createdRecords).map((summary) => (
+                          {groupBatchCreatedRecords(
+                            importHistoryRollbackTarget.childBatches.flatMap((childBatch) => childBatch.createdRecords)
+                          ).map((summary) => (
                             <Badge key={summary.kind} variant="outline" className="border-border bg-background text-foreground">
                               {summary.label}: {summary.count}
                             </Badge>
@@ -2002,7 +2239,7 @@ function ImportCsvPage() {
                               return;
                             }
 
-                            const success = await rollbackImportBatch(importHistoryRollbackTarget.id);
+                            const success = await rollbackImportRun(importHistoryRollbackTarget.importRunId);
                             if (success) {
                               setImportHistoryRollbackTarget(null);
                             }

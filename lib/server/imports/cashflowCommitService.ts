@@ -6,6 +6,10 @@ import { createFirestoreCsvImportCashflowBatchRepository, createFirestoreCsvImpo
 import { invalidateDashboardOverviewSummaryServer as defaultInvalidateDashboardOverviewSummaryServer } from '@/lib/services/dashboardOverviewInvalidation.server';
 import { ITALY_TIMEZONE, formatDateInputValue, toDate } from '@/lib/utils/dateHelpers';
 import { calculateInvestmentOperationEffect } from '@/lib/utils/investmentOperationUtils';
+import {
+  groupCsvImportCashflowBatchesByRun,
+  sortCsvImportCashflowChildBatchesForRollback,
+} from '@/lib/server/imports/cashflowImportRunGrouping';
 import type {
   CsvImportCashflowBatch,
   CsvImportCashflowBatchRepository,
@@ -21,6 +25,9 @@ import type {
   CsvImportCashflowDividendRecord,
   CsvImportCashflowInternalTransferRecord,
   CsvImportCashflowInvestmentOperationRecord,
+  CsvImportCashflowImportRun,
+  CsvImportCashflowImportRunChildRollbackResult,
+  CsvImportCashflowImportRunRollbackResult,
   CsvImportCashflowRollbackResult,
   CsvImportCashflowCategoryRecord,
   CsvImportCashflowAssetRecord,
@@ -55,6 +62,52 @@ export function isCsvImportCashflowCommitServiceError(error: unknown): error is 
 function ensureAuthenticatedUserId(userId: string): void {
   if (!userId || userId.trim().length === 0) {
     throw new CsvImportCashflowCommitServiceError(400, 'User ID is required');
+  }
+}
+
+function ensureImportRunMetadataConsistency(input: CsvImportCashflowCommitInput): void {
+  const hasImportRunId = Boolean(input.importRunId?.trim());
+  const hasImportChunkIndex = input.importChunkIndex !== undefined && input.importChunkIndex !== null;
+  const hasImportChunkCount = input.importChunkCount !== undefined && input.importChunkCount !== null;
+
+  if (!hasImportRunId && !hasImportChunkIndex && !hasImportChunkCount) {
+    return;
+  }
+
+  if (!hasImportRunId || !hasImportChunkIndex || !hasImportChunkCount) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'I metadati dell\'import run richiedono importRunId, importChunkIndex e importChunkCount',
+      {
+        importRunId: input.importRunId ?? null,
+        importChunkIndex: input.importChunkIndex ?? null,
+        importChunkCount: input.importChunkCount ?? null,
+      }
+    );
+  }
+
+  if (input.importChunkIndex! <= 0 || input.importChunkCount! <= 0) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'I metadati dell\'import run non sono validi',
+      {
+        importRunId: input.importRunId,
+        importChunkIndex: input.importChunkIndex,
+        importChunkCount: input.importChunkCount,
+      }
+    );
+  }
+
+  if (input.importChunkIndex! > input.importChunkCount!) {
+    throw new CsvImportCashflowCommitServiceError(
+      400,
+      'L\'indice del chunk non può superare il conteggio totale dei chunk',
+      {
+        importRunId: input.importRunId,
+        importChunkIndex: input.importChunkIndex,
+        importChunkCount: input.importChunkCount,
+      }
+    );
   }
 }
 
@@ -545,6 +598,9 @@ function buildRequestFingerprint(
   const payload = {
     userId,
     idempotencyKey: input.idempotencyKey,
+    importRunId: input.importRunId ?? null,
+    importChunkIndex: input.importChunkIndex ?? null,
+    importChunkCount: input.importChunkCount ?? null,
     presetId: input.presetId ?? null,
     sourceFingerprint: input.sourceFingerprint ?? null,
     rows: input.rows.map((row) => ({
@@ -1155,7 +1211,7 @@ export function createCsvImportCashflowCommitService(
     ?? defaultInvalidateDashboardOverviewSummaryServer
   );
 
-  return {
+  const service = {
     async commitBatch(
       userId: string,
       input: CsvImportCashflowCommitInput
@@ -1169,6 +1225,8 @@ export function createCsvImportCashflowCommitService(
       if (!Array.isArray(input.rows) || input.rows.length === 0) {
         throw new CsvImportCashflowCommitServiceError(400, 'Nessuna riga da importare');
       }
+
+      ensureImportRunMetadataConsistency(input);
 
       const requestFingerprint = buildRequestFingerprint(userId, input);
       const existingBatch = await repository.getByUserAndIdempotencyKey(userId, input.idempotencyKey);
@@ -1604,6 +1662,9 @@ export function createCsvImportCashflowCommitService(
         id: batchId,
         userId,
         idempotencyKey: input.idempotencyKey,
+        importRunId: input.importRunId ?? null,
+        importChunkIndex: input.importChunkIndex ?? null,
+        importChunkCount: input.importChunkCount ?? null,
         presetId: input.presetId ?? null,
         sourceFingerprint: input.sourceFingerprint ?? null,
         requestFingerprint,
@@ -1646,6 +1707,13 @@ export function createCsvImportCashflowCommitService(
           right.committedAt.getTime() - left.committedAt.getTime()
           || right.createdAt.getTime() - left.createdAt.getTime()
         ));
+    },
+
+    async listImportRuns(userId: string): Promise<CsvImportCashflowImportRun[]> {
+      ensureAuthenticatedUserId(userId);
+
+      const batches = await service.listImportBatches(userId);
+      return groupCsvImportCashflowBatchesByRun(batches);
     },
 
     async rollbackBatch(
@@ -1802,7 +1870,119 @@ export function createCsvImportCashflowCommitService(
         removedRecordCount: expenseIds.length + transferIds.length + investmentOperationIds.length + dividendIds.length,
       };
     },
+
+    async rollbackImportRun(
+      userId: string,
+      importRunId: string,
+      rollbackReason = 'annullamento manuale'
+    ): Promise<CsvImportCashflowImportRunRollbackResult> {
+      ensureAuthenticatedUserId(userId);
+
+      if (!importRunId?.trim()) {
+        throw new CsvImportCashflowCommitServiceError(400, 'Import run ID obbligatorio');
+      }
+
+      const batches = await service.listImportBatches(userId);
+      const childBatches = batches.filter((batch) => (batch.importRunId ?? batch.id) === importRunId);
+
+      if (childBatches.length === 0) {
+        throw new CsvImportCashflowCommitServiceError(404, 'Import run non trovato');
+      }
+
+      const committedChildBatches = childBatches.filter((batch) => batch.status === 'committed');
+      if (committedChildBatches.length === 0) {
+        throw new CsvImportCashflowCommitServiceError(409, 'Import run già annullato');
+      }
+
+      const orderedChildBatches = sortCsvImportCashflowChildBatchesForRollback(childBatches);
+      const childResults: CsvImportCashflowImportRunChildRollbackResult[] = [];
+      let removedRecordCount = 0;
+      let rolledBackChildBatchCount = 0;
+      let unsafeChildBatchCount = 0;
+
+      for (const batch of orderedChildBatches) {
+        if (batch.status === 'rolledBack') {
+          childResults.push({
+            batchId: batch.id,
+            status: 'alreadyRolledBack',
+          });
+          continue;
+        }
+
+        try {
+          const expenseIds = batch.createdRecords
+            .filter((record) => record.kind === 'cashflow')
+            .map((record) => record.id);
+          const internalTransferIds = batch.createdRecords
+            .filter((record) => record.kind === 'internalTransfer')
+            .map((record) => record.id);
+          const investmentOperationIds = batch.createdRecords
+            .filter((record) => record.kind === 'investmentOperation')
+            .map((record) => record.id);
+          const dividendIds = batch.createdRecords
+            .filter((record) => record.kind === 'dividend')
+            .map((record) => record.id);
+          const rolledBackAt = now();
+          const updatedBatch = await repository.rollbackBatch(
+            batch.id,
+            expenseIds,
+            internalTransferIds,
+            investmentOperationIds,
+            dividendIds,
+            rolledBackAt,
+            rollbackReason
+          );
+
+          if (!updatedBatch) {
+            throw new CsvImportCashflowCommitServiceError(404, 'Batch import non trovato');
+          }
+
+          rolledBackChildBatchCount += 1;
+          const batchRemovedRecordCount = expenseIds.length + internalTransferIds.length + investmentOperationIds.length + dividendIds.length;
+          removedRecordCount += batchRemovedRecordCount;
+          childResults.push({
+            batchId: batch.id,
+            status: 'rolledBack',
+            removedRecordCount: batchRemovedRecordCount,
+          });
+        } catch (error) {
+          unsafeChildBatchCount += 1;
+          childResults.push({
+            batchId: batch.id,
+            status: 'unsafe',
+            message: error instanceof Error ? error.message : 'Rollback grouped non riuscito',
+            details: isCsvImportCashflowCommitServiceError(error) ? error.details : undefined,
+          });
+          break;
+        }
+      }
+
+      if (rolledBackChildBatchCount > 0) {
+        await invalidateDashboardOverviewSummaryServer(userId, 'csv_import_cashflow_grouped_rolled_back');
+      }
+
+      const alreadyRolledBackChildBatchCount = childResults.filter((result) => result.status === 'alreadyRolledBack').length;
+      const status: CsvImportCashflowImportRunRollbackResult['status'] = unsafeChildBatchCount > 0
+        ? (rolledBackChildBatchCount > 0 || alreadyRolledBackChildBatchCount > 0 ? 'partial' : 'unsafe')
+        : alreadyRolledBackChildBatchCount > 0
+          ? 'partial'
+          : 'rolledBack';
+
+      return {
+        importRunId,
+        status,
+        childBatchCount: childBatches.length,
+        committedChildBatchCount: committedChildBatches.length,
+        rolledBackChildBatchCount,
+        alreadyRolledBackChildBatchCount,
+        unsafeChildBatchCount,
+        removedRecordCount,
+        childResults,
+      };
+    },
   };
+
+  return service;
 }
 
 const defaultCsvImportCashflowCommitService = createCsvImportCashflowCommitService();
@@ -1826,4 +2006,18 @@ export async function listCsvImportCashflowBatches(
   userId: string
 ): Promise<CsvImportCashflowBatch[]> {
   return defaultCsvImportCashflowCommitService.listImportBatches(userId);
+}
+
+export async function listCsvImportCashflowImportRuns(
+  userId: string
+): Promise<CsvImportCashflowImportRun[]> {
+  return defaultCsvImportCashflowCommitService.listImportRuns(userId);
+}
+
+export async function rollbackCsvImportCashflowImportRun(
+  userId: string,
+  importRunId: string,
+  rollbackReason?: string
+): Promise<CsvImportCashflowImportRunRollbackResult> {
+  return defaultCsvImportCashflowCommitService.rollbackImportRun(userId, importRunId, rollbackReason);
 }

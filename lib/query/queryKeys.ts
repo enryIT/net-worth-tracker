@@ -16,6 +16,7 @@ export const queryKeys = {
   // Imports
   imports: {
     history: (userId: string) => ['imports', 'history', userId] as const,
+    runs: (userId: string) => ['imports', 'runs', userId] as const,
   },
 
   // Snapshots

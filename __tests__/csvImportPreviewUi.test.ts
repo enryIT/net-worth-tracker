@@ -39,7 +39,7 @@ describe('csv import preview UI', () => {
     expect(source).toContain('Storico import CSV');
     expect(source).toContain('I batch confermati e annullati restano disponibili qui con stato, conteggi e record creati.');
     expect(source).toContain('Annulla batch');
-    expect(source).toContain('L&apos;annullamento rimuove solo i record creati da questo batch.');
+    expect(source).toContain('L&apos;annullamento rimuove solo i record creati da questo import raggruppato, inclusi tutti i chunk collegati.');
     expect(source).toContain('Conferma annullamento');
     expect(source).toContain('Annullato il');
     expect(source).toContain('Record creati per tipo');
@@ -99,5 +99,16 @@ describe('csv import preview UI', () => {
     expect(source).toContain('Il chunk ${chunkNumber}/${commitChunks.length} è fallito dopo ${completedChunks} chunk già confermati');
     expect(source).toContain('Importazione interrotta');
     expect(source).toContain('I chunk successivi sono stati interrotti.');
+  });
+
+  it('exposes grouped import run history and explicit grouped rollback copy', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toContain('importRunId');
+    expect(source).toContain('/api/imports/runs');
+    expect(source).toContain('Importazione raggruppata');
+    expect(source).toContain('Chunk collegati');
+    expect(source).toContain('Annulla importazione raggruppata');
+    expect(source).toContain('Importazioni collegate');
   });
 });

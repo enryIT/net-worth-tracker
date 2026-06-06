@@ -464,7 +464,7 @@ describe('CSV import cashflow commit routes', () => {
     expect(listCsvImportCashflowBatchesMock).not.toHaveBeenCalled();
   });
 
-  it('returns the authenticated import history with committed and rolledBack batch metadata', async () => {
+  it('returns the authenticated grouped import history with aggregate run metadata', async () => {
     const history = [
       {
         id: 'batch-1',
@@ -528,9 +528,46 @@ describe('CSV import cashflow commit routes', () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      ok: true,
-      data: history,
+    const payload = await response.json();
+    expect(payload).toMatchObject({ ok: true });
+    expect(payload.data).toHaveLength(2);
+    expect(payload.data[0]).toMatchObject({
+      importRunId: 'batch-1',
+      userId: 'user-1',
+      status: 'committed',
+      childBatchCount: 1,
+      committedChildBatchCount: 1,
+      rolledBackChildBatchCount: 0,
+      rowCount: 2,
+      createdRecordCount: 2,
+      duplicateCount: 0,
+      errorCount: 1,
+      canRollbackGrouped: true,
+    });
+    expect(payload.data[0].childBatches).toHaveLength(1);
+    expect(payload.data[0].childBatches[0]).toMatchObject({
+      id: 'batch-1',
+      userId: 'user-1',
+      status: 'committed',
+    });
+    expect(payload.data[1]).toMatchObject({
+      importRunId: 'batch-2',
+      userId: 'user-1',
+      status: 'rolledBack',
+      childBatchCount: 1,
+      committedChildBatchCount: 0,
+      rolledBackChildBatchCount: 1,
+      rowCount: 1,
+      createdRecordCount: 1,
+      duplicateCount: 0,
+      errorCount: 0,
+      canRollbackGrouped: false,
+    });
+    expect(payload.data[1].childBatches).toHaveLength(1);
+    expect(payload.data[1].childBatches[0]).toMatchObject({
+      id: 'batch-2',
+      userId: 'user-1',
+      status: 'rolledBack',
     });
     expect(listCsvImportCashflowBatchesMock).toHaveBeenCalledWith('user-1');
   });

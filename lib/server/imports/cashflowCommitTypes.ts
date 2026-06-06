@@ -22,6 +22,9 @@ export interface CsvImportCashflowCommitRowInput {
 export interface CsvImportCashflowCommitInput {
   userId?: string;
   idempotencyKey: string;
+  importRunId?: string | null;
+  importChunkIndex?: number | null;
+  importChunkCount?: number | null;
   rows: CsvImportCashflowCommitRowInput[];
   presetId?: string | null;
   sourceFingerprint?: string | null;
@@ -112,6 +115,9 @@ export interface CsvImportCashflowBatch {
   id: string;
   userId: string;
   idempotencyKey: string;
+  importRunId: string | null;
+  importChunkIndex: number | null;
+  importChunkCount: number | null;
   presetId: string | null;
   sourceFingerprint: string | null;
   requestFingerprint: string;
@@ -125,6 +131,45 @@ export interface CsvImportCashflowBatch {
   committedAt: Date;
   rolledBackAt: Date | null;
   rollbackReason: string | null;
+}
+
+export interface CsvImportCashflowImportRun {
+  importRunId: string;
+  userId: string;
+  status: 'committed' | 'rolledBack' | 'partial';
+  childBatchCount: number;
+  committedChildBatchCount: number;
+  rolledBackChildBatchCount: number;
+  rowCount: number;
+  createdRecordCount: number;
+  duplicateCount: number;
+  errorCount: number;
+  createdAt: Date;
+  committedAt: Date;
+  rolledBackAt: Date | null;
+  rollbackReason: string | null;
+  canRollbackGrouped: boolean;
+  childBatches: CsvImportCashflowBatch[];
+}
+
+export interface CsvImportCashflowImportRunChildRollbackResult {
+  batchId: string;
+  status: 'rolledBack' | 'alreadyRolledBack' | 'unsafe';
+  removedRecordCount?: number;
+  message?: string;
+  details?: unknown;
+}
+
+export interface CsvImportCashflowImportRunRollbackResult {
+  importRunId: string;
+  status: 'rolledBack' | 'partial' | 'unsafe';
+  childBatchCount: number;
+  committedChildBatchCount: number;
+  rolledBackChildBatchCount: number;
+  alreadyRolledBackChildBatchCount: number;
+  unsafeChildBatchCount: number;
+  removedRecordCount: number;
+  childResults: CsvImportCashflowImportRunChildRollbackResult[];
 }
 
 export interface CsvImportCashflowCommitResult {
