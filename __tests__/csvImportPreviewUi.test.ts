@@ -90,6 +90,45 @@ describe('csv import preview UI', () => {
     expect(source).not.toContain('rows: cashflowCommitPreparation.rows,');
   });
 
+  it('paginates the preview table instead of mapping filteredRows directly', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toMatch(/const CSV_IMPORT_PREVIEW_PAGE_SIZE = \d+;/);
+    expect(source).toContain('const paginatedPreviewRows = useMemo(');
+    expect(source).toContain('filteredRows.slice(');
+    expect(source).toContain('paginatedPreviewRows.map((row) => (');
+    expect(source).not.toContain('filteredRows.length > 0 ? filteredRows.map((row) => (');
+  });
+
+  it('shows Italian pagination copy and keeps preview reset in the validation handlers', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toContain('Pagina precedente');
+    expect(source).toContain('Pagina successiva');
+    expect(source).toContain('Pagina {previewPage} di {previewPageCount}');
+    expect(source).toContain('setPreviewPage(1);');
+    expect(source.match(/setPreviewPage\(1\);/g) ?? []).toHaveLength(2);
+    expect(source).toContain('const previewPage = Math.min(previewPageState, previewPageCount);');
+  });
+
+  it('derives the visible preview page instead of clamping it in an effect', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toContain('const previewPage = Math.min(previewPageState, previewPageCount);');
+    expect(source).not.toContain('setPreviewPage((currentPage) => Math.min(currentPage, previewPageCount));');
+    expect(source).not.toContain('setPreviewPage(1);\n  }, [preview]);');
+    expect(source).not.toContain('setPreviewPage(1);\n  }, [previewPageCount]);');
+  });
+
+  it('keeps bulk selection and row correction wired to displayRows and filteredRows', () => {
+    const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
+
+    expect(source).toContain('displayRows.find((row) => row.rowIndex === selectedRowId) ?? displayRows[0] ?? null');
+    expect(source).toContain('displayRows.map((row) => (');
+    expect(source).toContain('selectedRowIds.includes(row.rowIndex)');
+    expect(source).toContain('toggleBulkSelection(row.rowIndex)');
+  });
+
   it('shows chunk progress and partial failure copy in the commit status area', () => {
     const source = readFileSync('app/dashboard/cashflow/import-csv/page.tsx', 'utf8');
 

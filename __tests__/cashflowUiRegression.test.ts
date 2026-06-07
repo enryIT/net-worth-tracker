@@ -131,23 +131,31 @@ describe('cashflow UI regression guards', () => {
     expect(source).toContain('categoryName: null,');
     expect(source).toContain('subCategoryId: null,');
     expect(source).toContain('subCategoryName: null,');
-    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti possono essere confermati in Milestone 7.');
+    expect(source).toContain('I movimenti cashflow ordinari, i transfer interni, le operazioni di investimento, i dividendi/cedole e le commissioni/imposte pronti vengono confermati in chunk da {CSV_IMPORT_COMMIT_CHUNK_SIZE} righe per mantenere il retry idempotente.');
     expect(source).toContain('Compila categorie per cashflow, fee e tax, conti dei transfer o riferimenti asset per operazioni di investimento e dividendi per abilitare la conferma.');
     expect(source).not.toContain('Milestone 6');
   });
 
-  it('invalidates asset and investment caches after CSV import commit and rollback', () => {
+  it('routes CSV import cache invalidation through the shared helper after commit and rollback', () => {
     const source = readRepoFile('app/dashboard/cashflow/import-csv/page.tsx');
+    const helperStart = source.indexOf('const invalidateImportRelatedQueries = useCallback');
+    const helperEnd = source.indexOf('const toggleReadyState = useCallback');
     const commitStart = source.indexOf('const handleCommitCashflowRows = useCallback');
-    const rollbackStart = source.indexOf('const rollbackImportBatch = useCallback');
+    const rollbackBatchStart = source.indexOf('const rollbackImportBatch = useCallback');
+    const rollbackRunStart = source.indexOf('const rollbackImportRun = useCallback');
     const rollbackWrapperStart = source.indexOf('const handleRollbackCommittedBatch = useCallback');
 
-    expect(commitStart).toBeGreaterThanOrEqual(0);
-    expect(rollbackStart).toBeGreaterThanOrEqual(0);
+    expect(helperStart).toBeGreaterThanOrEqual(0);
+    expect(helperEnd).toBeGreaterThan(helperStart);
+    expect(commitStart).toBeGreaterThan(helperEnd);
+    expect(rollbackBatchStart).toBeGreaterThan(helperEnd);
+    expect(rollbackRunStart).toBeGreaterThan(rollbackBatchStart);
     expect(rollbackWrapperStart).toBeGreaterThan(commitStart);
 
+    const helperBlock = source.slice(helperStart, helperEnd);
     const commitBlock = source.slice(commitStart, rollbackWrapperStart);
-    const rollbackBlock = source.slice(rollbackStart, commitStart);
+    const rollbackBatchBlock = source.slice(rollbackBatchStart, rollbackRunStart);
+    const rollbackRunBlock = source.slice(rollbackRunStart, commitStart);
     const expectedInvalidations = [
       'queryKeys.expenses.all(user.uid)',
       'queryKeys.expenses.stats(user.uid)',
@@ -157,12 +165,16 @@ describe('cashflow UI regression guards', () => {
       'queryKeys.assets.transfers(user.uid)',
       'queryKeys.dashboard.overview(user.uid)',
       'queryKeys.imports.history(user.uid)',
+      'queryKeys.imports.runs(user.uid)',
     ];
 
     for (const invalidation of expectedInvalidations) {
-      expect(commitBlock).toContain(invalidation);
-      expect(rollbackBlock).toContain(invalidation);
+      expect(helperBlock).toContain(invalidation);
     }
+
+    expect(commitBlock).toContain('await invalidateImportRelatedQueries();');
+    expect(rollbackBatchBlock).toContain('await invalidateImportRelatedQueries();');
+    expect(rollbackRunBlock).toContain('await invalidateImportRelatedQueries();');
   });
 
   it('keeps the household attribution settings tab reachable from settings navigation', () => {

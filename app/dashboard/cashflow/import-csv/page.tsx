@@ -50,6 +50,7 @@ const DEFAULT_CSV = [
 
 const DEFAULT_DATE_FORMATS = ['dd/MM/yyyy', 'dd/MM/yy', 'yyyy-MM-dd'];
 const CSV_IMPORT_COMMIT_CHUNK_SIZE = 250;
+const CSV_IMPORT_PREVIEW_PAGE_SIZE = 50;
 
 function splitIntoCommitChunks<T>(rows: T[], chunkSize: number): T[][] {
   if (chunkSize <= 0) {
@@ -586,6 +587,7 @@ function ImportCsvPage() {
   const [defaultCurrency, setDefaultCurrency] = useState('EUR');
   const [isValidating, setIsValidating] = useState(false);
   const [preview, setPreview] = useState<CsvImportPreviewResult | null>(null);
+  const [previewPageState, setPreviewPage] = useState(1);
   const [apiError, setApiError] = useState<string | null>(null);
 
   const [presets, setPresets] = useState<CsvImportPreset[]>([]);
@@ -899,6 +901,7 @@ function ImportCsvPage() {
       setSelectedFileName(file.name);
       setCsvText(fileText);
       setPreview(null);
+      setPreviewPage(1);
       setApiError(null);
       setRowOverrides({});
       setSelectedRowId(null);
@@ -958,6 +961,7 @@ function ImportCsvPage() {
       }
 
       setPreview(payload.data as CsvImportPreviewResult);
+      setPreviewPage(1);
       setRowOverrides({});
       setSelectedRowId(null);
       setSelectedRowIds([]);
@@ -1139,6 +1143,25 @@ function ImportCsvPage() {
     showOnlyUnknownMovement,
     showOnlyWarnings,
   ]);
+
+  const previewPageCount = useMemo(
+    () => Math.max(1, Math.ceil(filteredRows.length / CSV_IMPORT_PREVIEW_PAGE_SIZE)),
+    [filteredRows.length]
+  );
+
+  const previewPage = Math.min(previewPageState, previewPageCount);
+
+  const paginatedPreviewRows = useMemo(() => {
+    const startIndex = (previewPage - 1) * CSV_IMPORT_PREVIEW_PAGE_SIZE;
+    return filteredRows.slice(startIndex, startIndex + CSV_IMPORT_PREVIEW_PAGE_SIZE);
+  }, [filteredRows, previewPage]);
+
+  const previewPageStartRow = filteredRows.length > 0
+    ? (previewPage - 1) * CSV_IMPORT_PREVIEW_PAGE_SIZE + 1
+    : 0;
+  const previewPageEndRow = filteredRows.length > 0
+    ? Math.min(previewPage * CSV_IMPORT_PREVIEW_PAGE_SIZE, filteredRows.length)
+    : 0;
 
   const previewStats = useMemo(() => {
     const summaryByKind: Record<ImportMovementKind, number> = {
@@ -2318,6 +2341,43 @@ function ImportCsvPage() {
                   </div>
                 </div>
 
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex flex-col gap-3 desktop:flex-row desktop:items-center desktop:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Paginazione anteprima</p>
+                      <p className="text-xs text-muted-foreground">
+                        {filteredRows.length > 0
+                          ? `Mostra righe ${previewPageStartRow}-${previewPageEndRow} di ${filteredRows.length}.`
+                          : 'Nessuna riga corrisponde ai filtri attivi.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewPage((currentPage) => Math.max(1, currentPage - 1))}
+                        disabled={filteredRows.length === 0 || previewPage <= 1}
+                      >
+                        Pagina precedente
+                      </Button>
+                      <p className="text-sm text-muted-foreground">
+                        Pagina {previewPage} di {previewPageCount}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewPage((currentPage) => Math.min(previewPageCount, currentPage + 1))}
+                        disabled={filteredRows.length === 0 || previewPage >= previewPageCount}
+                      >
+                        Pagina successiva
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[1100px] border-collapse text-sm">
                     <thead>
@@ -2336,7 +2396,7 @@ function ImportCsvPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredRows.length > 0 ? filteredRows.map((row) => (
+                      {paginatedPreviewRows.length > 0 ? paginatedPreviewRows.map((row) => (
                         <tr
                           key={row.rowIndex}
                           className={[

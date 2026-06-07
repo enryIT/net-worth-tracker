@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. Milestone 8 is currently implemented as a narrower operational slice for import history and rollback UI: the page shows committed and `rolledBack` batches and supports explicit rollback confirmation. Milestone 9 is implemented as the deferred hardening/release slice for 5,000-row validation, Italian date/number/bank-broker quirks, and rollout docs. Milestone 10 is implemented as the client-side commit-chunking slice: ready rows are split into 250-row batches with per-chunk idempotency keys and progress/failure copy while preserving the existing rollback surface. Milestone 11 is implemented as the import-run aggregation and grouped rollback slice: chunked commits share a logical `importRunId`, history shows grouped runs with child chunks, and grouped rollback rolls back every safe child batch while reporting partial/unsafe cases clearly. The M11 section below includes the release verification checklist and rollback checklist. The document remains the design reference for the rest of the importer.
+Milestone 7 is implemented as a narrow slice for dividend/coupon rows plus standalone fee/tax rows. Milestone 8 is currently implemented as a narrower operational slice for import history and rollback UI: the page shows committed and `rolledBack` batches and supports explicit rollback confirmation. Milestone 9 is implemented as the deferred hardening/release slice for 5,000-row validation, Italian date/number/bank-broker quirks, and rollout docs. Milestone 10 is implemented as the client-side commit-chunking slice: ready rows are split into 250-row batches with per-chunk idempotency keys and progress/failure copy while preserving the existing rollback surface. Milestone 11 is implemented as the import-run aggregation and grouped rollback slice: chunked commits share a logical `importRunId`, history shows grouped runs with child chunks, and grouped rollback rolls back every safe child batch while reporting partial/unsafe cases clearly. Milestone 12 is implemented as the client-side preview pagination slice: the preview table now pages filtered rows in the browser with a fixed page size, Italian prev/next controls, and clamped/reset page state while summary cards, row correction, bulk edit, and commit prep still operate on the full filtered/display row sets. The M11 and M12 sections below include the release verification and rollback checklists. The document remains the design reference for the rest of the importer.
 
 ## Context
 
@@ -318,9 +318,9 @@ This intentionally avoids complex state restoration in the first implementation.
 
 ## Milestones and acceptance criteria
 
-### Current implementation status after Milestones 1-11
+### Current implementation status after Milestones 1-12
 
-Milestones 1-11 are implemented as narrow slices. Milestone 8 currently has a narrow operational slice for import history and explicit rollback UI. Milestone 9 adds the release hardening for 5,000-row validation, Italian date/number/bank-broker quirks, and operational release/rollback docs. Milestone 10 adds the client-side chunked commit orchestration for ready rows, with 250-row batching, per-chunk idempotency keys, and chunk progress/failure copy. Milestone 11 adds logical import-run aggregation, grouped history, and grouped rollback for safe child batches. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, dividend/coupon plus standalone fee/tax commit/rollback, import history with committed/`rolledBack` batches plus explicit rollback confirmation, grouped import-run history/rollback for chunked commits, and chunked commit orchestration for large imports. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
+Milestones 1-12 are implemented as narrow slices. Milestone 8 currently has a narrow operational slice for import history and explicit rollback UI. Milestone 9 adds the release hardening for 5,000-row validation, Italian date/number/bank-broker quirks, and operational release/rollback docs. Milestone 10 adds the client-side chunked commit orchestration for ready rows, with 250-row batching, per-chunk idempotency keys, and chunk progress/failure copy. Milestone 11 adds logical import-run aggregation, grouped history, and grouped rollback for safe child batches. Milestone 12 adds client-side preview pagination with fixed page-size controls and reset/clamp behavior. The current code supports deterministic preview, preset persistence, preview reconciliation, ordinary cashflow commit/rollback, neutral internal transfer commit/rollback, buy/sell investment operation commit/rollback, dividend/coupon plus standalone fee/tax commit/rollback, import history with committed/`rolledBack` batches plus explicit rollback confirmation, grouped import-run history/rollback for chunked commits, chunked commit orchestration for large imports, and paginated preview rendering for large validated imports. Milestones 4 and 5 were intentionally committed together because the durable commit/rollback pipeline shares the same API route, service, repository, batch metadata, UI panel, and tests.
 
 Implementation commits:
 
@@ -337,10 +337,11 @@ Implementation commits:
 | 9. Release hardening and locale quirks | Implemented | Current slice | 5,000-row validation, short-year Italian dates, bank/broker number quirks, and operational release/rollback docs. |
 | 10. Commit chunking and progress feedback | Implemented | Current slice | Split ready rows into fixed 250-row commit chunks with per-chunk idempotency keys and Italian progress/failure copy; existing batch rollback surface remains unchanged. |
 | 11. Import-run aggregation and grouped rollback | Implemented | Current slice | Link chunked commit batches from one logical CSV import with `importRunId`, aggregate history into grouped runs with child chunks, and support one-click grouped rollback with partial/unsafe reporting. |
+| 12. Preview pagination | Implemented | Current slice | Paginate the preview table on the client with a fixed page size, Italian controls, and page-state reset/clamp logic while keeping summaries, correction, bulk edit, and commit preparation based on the full filtered/display row sets. |
 
-The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, and the current Milestone 11 grouped rollback slice should still be manually release-checked before wider rollout. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
+The release/rollback checklists below remain operational checklists, not proof that a production rollout has already happened. Automated verification was run for the committed slices, and the current Milestone 11 grouped rollback slice plus the Milestone 12 preview pagination slice should still be manually release-checked before wider rollout. The historical action-item checkboxes in the milestone sections are roadmap/task lists and are not the canonical source of current implementation status; use the table above for committed status.
 
-#### Known post-M11 scope after the current slice
+#### Known post-M12 scope after the current slice
 
 The following items are intentionally not implemented yet:
 
@@ -350,10 +351,11 @@ The following items are intentionally not implemented yet:
 - Additional rollback UX hardening beyond the current explicit rollback UI and unsafe-rollback messaging.
 - Automatic creation of missing assets, accounts, categories, or subcategories; current reconciliation surfaces missing references and keeps creation/linking explicit.
 - Existing-record updates; first-release rollback only handles records created by the import batch.
-- Virtualized or paginated preview hardening for imports that exceed the validated 5,000-row slice.
-These items remain outside the current Milestone 11 slice. Do not treat Milestones 1-11 as a full CSV importer release; treat them as the committed foundation, first durable movement families, release-hardening slice, the chunked commit orchestration slice, and the grouped rollback slice.
+- Browser-level proof for the real import wizard flow.
+- Optional preview virtualization beyond the current client-side pagination slice.
+These items remain outside the current Milestone 12 slice. Do not treat Milestones 1-12 as a full CSV importer release; treat them as the committed foundation, first durable movement families, release-hardening slice, the chunked commit orchestration slice, the grouped rollback slice, and the client-side preview pagination slice.
 
-#### Residual risk register after Milestones 1-11
+#### Residual risk register after Milestones 1-12
 
 This register is audit-derived from the cited commit diffs, each milestone's
 In/Out scope and checklists, current source/test markers, and the explicitly
@@ -368,36 +370,36 @@ not only the latest slice.
 |---|---|---|---|
 | M1. Pure import foundation | Parser, normalization, classification, and dedupe are deterministic and test-backed, but still generic. Broker dialects/templates, AI-assisted classification, and durable write behavior beyond preview were intentionally excluded. Preview remains validation-only and does not prove production write paths. | `da3f8f5`; scope/checklist: M1 parser, normalization, dedupe, preview-only validation; markers: `app/api/imports/validate/route.ts`, `lib/server/imports/{classification,csvParser,dedupe,mappingValidation,normalization,previewService}.ts`, `__tests__/csvImportFoundation.test.ts`, `__tests__/csvImportPreviewUi.test.ts`. | Add broker-specific fixture packs only after the universal importer remains stable; expand edge-case normalization tests before adding AI or broker templates. |
 | M2. Import presets | Presets persist mappings and rules, but there is no preset versioning/migration model for future canonical-field changes. Presets do not store raw CSV by design, so later reprocessing still depends on the user providing the file again. | `f4467bf`; scope/checklist: M2 authenticated preset CRUD only; markers: `app/api/imports/presets/route.ts`, `app/api/imports/presets/[presetId]/route.ts`, `lib/server/imports/presetService.ts`, `lib/server/imports/presetRepository.ts`, `__tests__/csvImportPresetRoutes.test.ts`, `__tests__/csvImportPresetService.test.ts`. | Add preset schema versioning and migration/compatibility checks before changing canonical mapping shape. |
-| M3. Preview and reconciliation UI | Reconciliation is still preview-only. Assisted linking and explicit creation are design/copy only, automatic entity creation is deferred, and browser-level interaction coverage plus preview virtualization/pagination are still missing. | `033520d`; scope/checklist: M3 wizard shell, inline correction, bulk edit, assisted linking flow design, no commit API; markers: `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportPreviewUi.test.ts`, release verification checklist in `docs/csv-import-design.md`. | Add Playwright/browser coverage for the wizard once a stable fixture harness exists; add explicit entity creation/linking flows only with separate confirmation and rollback semantics. |
+| M3. Preview and reconciliation UI | Reconciliation is still preview-only. Assisted linking and explicit creation are design/copy only, automatic entity creation is deferred, and browser-level interaction coverage is still missing even though preview pagination was later closed by M12. | `033520d`; scope/checklist: M3 wizard shell, inline correction, bulk edit, assisted linking flow design, no commit API; markers: `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportPreviewUi.test.ts`, release verification checklist in `docs/csv-import-design.md`. | Add Playwright/browser coverage for the wizard once a stable fixture harness exists; add explicit entity creation/linking flows only with separate confirmation and rollback semantics. |
 | M4. Cashflow commit and rollback | Rollback covers batch-created cashflow records only. Existing-record updates remain out of scope. Duplicate detection is intentionally conservative and can miss semantically equivalent rows when descriptions or mapped fields differ. | `1a6e122`; scope/checklist: M4 cashflow commit/rollback, idempotency, created-record tracking; markers: `app/api/imports/commit/route.ts`, `app/api/imports/[batchId]/rollback/route.ts`, `lib/server/imports/{cashflowCommitService,cashflowCommitRepository,cashflowCommitTypes}.ts`, `__tests__/csvImportCommitRoutes.test.ts`, `__tests__/csvImportCashflowCommitService.test.ts`. | Improve duplicate detection with richer user-visible matching evidence; keep existing-record updates out of scope until rollback safety metadata is stronger. |
 | M5. Internal transfers | Transfer imports require existing cash accounts and preserve KPI neutrality, but rollback is still unsafe if imported transfer effects are manually changed after commit. No automatic account creation is supported. | `1a6e122`; scope/checklist: M5 transfer classification, account resolution, mixed batch metadata, mixed rollback; markers: `lib/server/imports/cashflowCommitService.ts`, `lib/server/imports/cashflowCommitTypes.ts`, `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportCommitRoutes.test.ts`, `__tests__/cashflowUiRegression.test.ts`. | Add clearer unsafe rollback diagnostics and, if needed, account-linking UX before commit; do not add silent account creation. |
 | M6. Investment operations | Imported trades preserve weighted-average-cost and cash-account semantics, but rollback depends on later asset/trade state still matching safety assumptions. Broker settlement heuristics and automatic asset creation remain deferred. | `d9623ea`; scope/checklist: M6 buy/sell validation, asset resolution, cash impacts, safe rollback; markers: `lib/server/imports/cashflowCommitService.ts`, `lib/server/imports/cashflowCommitTypes.ts`, `__tests__/csvImportCashflowCommitService.test.ts`, `__tests__/cashflowUiRegression.test.ts`. | Add grouped unsafe-case diagnostics for later trades/cash balance changes; add broker settlement rules only as opt-in templates with tests. |
 | M7. Dividends, coupons, fees, and taxes | Dividend/coupon rows and standalone fee/tax rows are supported, but standalone fees/taxes are not automatically attached to related movements. AI classification and broker-specific reconciliation remain deferred. | `365093b`; scope/checklist: M7 dividend/coupon plus standalone fee/tax commit/rollback; markers: `app/api/imports/commit/route.ts`, `lib/server/imports/cashflowCommitTypes.ts`, `__tests__/csvImportCommitRoutes.test.ts`, `__tests__/csvImportCashflowCommitService.test.ts`, `docs/csv-import-design.md` M7 scope/acceptance. | Add explicit attachment/reconciliation UX if users need fee/tax linking; avoid automatic attachment without auditable rules. |
 | M8. Import history and rollback UI | History shows committed and rolled-back batches, but drilldown/observability is still basic: failed-chunk inspection and deeper batch detail are limited. The rollback UX is explicit, but it is still per-batch rather than import-run aware. | `08a85e1`; scope/checklist: M8 history and rollback slice, explicit confirmation, auth routes; markers: `app/api/imports/history/route.ts`, `app/dashboard/cashflow/import-csv/page.tsx`, `lib/query/queryKeys.ts`, `__tests__/csvImport*.test.ts`, `docs/csv-import-design.md` M8 checklist. | Add deeper batch detail views, failed-chunk inspection, and safer multi-batch operational workflows. |
 | M9. Release hardening and locale quirks | The importer is hardened for 5,000-row Italian bank/broker-style fixtures, short-year dates, quoted semicolon exports, and apostrophe thousands separators, but it does not prove every broker dialect or larger preview/browser performance. Preview virtualization remains deferred. | `38c2f5c`; scope/checklist: M9 5,000-row validation, short-year dates, broker quirks, release docs; markers: `lib/server/imports/normalization.ts`, `__tests__/csvImportFoundation.test.ts`, `__tests__/csvImportPreviewUi.test.ts`, `docs/project-status.md`. | Add broker fixture packs incrementally; measure browser memory/render performance before raising the validated row target. |
-| M10. Commit chunking and progress feedback | Ready rows commit in 250-row chunks with per-chunk idempotency, but browser-level coverage is still absent and preview virtualization/pagination remains deferred. | `5b59bc4`; scope/checklist: M10 client-side chunking only, no route/service contract changes or import-run model; markers: `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportPreviewUi.test.ts`, `__tests__/csvImportCommitRoutes.test.ts`, `docs/project-status.md`. | Add Playwright coverage once seeded data exists and keep preview scaling work separate from commit orchestration. |
+| M10. Commit chunking and progress feedback | Ready rows commit in 250-row chunks with per-chunk idempotency, and preview pagination was later closed by M12, but browser-level coverage is still absent. | `5b59bc4`; scope/checklist: M10 client-side chunking only, no route/service contract changes or import-run model; markers: `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportPreviewUi.test.ts`, `__tests__/csvImportCommitRoutes.test.ts`, `docs/project-status.md`. | Add Playwright coverage once seeded data exists and keep preview scaling work separate from commit orchestration. |
 | M11. Import-run aggregation and grouped rollback | Grouped import-run history now links chunked batches and grouped rollback handles safe child batches, but browser-level proof is still absent and deeper child-chunk drilldown may need more UI if users rely on it. | `current slice`; scope/checklist: M11 grouped import-run history, child chunks, grouped rollback, bearer auth, route/service tests; markers: `app/api/imports/runs/[importRunId]/rollback/route.ts`, `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportImportRunRoutes.test.ts`, `__tests__/csvImportImportRunService.test.ts`. | Add browser-level coverage for grouped rollback and, if needed, richer child-chunk audit drilldown. |
+| M12. Preview pagination | Client-side pagination now prevents the full filtered preview from rendering at once, but browser-level proof for the real wizard flow is still absent and the fixed page-size choice may still need tuning against a seeded 5,000-row fixture. No raw CSV persistence was introduced. | `current slice`; scope/checklist: M12 preview pagination, fixed page-size controls, page reset/clamp, source-level regression coverage; markers: `app/dashboard/cashflow/import-csv/page.tsx`, `__tests__/csvImportPreviewUi.test.ts`, `docs/csv-import-design.md`. | Add browser-level coverage and, if needed, revisit page size or optional virtualization after the client-side pagination slice stabilizes. |
 
 Cross-cutting residual risks:
 
 - The importer remains deterministic-first. AI-assisted classification is intentionally deferred and should remain optional, explainable, and reviewable.
 - No raw CSV file persistence exists by design. This protects privacy but means later reprocessing requires the user to provide the source file again.
 - Missing assets, accounts, categories, and subcategories require explicit user action. Silent creation remains out of scope until creation flows have ownership checks, audit metadata, and rollback semantics.
-- Existing financial record updates remain out of scope. Milestones 1-11 only support creating new records and rolling back records created by import batches.
-- Preview scaling is not complete. Commit requests are chunked, but preview virtualization/pagination still needs a dedicated milestone for larger imports.
+- Existing financial record updates remain out of scope. Milestones 1-12 only support creating new records and rolling back records created by import batches.
+- Preview scaling is partially addressed by client-side pagination, but browser-level proof and optional virtualization remain deferred.
 - Browser/E2E coverage is still not the primary proof for the CSV import wizard. Current verification relies on unit, service, route, TypeScript, lint, and source-level UI guards.
 
-#### Post-M11 roadmap
+#### Post-M12 roadmap
 
 The detailed milestone sections below remain the historical specification for
-M1-M11. Future work should be planned as new narrow slices from this roadmap,
-starting with the highest operational risk first. Each post-M11 milestone is a
-closure path for one or more residual risks left by M1-M11; it is not a separate
+M1-M12. Future work should be planned as new narrow slices from this roadmap,
+starting with the highest operational risk first. Each post-M12 milestone is a
+closure path for one or more residual risks left by M1-M12; it is not a separate
 feature wishlist.
 
 | Next milestone | Priority | Residual risk closed | Goal | Acceptance signal |
 |---|---:|---|---|---|
-| M12. Preview virtualization or pagination | High | M3/M9/M10 preview scaling and large-file browser performance gaps. | Keep the preview usable for large imports by avoiding full-table rendering while preserving filters, summaries, corrections, and bulk edit semantics. | A validated 5,000-row preview stays responsive; filters and bulk actions operate on the intended row set; no raw CSV persistence is introduced. |
 | M13. Browser/E2E import wizard coverage | Medium-high | M3/M9/M10 lack of browser-level proof for the real wizard flow. | Add browser-level coverage for the real wizard flow after the M11/M12 surfaces stabilize. | A seeded browser test covers upload/mapping/preview/commit/progress/history/rollback and at least one failure path. |
 | M14. Broker templates and fixture packs | Medium | M1/M7/M9 generic parser limits, broker dialect gaps, and settlement heuristics deferred scope. | Add opt-in broker/bank templates only after the universal importer and rollback surface remain stable. | Each template has a realistic fixture, documented mapping assumptions, deterministic parser coverage, and no silent movement/entity creation. |
 | M15. Explicit entity linking and creation flows | Medium | M3/M5/M6 missing-entity resolution remains explicit but incomplete. | Let users resolve missing assets, cash accounts, categories, and subcategories with explicit confirmation and audit metadata. | Missing references can be linked or created through deliberate UI steps; rollback semantics are documented before any created entity is used by committed rows. |
@@ -849,6 +851,48 @@ Rollback checklist (Milestone 11, grouped rollback slice):
 - [ ] Keep the chunked commit and per-batch rollback surfaces intact if only the grouped aggregation slice must be withdrawn.
 - [ ] Re-run the grouped rollback route/service tests and the preview UI regression test after removal or guarding.
 - [ ] No destructive data backfill is required because grouped history metadata is additive and the underlying child batches remain valid history.
+
+### Milestone 12: Preview pagination
+
+Approach: keep the CSV preview responsive for large validated imports by paginating only the rendered table rows on the client. Summary cards, filters, selected-row correction, bulk edit, and commit preparation continue to work against the full filtered/display row sets; only the visible table slice changes. The importer still processes the raw CSV in the browser and does not persist the raw file.
+
+Scope:
+
+- In: fixed page-size pagination for the preview table, Italian pagination copy and controls, page reset/clamp logic when the preview or filters change, source-level regression coverage.
+- Out: backend route/service changes, raw CSV persistence, data rollback, browser/E2E coverage, preview virtualization.
+
+Action items:
+
+- [x] Add a fixed preview page-size constant and derive `paginatedPreviewRows` from `filteredRows`.
+- [x] Replace the table render with the paginated slice while keeping filters, summary cards, selected-row correction, bulk edit, and commit preparation on the full filtered/display sets.
+- [x] Add Italian pagination copy and prev/next controls with disabled states at the boundaries.
+- [x] Reset the page to the first page when a new preview is loaded and clamp the current page when filters reduce the available page count.
+- [x] Add source-level regression tests for the pagination contract and the preserved bulk selection/correction surfaces.
+
+Acceptance criteria:
+
+- The preview table does not render the entire filtered set at once and instead shows only the current page slice.
+- Pagination copy is in Italian and clearly communicates the current page, page count, and row range.
+- Filters can reduce the visible row set without leaving the table on an invalid page.
+- Row correction, bulk edit, and commit preparation still operate on the intended filtered/display rows rather than on the paginated view alone.
+- No raw CSV files are persisted, and this UI-only pagination change does not require any data rollback.
+
+Release verification checklist (Milestone 12, preview pagination slice):
+
+- [ ] `npm test -- --run __tests__/csvImportPreviewUi.test.ts __tests__/csvImportFoundation.test.ts` passes.
+- [ ] `npx tsc --noEmit --incremental false` passes.
+- [ ] `git diff --check -- __tests__/csvImportPreviewUi.test.ts app/dashboard/cashflow/import-csv/page.tsx docs/csv-import-design.md docs/project-status.md` passes.
+- [ ] `/dashboard/cashflow/import-csv` shows `Paginazione anteprima`, `Pagina precedente`, `Pagina successiva`, and the Italian row-range copy.
+- [ ] Summary cards, filters, selected-row correction, bulk edit, and commit preparation still use the full filtered/display row sets.
+- [ ] The page continues to process the raw CSV in the browser and does not persist raw CSV files.
+
+Rollback checklist (Milestone 12, preview pagination slice):
+
+- [ ] Remove the preview page-size constant, pagination state, paginated slice, and prev/next controls from `/dashboard/cashflow/import-csv`.
+- [ ] Restore the table render to the direct filtered-row slice if the UI-only pagination change must be withdrawn.
+- [ ] Keep summary cards, filters, selected-row correction, bulk edit, and commit preparation wired to the full filtered/display row sets.
+- [ ] Re-run the preview UI regression test and TypeScript after reverting the page logic.
+- [ ] No data rollback is required because the slice does not persist raw CSV files or create/modify financial records.
 
 ## Risks and mitigations
 
