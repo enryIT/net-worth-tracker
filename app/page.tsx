@@ -6,17 +6,26 @@
  *   - "Prova la Demo" → auto-login with shared demo credentials
  *   - "Accedi" → /login
  *
+ * The hero is a faithful Panoramica preview: the product's own data-first
+ * language (dominant net-worth number in Geist Mono, variation chip, hero
+ * sparkline) IS the brand impression. The preview is illustrative — labelled
+ * "Dati dimostrativi" so the surface never fakes a real account (DESIGN.md:
+ * honesty over illusion).
+ *
  * Demo credentials are read from NEXT_PUBLIC_DEMO_* env vars baked in at
  * build time. If those vars are missing the demo CTA is hidden, making this
  * safe for self-hosted deployments that don't want a public demo account.
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { NetWorthSparkline } from '@/components/dashboard/NetWorthSparkline';
+import { cachedFormatCurrencyEUR } from '@/lib/utils/formatters';
 import {
   BarChart3,
   TrendingUp,
@@ -27,7 +36,6 @@ import {
   ArrowRight,
   Loader2,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,38 +47,87 @@ const FEATURES = [
   {
     icon: BarChart3,
     title: 'Portfolio Tracking',
-    description: 'Tieni traccia di azioni, ETF, obbligazioni, crypto, immobili e liquidità in un unico posto.',
+    description: 'Azioni, ETF, obbligazioni, crypto, immobili e liquidità in un unico posto.',
   },
   {
     icon: TrendingUp,
     title: 'Rendimenti & Storico',
-    description: 'Analisi delle performance, drawdown, heatmap mensile e confronto YoY del patrimonio.',
+    description: 'Performance, drawdown, heatmap mensile e confronto YoY del patrimonio.',
   },
   {
     icon: Flame,
     title: 'FIRE Planning',
-    description: 'Proiezioni deterministiche e Monte Carlo, Coast FIRE, goal-based investing e pensione di stato.',
+    description: 'Proiezioni deterministiche e Monte Carlo, Coast FIRE e goal-based investing.',
   },
   {
     icon: MessageSquare,
     title: 'Assistente AI',
-    description: 'Analisi mensile, annuale e YTD con Claude. Memoria persistente e obiettivi strutturati.',
+    description: 'Analisi mensile, annuale e YTD con Claude, memoria persistente e obiettivi.',
   },
   {
     icon: Wallet,
     title: 'Cashflow',
-    description: 'Tracciamento entrate/uscite, budget, Sankey drill-down e centri di costo.',
+    description: 'Entrate e uscite, budget, Sankey drill-down e centri di costo.',
   },
   {
     icon: Calendar,
     title: 'Dividendi & Cedole',
-    description: 'Calendario dividendi, download automatico da Borsa Italiana e rendimento totale per asset.',
+    description: 'Calendario, download da Borsa Italiana e rendimento totale per asset.',
   },
 ];
+
+/**
+ * Illustrative Panoramica data for the hero preview. Not a real account —
+ * the preview carries a "Dati dimostrativi" caption so the surface stays honest.
+ */
+const PREVIEW_NET_WORTH = 487_250;
+const PREVIEW_DELTA_ABS = 12_480;
+const PREVIEW_DELTA_PCT = 2.63;
+const PREVIEW_SPARKLINE = [
+  398_000, 402_500, 397_800, 411_200, 419_000, 415_600, 428_900, 441_300,
+  438_700, 455_100, 471_800, 487_250,
+].map((totalNetWorth, i) => ({ month: (i % 12) + 1, year: 2025, totalNetWorth }));
+
+const PREVIEW_ROWS: { label: string; mono: string }[] = [
+  { label: 'Liquidità', mono: cachedFormatCurrencyEUR(64_900) },
+  { label: 'Investito', mono: cachedFormatCurrencyEUR(422_350) },
+];
+
+/**
+ * Count-up that lands on the target value (counts from a slightly lower start,
+ * never from zero — DESIGN.md "numbers land"). rAF-driven, ease-out-quart.
+ * Honours prefers-reduced-motion by rendering the final value immediately.
+ */
+function CountUpCurrency({ value, durationMs = 1100 }: { value: number; durationMs?: number }) {
+  const reduce = useReducedMotion();
+  const [display, setDisplay] = useState(() => Math.round(value * 0.94));
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Reduced motion: render the final value directly (see return) — no
+    // synchronous setState in the effect body.
+    if (reduce) return;
+    const from = Math.round(value * 0.94);
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / durationMs, 1);
+      const eased = 1 - Math.pow(1 - t, 4); // ease-out-quart
+      setDisplay(Math.round(from + (value - from) * eased));
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [value, durationMs, reduce]);
+
+  return <>{cachedFormatCurrencyEUR(reduce ? value : display)}</>;
+}
 
 export default function HomePage() {
   const { user, loading, signIn } = useAuth();
   const router = useRouter();
+  const reduce = useReducedMotion();
   const [demoLoading, setDemoLoading] = useState(false);
 
   // Redirect authenticated users straight to the dashboard.
@@ -109,6 +166,18 @@ export default function HomePage() {
   // Authenticated users are being redirected; return null to avoid flash.
   if (user) return null;
 
+  // Entrance motion: a single orchestrated page-load reveal. Reduced motion
+  // collapses every variant to an instant, fully-visible state.
+  const ease = [0.16, 1, 0.3, 1] as const;
+  const reveal = (delay: number) =>
+    reduce
+      ? { initial: false as const, animate: { opacity: 1, y: 0 } }
+      : {
+          initial: { opacity: 0, y: 12 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.6, ease, delay },
+        };
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Skip-to-content for keyboard users — visually hidden until focused. */}
@@ -123,7 +192,7 @@ export default function HomePage() {
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
+            <ShieldCheck className="h-5 w-5 text-foreground" aria-hidden="true" />
             <span className="text-sm font-semibold tracking-tight">Net Worth Tracker</span>
           </div>
           <Button variant="ghost" size="sm" asChild>
@@ -136,91 +205,162 @@ export default function HomePage() {
         {/* ── Hero ──────────────────────────────────────────────────────── */}
         <section
           aria-label="Presentazione"
-          className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-4 py-24 text-center sm:px-6"
+          className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 desktop:py-24"
         >
-          <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/50 px-3 py-1 text-xs text-muted-foreground">
-            <Sparkles className="h-3 w-3" aria-hidden="true" />
-            Progetto open source per investitori italiani
-          </div>
-
-          <h1 className="mb-4 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-            Il tuo patrimonio,{' '}
-            <span className="text-primary">sotto controllo</span>
-          </h1>
-
-          <p className="mb-10 max-w-xl text-base text-muted-foreground sm:text-lg">
-            Traccia asset, cashflow, dividendi e performance in un&apos;unica app.
-            Pianifica il FIRE, analizza i rendimenti e lascia che l&apos;AI ti aiuti a capire la tua situazione finanziaria.
-          </p>
-
-          <div className="flex flex-col items-center gap-3 sm:flex-row">
-            {DEMO_ENABLED && (
-              <Button
-                size="lg"
-                onClick={handleDemoLogin}
-                disabled={demoLoading}
-                aria-busy={demoLoading}
-                className="w-full sm:w-auto"
+          {/* Asymmetric split: pitch on the left, the product's own data hero on
+              the right. On mobile the preview stacks below the copy. */}
+          <div className="grid items-center gap-10 desktop:grid-cols-[1.05fr_0.95fr] desktop:gap-14">
+            {/* ── Left: pitch ── */}
+            <div className="max-w-xl">
+              <motion.p
+                {...reveal(0)}
+                className="mb-5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
               >
-                {demoLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                    Accesso demo...
-                  </>
-                ) : (
-                  <>
-                    Prova la Demo
-                    <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-                  </>
-                )}
-              </Button>
-            )}
-            <Button
-              variant={DEMO_ENABLED ? 'outline' : 'default'}
-              size="lg"
-              asChild
-              className="w-full sm:w-auto"
-            >
-              <Link href="/login">Accedi</Link>
-            </Button>
-          </div>
+                Open source · per investitori italiani
+              </motion.p>
 
-          {DEMO_ENABLED && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              La demo è in sola lettura — nessun dato viene modificato.
-            </p>
-          )}
+              <motion.h1
+                {...reveal(0.08)}
+                className="text-balance text-[34px] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[40px] desktop:text-[46px]"
+              >
+                Il tuo patrimonio, sotto controllo
+              </motion.h1>
+
+              <motion.p
+                {...reveal(0.16)}
+                className="mt-5 max-w-md text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg"
+              >
+                Traccia asset, cashflow, dividendi e performance in un&apos;unica app.
+                Pianifica il FIRE, analizza i rendimenti e lascia che l&apos;AI ti aiuti a
+                capire la tua situazione finanziaria.
+              </motion.p>
+
+              <motion.div
+                {...reveal(0.24)}
+                className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center"
+              >
+                {DEMO_ENABLED && (
+                  <Button
+                    size="lg"
+                    onClick={handleDemoLogin}
+                    disabled={demoLoading}
+                    aria-busy={demoLoading}
+                    className="w-full sm:w-auto"
+                  >
+                    {demoLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        Accesso demo...
+                      </>
+                    ) : (
+                      <>
+                        Prova la Demo
+                        <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  variant={DEMO_ENABLED ? 'outline' : 'default'}
+                  size="lg"
+                  asChild
+                  className="w-full sm:w-auto"
+                >
+                  <Link href="/login">Accedi</Link>
+                </Button>
+              </motion.div>
+
+              {DEMO_ENABLED && (
+                <motion.p {...reveal(0.32)} className="mt-4 text-xs text-muted-foreground">
+                  La demo è in sola lettura — nessun dato viene modificato.
+                </motion.p>
+              )}
+            </div>
+
+            {/* ── Right: Panoramica preview (the product speaking its own language) ── */}
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={reduce ? undefined : { duration: 0.7, ease, delay: 0.2 }}
+              aria-label="Anteprima della Panoramica con dati dimostrativi"
+              className="rounded-2xl border border-border bg-card p-[22px] shadow-[0_1px_3px_rgba(0,0,0,0.1),0_1px_2px_rgba(0,0,0,0.06)]"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                Patrimonio Netto
+              </p>
+              <p className="mt-1.5 font-mono text-[44px] font-bold leading-none tracking-[-0.03em] tabular-nums desktop:text-[54px]">
+                <CountUpCurrency value={PREVIEW_NET_WORTH} />
+              </p>
+
+              {/* Variation chip — the one place data is allowed to own colour. */}
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-[9px] bg-positive/10 px-[13px] py-[6px] font-mono text-[15px] font-semibold tracking-[-0.01em] text-positive">
+                <TrendingUp className="h-[13px] w-[13px]" aria-hidden="true" />
+                +{cachedFormatCurrencyEUR(PREVIEW_DELTA_ABS)} (+{PREVIEW_DELTA_PCT.toLocaleString('it-IT', { minimumFractionDigits: 2 })}%)
+                <span className="text-muted-foreground">questo mese</span>
+              </div>
+
+              {/* Edge-to-edge hero sparkline — -mx matches the card padding (22px). */}
+              <div className="-mx-[22px] mt-5" style={{ height: 68 }}>
+                <NetWorthSparkline
+                  data={PREVIEW_SPARKLINE}
+                  filled
+                  color="var(--chart-1)"
+                  height={68}
+                />
+              </div>
+              <div className="mt-1 flex justify-between px-px font-mono text-[10px] text-muted-foreground">
+                <span>{cachedFormatCurrencyEUR(PREVIEW_SPARKLINE[0].totalNetWorth, true)}</span>
+                <span>{cachedFormatCurrencyEUR(PREVIEW_NET_WORTH, true)}</span>
+              </div>
+
+              {/* Flat divide-y breakdown — Trade Republic chrome reduction. */}
+              <div className="mt-5 divide-y divide-border border-t border-border">
+                {PREVIEW_ROWS.map((row) => (
+                  <div key={row.label} className="flex items-center justify-between py-3">
+                    <span className="text-[13px] text-muted-foreground">{row.label}</span>
+                    <span className="font-mono text-[13px] tabular-nums">{row.mono}</span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-4 text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70">
+                Dati dimostrativi
+              </p>
+            </motion.div>
+          </div>
         </section>
 
         {/* ── Features ──────────────────────────────────────────────────── */}
         <section
           aria-label="Funzionalità"
-          className="border-t border-border/60 bg-muted/30 px-4 py-16 sm:px-6"
+          className="border-t border-border/60 px-4 py-16 sm:px-6 desktop:py-20"
         >
           <div className="mx-auto max-w-6xl">
-            <h2 className="mb-2 text-center text-2xl font-bold tracking-tight">
+            <h2 className="text-[26px] font-bold tracking-[-0.02em] desktop:text-[32px]">
               Tutto quello che ti serve
             </h2>
-            <p className="mb-10 text-center text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-muted-foreground">
               Costruito da un investitore italiano per investitori italiani.
             </p>
 
             {/*
-             * Gap-px grid: the container bg color becomes the grid line.
-             * Each cell carries its own bg-background, so the thin gaps
-             * between cells produce hairline separators without per-cell
-             * borders. overflow-hidden + rounded-xl clips cells to the
-             * outer corner radius.
+             * Flat divide-y feature list (not a card grid). Two columns on
+             * desktop, each an independent divide-y stack — the hairline is the
+             * only separator, no per-item box. Icons are achromatic: in the
+             * default theme colour is owned by data, never by chrome.
              */}
-            <div className="grid gap-px overflow-hidden rounded-xl border border-border/60 bg-border/40 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-10 grid gap-x-12 desktop:grid-cols-2">
               {FEATURES.map(({ icon: Icon, title, description }) => (
-                <div key={title} className="flex gap-4 bg-background p-5 sm:p-6">
-                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
-                  </div>
+                <div
+                  key={title}
+                  className="flex gap-4 border-b border-border/60 py-5 last:border-b-0 desktop:[&:nth-last-child(2)]:border-b-0"
+                >
+                  <Icon className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold">{title}</h3>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+                    <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                      {description}
+                    </p>
                   </div>
                 </div>
               ))}
