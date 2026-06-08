@@ -19,9 +19,11 @@
  * this component does not re-check it; it can assume it is only rendered when enabled.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDemoMode } from '@/lib/hooks/useDemoMode';
+import { queryKeys } from '@/lib/query/queryKeys';
 import { CostCenter } from '@/types/costCenters';
 import {
   getCostCenters,
@@ -48,28 +50,22 @@ interface CenterStats {
 export function CostCentersTab() {
   const { user } = useAuth();
   const isDemo = useDemoMode();
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
-  const [centerStats, setCenterStats] = useState<Record<string, CenterStats>>({});
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  // Drill-down: the center currently being viewed (null = list view)
-  const [selectedCenter, setSelectedCenter] = useState<CostCenter | null>(null);
-
-  // Dialog state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingCenter, setEditingCenter] = useState<CostCenter | null>(null);
-
-  const loadCostCenters = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const centers = await getCostCenters(user.uid);
-      setCostCenters(centers);
+  // List + per-center spend stats live in React Query so expense mutations elsewhere
+  // (ExpenseDialog in the Monitoraggio tab) can refresh this tab via cache invalidation.
+  // Without this, the tab stays force-mounted and only re-fetched on a full page reload.
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.costCenters.all(user?.uid ?? ''),
+    enabled: !!user,
+    queryFn: async () => {
+      const userId = user!.uid;
+      const centers = await getCostCenters(userId);
 
       // Load lifetime KPIs for each center in parallel
       const statsEntries = await Promise.all(
         centers.map(async (center) => {
-          const expenses = await getExpensesForCostCenter(user.uid, center.id);
+          const expenses = await getExpensesForCostCenter(userId, center.id);
           const outgoing = expenses.filter(e => e.amount < 0);
           const totalSpent = outgoing.reduce((sum, e) => sum + Math.abs(e.amount), 0);
           const monthKeys = new Set(
@@ -89,18 +85,22 @@ export function CostCentersTab() {
           ] as [string, CenterStats];
         })
       );
-      setCenterStats(Object.fromEntries(statsEntries));
-    } catch (error) {
-      console.error('Error loading cost centers:', error);
-      toast.error('Errore nel caricamento dei centri di costo');
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+      return { centers, stats: Object.fromEntries(statsEntries) as Record<string, CenterStats> };
+    },
+  });
 
-  useEffect(() => {
-    loadCostCenters();
-  }, [loadCostCenters]);
+  const costCenters = data?.centers ?? [];
+  const centerStats = data?.stats ?? {};
+
+  const invalidateCostCenters = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.costCenters.all(user?.uid ?? '') });
+
+  // Drill-down: the center currently being viewed (null = list view)
+  const [selectedCenter, setSelectedCenter] = useState<CostCenter | null>(null);
+
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingCenter, setEditingCenter] = useState<CostCenter | null>(null);
 
   const handleOpenCreate = () => {
     setEditingCenter(null);
@@ -113,27 +113,11 @@ export function CostCentersTab() {
   };
 
   const handleDialogSuccess = (saved: CostCenter) => {
-    // Optimistically update the local list without a full re-fetch
-    setCostCenters(prev => {
-      const idx = prev.findIndex(c => c.id === saved.id);
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = saved;
-        return updated;
-      }
-      return [...prev, saved];
-    });
-    // Clear stats for the updated center so they refresh on next detail view
-    setCenterStats(prev => {
-      const next = { ...prev };
-      delete next[saved.id];
-      return next;
-    });
-    // If we were viewing the detail of the updated center, refresh it
+    // Keep the open detail view in sync with the just-saved name/color
     if (selectedCenter?.id === saved.id) {
       setSelectedCenter(saved);
     }
-    loadCostCenters();
+    invalidateCostCenters();
   };
 
   const handleDelete = async (center: CostCenter) => {
@@ -142,12 +126,7 @@ export function CostCentersTab() {
       await deleteCostCenter(user.uid, center.id);
       toast.success(`"${center.name}" eliminato`);
       setSelectedCenter(null);
-      setCostCenters(prev => prev.filter(c => c.id !== center.id));
-      setCenterStats(prev => {
-        const next = { ...prev };
-        delete next[center.id];
-        return next;
-      });
+      invalidateCostCenters();
     } catch (error) {
       console.error('Error deleting cost center:', error);
       toast.error('Errore durante l\'eliminazione');

@@ -90,13 +90,15 @@ export function NetWorthSparkline({
 
   const linePath = catmullRomPath(pts);
   const isPositive = values[values.length - 1] >= values[0];
-  // When filled, use the caller-provided CSS-var color for stroke.
-  // When unfilled (the unfilled path is unused in production — the hero always passes filled=true),
-  // fall back to semantic green/red hex that matches Tailwind's green-600/red-600, which are the
-  // same values used by text-green-500/text-red-500 financial-signal classes across the app.
-  // These are intentionally hardcoded: they represent universal positive/negative semantics,
-  // not chart palette entries, so they must not vary with the active color theme.
-  const strokeColor = filled ? color : isPositive ? '#16a34a' : '#dc2626';
+  // When filled, use the caller-provided CSS-var color for stroke (the hero always
+  // passes filled=true with color="var(--chart-1)").
+  // When unfilled, fall back to the theme-aware sign tokens so the stroke follows the
+  // active theme — never a hardcoded hex (see DESIGN.md "The Sign-Color Token Rule").
+  const strokeColor = filled
+    ? color
+    : isPositive
+      ? 'var(--positive)'
+      : 'var(--destructive)';
 
   const areaPath = filled
     ? `${linePath} L ${pts[pts.length - 1][0]},${H} L ${pts[0][0]},${H} Z`
@@ -112,6 +114,7 @@ export function NetWorthSparkline({
         width="100%"
         height={H}
         style={{ display: 'block' }}
+        aria-hidden="true"
       >
         {filled && (
           <defs>

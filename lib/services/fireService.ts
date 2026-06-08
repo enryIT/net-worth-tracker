@@ -493,6 +493,7 @@ function buildMonthlyExpenseBuckets(expenses: Expense[]): Map<string, MonthlyExp
     const key = getYearMonthKey(year, month);
     const current = buckets.get(key) ?? { income: 0, expenses: 0 };
 
+    if (expense.type === 'transfer') return;
     if (expense.type === 'income') {
       current.income += expense.amount;
     } else {

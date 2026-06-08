@@ -19,9 +19,10 @@
  */
 
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { queryKeys } from '@/lib/query/queryKeys';
 import { CostCenter, CostCenterMonthlyData } from '@/types/costCenters';
-import { Expense } from '@/types/expenses';
 import { getExpensesForCostCenter } from '@/lib/services/costCenterService';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { toDate } from '@/lib/utils/dateHelpers';
@@ -80,8 +81,17 @@ export function CostCenterDetail({
 }: CostCenterDetailProps) {
   const { user } = useAuth();
   const chartColors = useChartColors();
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
+  // React Query keeps this detail view in sync with expense mutations elsewhere
+  // (it shares the ['cost-centers', userId] prefix invalidated by ExpenseDialog).
+  const { data: expenses = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.costCenters.expenses(user?.uid ?? '', costCenter.id),
+    enabled: !!user,
+    queryFn: async () => {
+      const data = await getExpensesForCostCenter(user!.uid, costCenter.id);
+      // Only count actual outgoing expenses (exclude income entries linked to this center)
+      return data.filter(e => e.amount < 0);
+    },
+  });
   // Show full history or just the last 12 months in the chart
   const [showFullHistory, setShowFullHistory] = useState(false);
   // Two-click delete safety: first click arms, second click executes
@@ -89,12 +99,6 @@ export function CostCenterDetail({
   // Defer chart mount by one RAF so ResponsiveContainer measures after browser layout
   const [chartReady, setChartReady] = useState(false);
   const chartRafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    setChartReady(false);
-    loadExpenses();
-  }, [user, costCenter.id]);
 
   // Once data is loaded, wait one animation frame before mounting the chart.
   // This ensures the container div has been laid out by the browser so
@@ -106,20 +110,6 @@ export function CostCenterDetail({
       if (chartRafRef.current !== null) cancelAnimationFrame(chartRafRef.current);
     };
   }, [loading]);
-
-  const loadExpenses = async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const data = await getExpensesForCostCenter(user.uid, costCenter.id);
-      // Only count actual outgoing expenses (exclude income entries linked to this center)
-      setExpenses(data.filter(e => e.amount < 0));
-    } catch (error) {
-      console.error('Error loading cost center expenses:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Aggregate stats derived from the expense list
   const stats = useMemo(() => {

@@ -13,12 +13,18 @@ dei P0/P1 emersi da una critique, o come verifica standalone su assi specifici.
 Audit = compliance pass/fail su assi precisi. Critique = valutazione olistica con score.
 Audit è più veloce, non produce score, non sostituisce la critique di verifica finale.
 
-**Assi di compliance per questo progetto:**
-- **Token** — nessun `bg-gray-*`, `text-gray-*`, `dark:bg-*`, hex hardcoded; usa CSS vars
+**Assi di compliance per questo progetto** (fonte canonica: `DESIGN.md` — leggila sempre):
+- **Form Follows Function** — ogni proprietà visiva (size, weight, color, radius, motion) deriva
+  da una funzione; niente decorazione, niente false depth/material (onestà), chrome che deferisce al dato
+- **Token / Zero-Chroma** — nessun `bg-gray-*`, `text-gray-*`, `dark:bg-*`, hex hardcoded; usa CSS vars
+  (OKLCH-native); chrome achromatica, il colore lo possiede il dato (Data Owns Color)
 - **Chart colors** — tutte le serie Recharts via `useChartColors()`; tooltip via CSS vars
   (`var(--card)` bg, `var(--card-foreground)` label); nessun hex o `fill="currentColor"` diretto
-- **Gerarchia Trade Republic** — hero block presente (`text-4xl font-bold font-mono`),
+- **Gerarchia Trade Republic** — hero block con la scala corretta: page hero
+  `text-[44px] desktop:text-[54px] font-bold font-mono tracking-[-0.03em]`, section hero `text-[36px]`,
+  sub-hero `text-[22px]` (**mai** `text-4xl`/`text-2xl` per un hero); un numero dominante per sezione,
   `divide-y` flat rows, nessun card-in-card, nessun side-stripe border
+- **Mono Mandate** — ogni numero (€, %, ratio, data strutturata) in Geist Mono con `tabular-nums`
 - **Breakpoint** — `md:` → `desktop:` (≥ 1440px); `sm:` solo dove corretto;
   `max-desktop:portrait:pb-20` su pagine con bottom nav; `landscape:` per casi specifici
 - **Motion** — `useReducedMotion()` o `MotionConfig reducedMotion="user"` attivo;
@@ -57,6 +63,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -83,6 +90,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -113,6 +121,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -134,6 +143,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -159,6 +169,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -182,6 +193,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -214,6 +226,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -251,6 +264,7 @@ La pagina è una singola scroll — nessun tab. Assi da verificare (minimum — 
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -276,7 +290,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Token: calendario (day active, day hover, today highlight) — nessun hardcoded;
   DividendStats cards — nessun `bg-blue-*` o simili; badge tipo dividendo via CSS var
 - Chart colors: eventuali grafici in DividendStats via `useChartColors()`
-- Gerarchia: hero YOC/totale dividendi presente e `text-4xl font-bold font-mono`?
+- Gerarchia: hero YOC/totale dividendi presente con la scala corretta (`text-[44px] desktop:text-[54px] font-bold font-mono`)?
   (se assente è P1 per la critique, non per questo audit)
 - Breakpoint: calendario non overflow su 375px; DividendTable scroll orizzontale su mobile
 - ARIA: calendario con `aria-label` sui giorni, `aria-selected` sul giorno attivo;
@@ -284,6 +298,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -309,6 +324,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -319,17 +335,30 @@ Contesto:
 /impeccable audit il tab "Budget" della pagina Cashflow
 
 File: app/dashboard/cashflow/page.tsx
-Componenti: components/cashflow/BudgetTab.tsx
+Componenti: components/cashflow/BudgetTab.tsx,
+            components/cashflow/budget/BudgetList.tsx,
+            components/cashflow/budget/BudgetItemDialog.tsx,
+            components/cashflow/budget/BudgetSettingsCard.tsx,
+            components/cashflow/budget/BudgetForecastCard.tsx,
+            components/cashflow/budget/BudgetInsightsCard.tsx,
+            components/cashflow/budget/BudgetAlertsBanner.tsx
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
-- Token: progress bars — nessun `bg-blue-*` hardcoded; over-budget → `bg-destructive`
-  o `color-mix()` non hex; under-budget → colore da token
-- Gerarchia: percentuale budget `font-mono`, label categoria plain — nessun card-in-card
-- ARIA: progress bar con `role="progressbar"`, `aria-valuenow`, `aria-valuemin/max`
-- Breakpoint: lista budget non overflow su 375px
+- Token: progress bars (BudgetList) — nessun `bg-blue-*` hardcoded; over-budget →
+  `bg-destructive` o `color-mix()` non hex; under-budget → colore da token;
+  BudgetAlertsBanner alert soglie (50/75/90/100%) — colori via token non hardcoded;
+  BudgetForecastCard e BudgetInsightsCard — nessun `bg-gray-*`
+- Gerarchia: importi in `font-mono tabular-nums`; label categoria plain; nessun card-in-card;
+  BudgetSettingsCard overall ceiling + status indicator auto-save via token
+- ResponsiveModal: BudgetItemDialog usa `ResponsiveModal` (Dialog desktop ↔ Drawer mobile ≤768px)
+- ARIA: progress bar con `role="progressbar"`, `aria-valuenow`, `aria-valuemin/max`;
+  BudgetAlertsBanner ha `aria-live` per aggiornamenti soglia
+- Breakpoint: lista Mensili/Annuali non overflow su 375px; BudgetForecastCard chart
+  altezza corretta su mobile
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -353,6 +382,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -370,20 +400,35 @@ Componenti: components/cashflow/AnalisiTab.tsx,
             components/cashflow/AnomalieBlock.tsx,
             components/cashflow/ConfrontoAnnualeSection.tsx,
             components/cashflow/SavingsRateTrendSection.tsx,
-            components/cashflow/CategoryTrendsGrid.tsx
+            components/cashflow/CategoryTrendsGrid.tsx,
+            components/cashflow/AndamentoStoricoSection.tsx
+Pure layer (logica, non visivo): lib/utils/cashflowTimeSeries.ts
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Token: nessun hardcoded nel Sankey (nodi, link, tooltip), nei KPI hero blocks,
   nel TopExpensesBlock (importi rossi — usa `text-destructive`?)
-- Chart colors: Sankey node colors via `useChartColors()` o CSS vars; 9 trend charts via
-  `useChartColors()` — nessun hex diretto
-- Breakpoint: pill 3-state (Anno Corrente/Anno/Storico) corretto su 375px; TopExpensesBlock
-  non overflow su mobile
-- Motion: `key={periodLabel}` su TopExpensesBlock per reset `showAll`; pill animation (400/35)
-- ARIA: pill selector `role="tablist"`, Sankey drill-down breadcrumb accessibile
+- Chart colors: Sankey node colors via `useChartColors()` o CSS vars; tutti i trend charts
+  (incl. AndamentoStoricoSection: ComposedChart Entrate/Uscite/Risparmio + LineChart per
+  categoria) via `useChartColors()`; tooltip via CSS vars — nessun hex diretto
+- AndamentoStoricoSection (solo `periodMode === 'history'`): YAxis del ComposedChart usa
+  `domain={[(min)=>Math.min(0,min),'auto']}` (la linea Risparmio negativo non viene tagliata);
+  asse temporale parte da `cashflowHistoryStartYear` (floor) e non degenera a 1 bucket
+- LineChart per categoria: mostra SOLO le prime 6 categorie per totale — le restanti sono
+  scartate di proposito (niente serie "Altro" residua, che sommando molte categorie sovrastava
+  ogni singola linea). NON re-introdurre un raggruppamento "Altro": è una scelta deliberata, non
+  un dato mancante. Tooltip righe ordinate per valore decrescente (`itemSorter`) per rispecchiare
+  l'impilamento verticale delle linee
+- Breakpoint: pill 3-state (Anno Corrente/Anno/Storico) centrata su mobile/tablet, riga su
+  `desktop:`; selettore non overflow su 375px; TopExpensesBlock non overflow su mobile
+- Motion: `key={periodLabel}` su TopExpensesBlock per reset `showAll`; pill animation (400/35);
+  layoutId unici per pagina (`analisi-period-pill`, `andamento-granularity-pill`,
+  `andamento-category-pill`, `confronto-view-pill`) — nessuna collisione
+- ARIA: pill selector `role="tablist"`, Sankey drill-down breadcrumb accessibile;
+  toggle Mese/Anno ed Entrate/Uscite con `role="tablist"`/`role="tab"`
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -399,17 +444,21 @@ File: app/dashboard/allocation/page.tsx
 Componenti: components/allocation/*
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
-- Token: `ActionChip` (COMPRA/VENDI/OK) — colori via token, non hardcoded;
-  `AllocationProgressBar` — fill via token o `color-mix()`; tabella desktop 5-col — nessun
-  hardcoded su header e celle
-- Chart colors: eventuali grafici in ExposureSection via `useChartColors()`
-- ARIA: `AllocationProgressBar` con `role="progressbar"`, `aria-valuenow/min/max`;
-  ActionChip con `aria-label` descrittivo
-- Breakpoint: ExposureSection drill-down (azienda/settore/ETF) non overflow su mobile
-- Skeleton: `AllocationPageSkeleton` isomorfo al layout reale
+- Token: `ActionChip` (COMPRA/VENDI/OK) e `TargetTick` — colori azione via `useActionColors`
+  (legge `--chart-*` con clamp lightness oklch), non hardcoded; `AllocationHero` verdetto e
+  `RebalancePlan` mosse — nessun `bg-gray-*`/hex su badge e righe; `ContributionAllocator`
+  ripartizione — token; `RebalanceBandControl` segmented (±2/±5/5·25/custom) — token
+- Chart colors: eventuali grafici in ExposureSection via `useChartColors()`; i colori azione
+  passano da `useActionColors` (ACTION_CHART_NUMBER COMPRA 3 / VENDI 5 / OK 2)
+- ARIA: `AllocationBreakdown` accordion con `aria-expanded` + contenuto `inert` da chiuso;
+  `RebalanceBandControl` `role="radiogroup"`/segmented; `ActionChip` con `aria-label` descrittivo
+- Breakpoint: AllocationBreakdown accordion (grid-template-rows) e ExposureSection drill-down
+  (azienda/settore/ETF) non overflow su mobile
+- Skeleton: `AllocationPageSkeleton` isomorfo al layout reale (hero → plan → breakdown → exposure)
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -437,6 +486,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -462,6 +512,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -479,7 +530,7 @@ Componenti: components/hall-of-fame/*,
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Token: hero block, SpotlightCard divide-y rows, period/category pill — nessun hardcoded
-- Gerarchia: hero valore `text-4xl font-bold font-mono` presente
+- Gerarchia: hero valore con la scala corretta (`text-[44px] desktop:text-[54px] font-bold font-mono`) presente
 - ARIA: mobile three-section nav pill `role="tablist"`; collapsible "Vedi tutti"
   `aria-expanded`; tabelle con `<th scope="col">`
 - Breakpoint: tabelle full-height desktop (nessun `max-h` con doppio scroll);
@@ -488,6 +539,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -518,6 +570,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -542,9 +595,48 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
+
+### Tab "What If"
+
+```
+/impeccable audit il tab "What If" della pagina FIRE e Simulazioni
+
+File: app/dashboard/fire-simulations/page.tsx
+Componenti: components/fire-simulations/WhatIfAnalysisTab.tsx,
+            components/fire-simulations/WhatIfSensitivitySection.tsx,
+            components/fire-simulations/WhatIfAnalysisSkeleton.tsx
+
+Assi da verificare (minimum — segnala anche eventuali altri problemi):
+- Token: hero before→after custom block — colori "meno anni = meglio" via token,
+  non sign-based hardcoded; sensitivity matrix — `color-mix()` non hex; event selector
+  + scenario input cards — nessun `bg-gray-*`; empty-state Coast (manca `userAge`) via token
+- Chart colors: eventuali chart before/after e celle sensitivity matrix via
+  `useChartColors()` / `color-mix()` — nessun hex diretto
+- Gerarchia: hero usa il blocco before→after custom (NON `HeroMetricBlock` — il suo
+  coloring sign-based confligge con "meno anni = meglio"); impatto su FIRE e Coast in
+  flat divide-y rows, nessun card-in-card
+- Form-follows-function: ogni elemento dell'output (colore, freccia, delta) deve mappare
+  una funzione — "meno anni al FIRE = meglio"; nessuna decorazione sign-based ereditata
+- Motion: re-run baseline vs adjusted — nessuna animazione che riparte a ogni keystroke
+  degli input scenario (ephemeral state); `layoutId` unico se presente una pill
+- ARIA: event type selector con role appropriato; sensitivity matrix con `scope` su
+  header/righe; empty-state Coast con messaggio descrittivo quando manca `userAge`
+- Breakpoint: scenario inputs + sensitivity matrix non overflow su 375px;
+  `max-desktop:portrait:pb-20`
+- Skeleton: `WhatIfAnalysisSkeleton` isomorfo al layout reale
+- Altro: pattern anomali o violazioni non elencate sopra
+
+Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+```
+
+---
 
 ### Tab "Monte Carlo"
 
@@ -568,6 +660,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -595,6 +688,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -610,21 +704,27 @@ File: app/dashboard/assistant/page.tsx
 Componenti: components/assistant/*
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
-- Token: hero patrimonio wrapper — nessun hardcoded; user bubble `bg-muted/40` (token ✓);
-  memory badges — `useChartColors()` + `color-mix()` (non emerald/blue/violet hardcoded);
-  suggestion card border/bg via `chartColors[0]` + `color-mix()` (non hardcoded)
+- Token: scheda period-reactive (`renderPeriodScheda` / `PatrimonioTodayCard`) wrapper —
+  nessun hardcoded; valori Δ → `text-positive`/`text-destructive` (token, non emerald/red);
+  user bubble `bg-muted/40` (token ✓); memory badges (`AssistantMemoryFacts`) —
+  `useChartColors()` + `color-mix()` (non emerald/blue/violet hardcoded); suggestion card
+  (`AssistantSuggestionsBanner`) border/bg via `chartColors[0]` + `color-mix()` (non hardcoded)
 - Chart colors: non applicabile (no Recharts in questa pagina)
-- ARIA: mode strip `role="tablist"`; Conversazioni/Memoria tab strip `role="tablist"`;
-  memory badge `aria-label`; delete 2-click 3s auto-disarm con `aria-label`
-- Breakpoint: `grid-cols-1` + `min-w-0` su left column (fix overflow mobile);
-  composer context chip strip senza `-mx-4` (fix horizontal overflow su mobile)
-- Motion: `layoutId="assistant-mode-pill"` e `layoutId="assistant-sidebar-tab-pill"`
-  unici nella pagina; spring (400/35)
-- Skeleton: `AssistantPageSkeleton` isomorfo al layout reale (mode strip → hero →
+- ARIA: `AssistantPeriodSelector` period axis `role="tablist"` + sub-picker; sheet
+  Conversazioni/Memoria `role="dialog"`/`aria-modal` + focus trap (non più tab strip);
+  `AssistantPreferencesPopover` controlli con label; memory badge `aria-label`;
+  delete 2-click 3s auto-disarm con `aria-label`; SSE `status:'searching'` badge con `aria-live`
+- Breakpoint: `grid-cols-1` + `min-w-0` su left column (fix overflow mobile); scheda come
+  colonna destra solo desktop, mobile nell'empty-state + `AssistantContextPill` nell'header;
+  composer slim (input+send) senza strip orizzontale che debordi
+- Motion: `layoutId="assistant-mode-pill"` (in `AssistantPeriodSelector`) unico nella pagina;
+  sheet open/close + `AnimatePresence` rispettano `useReducedMotion()`; spring (400/35)
+- Skeleton: `AssistantPageSkeleton` isomorfo al layout reale (period axis → scheda →
   conversation → composer → right col)
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -653,6 +753,48 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+```
+
+---
+
+## Cross-cutting: Sistema di Shell e Layout Condivisi
+
+```
+/impeccable audit il sistema di shell e layout condivisi dell'app
+
+Componenti: components/layout/PageContainer.tsx,
+            components/layout/PageHeader.tsx,
+            components/layout/PageTabBar.tsx,
+            components/layout/PageTabs.tsx,
+            components/layout/ThemePicker.tsx,
+            lib/constants/navigation.ts
+
+Questi file sono il guscio "interno" condiviso da tutte le pagine del dashboard
+(9 pagine usano PageContainer/PageHeader; Cashflow, FIRE e Settings usano il pattern
+multi-tab). L'audit verifica la meccanica del guscio, non il contenuto delle pagine.
+
+Assi da verificare (minimum — segnala anche eventuali altri problemi — coerenza cross-pagina):
+- PageContainer: `max-w-[1600px] mx-auto`, `space-y-4 desktop:space-y-6`,
+  `max-desktop:portrait:pb-20` presente su tutte le pagine con bottom nav
+- PageHeader: mobile sticky bar (h-14, backdrop-blur-sm, bg-background/95) non sovrappone
+  il contenuto; desktop full header con border-b; nessun colore hardcoded
+- Multi-tab shell (PageTabBar/PageTabs): desktop (≥1440px) → underline tab bar animata;
+  mobile → Radix Select o segmented pill (`desktop:hidden` / `hidden desktop:block`);
+  stato del tab attivo e deep-link coerenti tra Cashflow/FIRE/Settings
+- ThemePicker: 6 temi, swatch touch-friendly (≥44px), tema attivo via token non hardcoded
+- navigation.ts: single source per primaryNav/analysisNav/planningNav/secondaryHrefs —
+  nessuna voce nav duplicata inline nelle pagine
+- Motion: `layoutId` del tab indicator unico per pagina; spring 400/35; `useReducedMotion()`
+- ARIA: PageTabBar `role="tablist"`/`role="tab"` + `aria-selected`; Select mobile con `aria-label`
+- Form-follows-function: il guscio è chrome che deferisce al contenuto — ogni elemento
+  svolge una funzione di struttura/navigazione, nessuna decorazione che competa col dato
+- Altro: inconsistenze cross-pagina o pattern di shell non previsti dagli assi sopra
+
+Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -671,9 +813,14 @@ Componenti: components/assets/AssetDialog.tsx,
             components/dividends/DividendDialog.tsx,
             components/dividends/DividendDetailsDialog.tsx,
             components/cashflow/CostCenterDialog.tsx,
-            components/layout/LogoutDialog.tsx
+            components/expenses/CategoryManagementDialog.tsx,
+            components/layout/LogoutDialog.tsx,
+            components/ui/responsive-modal.tsx
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi — coerenza cross-dialog):
+- ResponsiveModal: l'astrazione `components/ui/responsive-modal.tsx` monta Dialog su desktop
+  ↔ vaul Drawer su mobile (≤768px) — stesso breakpoint e comportamento per tutti i dialog
+  che la usano (ExpenseDialog, CategoryManagementDialog)
 - Struttura: tutti i dialog hanno `DialogTitle` + `DialogDescription` (accessibilità Radix)
 - Token: header, footer, overlay backdrop — stessa vocabulary di token su tutti i dialog
 - Footer pattern: bottone primario a destra, ghost/outline a sinistra — coerente?
@@ -685,6 +832,7 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi — coere
 - Altro: inconsistenze cross-dialog o pattern non previsti dagli assi sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -699,6 +847,7 @@ Contesto:
 Componenti: components/fire-simulations/FireCalculatorSkeleton.tsx,
             components/fire-simulations/MonteCarloSkeleton.tsx,
             components/fire-simulations/GoalsSkeleton.tsx,
+            components/fire-simulations/WhatIfAnalysisSkeleton.tsx,
             components/allocation/AllocationPageSkeleton.tsx,
             components/settings/SettingsPageSkeleton.tsx,
             components/assistant/AssistantPageSkeleton.tsx
@@ -708,12 +857,13 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi — coere
 - Isomorfismo strutturale: ogni skeleton rispecchia il layout reale? Stessa altezza
   dei blocchi hero, stessa struttura delle righe flat
 - Token: tutti i blocchi skeleton usano `bg-muted animate-pulse` — nessun `bg-gray-*`
-- Hero block: tutti gli skeleton con hero hanno un blocco `h-10` o `h-12` in testa
-  che corrisponde al `text-4xl` del layout reale
+- Hero block: tutti gli skeleton con hero hanno un blocco `h-12`/`h-14` in testa che
+  corrisponde alla scala del page hero reale (`text-[44px] desktop:text-[54px]`)
 - Coerenza: stessa `rounded-*`, stesso gap tra blocchi in tutti gli skeleton
 - Altro: skeleton mancanti, disallineamenti strutturali o inconsistenze non elencate sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```
@@ -742,6 +892,53 @@ Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Altro: anomalie nel sistema di token non coperte dagli assi sopra
 
 Contesto:
+- Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma)
+- Leggi AGENTS.md (pattern, convenzioni, gotcha)
+- Leggi CLAUDE.md (stato corrente, known issues)
+```
+
+---
+
+## Email Periodiche
+
+> **Medium diverso.** L'audit standard verifica token / chart colors / breakpoint `desktop:` /
+> ARIA `tablist` / Framer Motion — assi che NON esistono in un'email HTML. Qui gli assi sono
+> propri del medium (vedi sotto). Verifica solo il piano **visivo/resa**; il piano **funzionale**
+> (correttezza confronti, baseline, boundary periodi) è `/code-review` + Vitest, non audit impeccable.
+
+```
+/impeccable audit l'email periodica (riepilogo mensile / trimestrale / semestrale / annuale)
+
+PRE-STEP — renderizza l'HTML prima di auditare (vedi critique): genera l'output di
+`buildEmailHtml` (manual test-send o file `.html`) e aprilo in light/dark, desktop/mobile.
+
+File: lib/server/monthlyEmailService.ts
+      (buildEmailHtml, simpleMarkdownToHtml, buildComparisonSectionHtml, comparisonCell)
+Contesto logico (non visivo): lib/server/emailPeriodComparison.ts,
+      app/api/user/monthly-email/send/route.ts (render di test)
+
+Assi da verificare (minimum — propri del medium email, NON gli assi del dashboard):
+- Inline-CSS only: tutto lo styling è inline o in `<style>` whitelisted — gli hex hardcoded
+  qui sono CORRETTI (i client non supportano CSS vars/token); NON segnalarli come violazione.
+- Table-layout: struttura a `<table>`/`<td>`, larghezza max 600px centrata — non flex/grid.
+- Mono sui numeri: patrimonio, %, € usano stack `'Geist Mono', ui-monospace, monospace`;
+  tabella Confronti con allineamento tabellare (numeri a destra, colonne che leggono come colonne).
+- Gerarchia: UN numero dominante (patrimonio netto) con eyebrow label; nessun numero secondario
+  di pari peso; chrome achromatica con colore riservato ai delta sign-aware.
+- Delta sign-semantics: verde positivo / rosso negativo, INVERTITO sulle Uscite (un +% di spesa
+  è rosso); `comparisonCell` rispetta `higherIsBetter` per metrica.
+- Markdown→HTML: simpleMarkdownToHtml rende le 5 sezioni del commento AI (heading, ol/ul,
+  grassetti) senza `<br>` orfani, senza `<p>` vuoti, spacing coerente.
+- Fallback: celle "N/D" pulite su baseline mancante; `previousEqualsYoy` (yearly) → colonna singola.
+- Dark mode: presenza/assenza di `<meta name="color-scheme">` + `@media (prefers-color-scheme: dark)`
+  (oggi assenti → light-only su `#ffffff` fisso; segnala come gap, non come pass/fail bloccante).
+- Mobile: tabella Confronti non deborda a 320–375px; body ≥ 14px; singola colonna leggibile.
+- Compat client: nessuna proprietà CSS non supportata da Gmail web/app, Apple Mail, Outlook.
+- Accessibilità: `lang="it"`, header tabella semantici, contrasto AA del grigio su sfondo.
+- Altro: pattern anomali o violazioni non elencate sopra.
+
+Contesto:
+- Leggi DESIGN.md (Mono Mandate, Zero-Chroma, Form Follows Function)
 - Leggi AGENTS.md (pattern, convenzioni, gotcha)
 - Leggi CLAUDE.md (stato corrente, known issues)
 ```

@@ -6,16 +6,7 @@ import { AssetClass } from '@/types/assets';
  * abilita le sotto-categorie per una specifica asset class
  */
 export const DEFAULT_SUB_CATEGORIES: Record<AssetClass, string[]> = {
-  equity: [
-    'All-World',
-    'Momentum',
-    'Quality',
-    'Value',
-    'Pension',
-    'Private Equity',
-    'High Risk',
-    'Single Stocks',
-  ],
+  equity: [],
   bonds: [
     'Government Bonds',
     'Corporate Bonds',
@@ -35,16 +26,3 @@ export const DEFAULT_SUB_CATEGORIES: Record<AssetClass, string[]> = {
   ],
 };
 
-/**
- * Target percentuali di default per le sotto-categorie equity
- */
-export const DEFAULT_EQUITY_SUB_TARGETS: Record<string, number> = {
-  'All-World': 40,
-  'Momentum': 10,
-  'Quality': 10,
-  'Value': 10,
-  'Pension': 15,
-  'Private Equity': 5,
-  'High Risk': 5,
-  'Single Stocks': 5,
-};

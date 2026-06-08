@@ -48,6 +48,7 @@ import { CashflowSankeyChart } from '@/components/cashflow/CashflowSankeyChart';
 import { ConfrontoAnnualeSection } from '@/components/cashflow/ConfrontoAnnualeSection';
 import { SavingsRateTrendSection } from '@/components/cashflow/SavingsRateTrendSection';
 import { CategoryTrendsGrid } from '@/components/cashflow/CategoryTrendsGrid';
+import { AndamentoStoricoSection } from '@/components/cashflow/AndamentoStoricoSection';
 import { AnomalieBlock, AnomaliaItem } from '@/components/cashflow/AnomalieBlock';
 import { chartShellSettle, fadeVariants } from '@/lib/utils/motionVariants';
 import { cn } from '@/lib/utils';
@@ -190,7 +191,7 @@ function TopExpensesBlock({
 
 function getExpensesByCategory(expenses: Expense[], colors: string[]): ChartData[] {
   const categoryMap = new Map<string, number>();
-  expenses.filter(e => e.type !== 'income').forEach(e => {
+  expenses.filter(e => e.type !== 'income' && e.type !== 'transfer').forEach(e => {
     categoryMap.set(e.categoryName, (categoryMap.get(e.categoryName) || 0) + Math.abs(e.amount));
   });
   const total = Array.from(categoryMap.values()).reduce((s, v) => s + v, 0);
@@ -220,7 +221,7 @@ function getIncomeByCategory(expenses: Expense[], colors: string[]): ChartData[]
 
 function getExpensesByType(expenses: Expense[], colors: string[]): ChartData[] {
   const typeMap = new Map<string, number>();
-  expenses.filter(e => e.type !== 'income').forEach(e => {
+  expenses.filter(e => e.type !== 'income' && e.type !== 'transfer').forEach(e => {
     const label = EXPENSE_TYPE_LABELS[e.type as ExpenseType] || e.type;
     typeMap.set(label, (typeMap.get(label) || 0) + Math.abs(e.amount));
   });
@@ -416,7 +417,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
   // Sort non-income expenses by amount ascending — most negative amount = largest expense first
   const topExpenses = useMemo(() => {
     return periodFilteredExpenses
-      .filter(e => e.type !== 'income')
+      .filter(e => e.type !== 'income' && e.type !== 'transfer')
       .sort((a, b) => a.amount - b.amount);
   }, [periodFilteredExpenses]);
 
@@ -465,7 +466,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
     const anomalyExpenses = allExpenses.filter(e => {
       const d = toDate(e.date);
       return (
-        e.type !== 'income' &&
+        e.type !== 'income' && e.type !== 'transfer' &&
         getItalyYear(d) === anomalyYear &&
         getItalyMonth(d) === anomalyMonth
       );
@@ -499,7 +500,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
           .filter(e => {
             const d = toDate(e.date);
             return (
-              e.type !== 'income' &&
+              e.type !== 'income' && e.type !== 'transfer' &&
               e.categoryName === category &&
               getItalyYear(d) === year &&
               getItalyMonth(d) === month
@@ -575,7 +576,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
   const getSubcategoriesData = (expenses: Expense[], categoryName: string, chartType: ChartType): ChartData[] => {
     const filtered = expenses.filter(e =>
       e.categoryName === categoryName &&
-      (chartType === 'income' ? e.type === 'income' : e.type !== 'income')
+      (chartType === 'income' ? e.type === 'income' : (e.type !== 'income' && e.type !== 'transfer'))
     );
     const total = filtered.reduce((s, e) => s + Math.abs(e.amount), 0);
     const subcategoryMap = new Map<string, number>();
@@ -597,7 +598,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
     if (!drillDown.selectedCategory) return [];
     return periodFilteredExpenses.filter(e => {
       if (e.categoryName !== drillDown.selectedCategory) return false;
-      if (drillDown.chartType === 'income' ? e.type !== 'income' : e.type === 'income') return false;
+      if (drillDown.chartType === 'income' ? e.type !== 'income' : (e.type === 'income' || e.type === 'transfer')) return false;
       if (drillDown.selectedSubCategory) {
         if (drillDown.selectedSubCategory === 'Altro') return !e.subCategoryName;
         return e.subCategoryName === drillDown.selectedSubCategory;
@@ -705,12 +706,16 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
   return (
     <div className="space-y-6">
       {/* ── Period selector ────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Three-state pill */}
+      {/* Stacked + centered on mobile/tablet (pill over picker) to avoid the
+          unbalanced pill-left / picker-far-right gap; switches to the row layout
+          (pill left, picker right) only from desktop (1440px) up. */}
+      <div className="flex flex-col gap-3 desktop:flex-row desktop:items-center desktop:justify-between">
+        {/* Three-state pill — self-center centers it on the stacked column without
+            stretching the picker; desktop:self-auto restores row placement. */}
         <div
           role="tablist"
           aria-label="Periodo di analisi"
-          className="inline-flex items-center gap-1 rounded-full bg-muted p-1"
+          className="inline-flex items-center gap-1 rounded-full bg-muted p-1 self-center desktop:self-auto"
         >
           {([
             ['current', 'Anno Corrente'],
@@ -751,7 +756,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:self-center desktop:self-auto"
           >
             <Select
               value={selectedMonth?.toString() || '__all__'}
@@ -788,7 +793,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:self-center desktop:self-auto"
           >
             <Select
               value={selectedYear?.toString() || pastYears[0]?.toString()}
@@ -866,7 +871,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
           <div>
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Spese</p>
             <p className="text-xs text-muted-foreground sm:hidden">
-              {periodFilteredExpenses.filter(e => e.type !== 'income').length} voci
+              {periodFilteredExpenses.filter(e => e.type !== 'income' && e.type !== 'transfer').length} voci
             </p>
           </div>
           <div className="text-right sm:text-left sm:mt-1">
@@ -874,7 +879,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
               {formatCurrency(totalExpenses)}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
-              {periodFilteredExpenses.filter(e => e.type !== 'income').length} voci
+              {periodFilteredExpenses.filter(e => e.type !== 'income' && e.type !== 'transfer').length} voci
             </p>
           </div>
         </div>
@@ -1119,6 +1124,17 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
         periodMode={periodMode}
         historyStartYear={historyStartYear}
       />
+
+      {/* ── Andamento nel Tempo (solo Storico) ───────────────────────────── */}
+      {/* Income/expense/net flow + per-category multi-line trends over the full
+          history. History-only: in Anno Corrente/Anno the YoY section above already
+          covers the period, and the Mese/Anno axis would degenerate to one bucket. */}
+      {periodMode === 'history' && (
+        <AndamentoStoricoSection
+          allExpenses={allExpenses}
+          historyStartYear={historyStartYear}
+        />
+      )}
 
       {/* ── Andamento Risparmio + Trend per Categoria ────────────────── */}
       {/* Hidden in "Anno" mode — the rolling windows (24m / 12m from today)

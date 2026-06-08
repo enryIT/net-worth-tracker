@@ -24,11 +24,12 @@
  * @param onRefresh - Callback to refresh expense list after deletion
  */
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { Expense, ExpenseType, EXPENSE_TYPE_LABELS } from '@/types/expenses';
+import { Expense, ExpenseCategory, ExpenseType, EXPENSE_TYPE_LABELS } from '@/types/expenses';
+import { getLazyIcon } from '@/components/expenses/IconPickerPopover';
 import {
   deleteExpense,
   deleteRecurringExpenses,
@@ -36,8 +37,8 @@ import {
   getExpensesByRecurringParentId,
   getExpensesByInstallmentParentId,
 } from '@/lib/services/expenseService';
-import { updateCashAssetBalance, updateInvestmentAssetQuantity } from '@/lib/services/assetService';
-import { deleteInvestmentOperation } from '@/lib/services/investmentOperationService';
+import { updateCashAssetBalance } from '@/lib/services/assetService';
+import { reconcileTransferDelete } from '@/lib/services/cashBalanceReconciliation';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { Timestamp } from 'firebase/firestore';
 import {
@@ -50,29 +51,51 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Edit, Trash2, TrendingUp, TrendingDown, Calendar, ChevronLeft, ChevronRight, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Edit, Trash2, TrendingUp, TrendingDown, Calendar, ChevronLeft, ChevronRight, ExternalLink, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { getExpenseDate } from '@/lib/utils/expenseHelpers';
 
-const ITEMS_PER_PAGE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
 
 interface ExpenseTableProps {
   expenses: Expense[];
   onEdit: (expense: Expense) => void;
   onRefresh: () => void;
   isDemo?: boolean;
+  hasActiveFilters?: boolean;
+  categories?: ExpenseCategory[];
 }
 
-export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: ExpenseTableProps) {
+export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false, hasActiveFilters = false, categories = [] }: ExpenseTableProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  // categoryId → { icon, color } for icon display in the category cell
+  const categoryMetaMap = useMemo(
+    () => new Map(categories.map(c => [c.id, { icon: c.icon, color: c.color }])),
+    [categories]
+  );
 
   // ========== State Management ==========
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'asc' | 'desc' | null>(null);
+  const [pageSize, setPageSize] = useState<PageSizeOption>(20);
+  // Multi-column sort: col determines which column, dir the direction
+  const [sortCol, setSortCol] = useState<'amount' | 'date' | 'category' | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Delete confirmation dialog state
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    expense: Expense | null;
+    mode: 'simple' | 'installment' | 'recurring' | null;
+  }>({ open: false, expense: null, mode: null });
 
   // ========== Formatting Utilities ==========
 
@@ -108,75 +131,30 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * First confirm deletes single item (safe default), second confirm required
    * for batch deletion to prevent accidental data loss.
    */
-  const handleDelete = async (expense: Expense) => {
-    // Check if this is an installment expense
+  const handleDelete = (expense: Expense) => {
     if (expense.isInstallment && expense.installmentParentId) {
-      const confirmMessage = `Questa è la rata ${expense.installmentNumber}/${expense.installmentTotal}. Vuoi eliminare:\n\n` +
-        `[SOLO QUESTA RATA] - Solo questa rata singola\n` +
-        `[TUTTE LE RATE] - Tutte le ${expense.installmentTotal} rate\n\n` +
-        `Clicca OK per eliminare solo questa rata, Annulla per tornare indietro.`;
-
-      const deleteSingle = window.confirm(confirmMessage);
-
-      if (deleteSingle) {
-        await deleteSingleExpense(expense);
-      } else {
-        const deleteAll = window.confirm(
-          `Vuoi eliminare TUTTE le ${expense.installmentTotal} rate?`
-        );
-        if (deleteAll) {
-          await deleteAllInstallmentExpenses(expense.installmentParentId);
-        }
-      }
-    }
-    // Check if this is a recurring expense
-    else if (expense.isRecurring && expense.recurringParentId) {
-      const confirmMessage = `Questa è una voce ricorrente. Vuoi eliminare:\n\n` +
-        `[SOLO QUESTA] - Solo questa voce singola\n` +
-        `[TUTTE] - Tutte le voci ricorrenti correlate\n\n` +
-        `Clicca OK per eliminare solo questa, Annulla per tornare indietro.`;
-
-      const deleteSingle = window.confirm(confirmMessage);
-
-      if (deleteSingle) {
-        await deleteSingleExpense(expense);
-      } else {
-        const deleteAll = window.confirm(
-          'Vuoi eliminare TUTTE le voci ricorrenti correlate?'
-        );
-        if (deleteAll) {
-          await deleteAllRecurringExpenses(expense.recurringParentId);
-        }
-      }
+      setDeleteDialog({ open: true, expense, mode: 'installment' });
+    } else if (expense.isRecurring && expense.recurringParentId) {
+      setDeleteDialog({ open: true, expense, mode: 'recurring' });
     } else {
-      // Regular expense
-      const confirmDelete = window.confirm(
-        `Sei sicuro di voler eliminare questa voce?${expense.notes ? `\n\n"${expense.notes}"` : ''}`
-      );
-      if (confirmDelete) {
-        await deleteSingleExpense(expense);
-      }
+      setDeleteDialog({ open: true, expense, mode: 'simple' });
     }
   };
 
   const deleteSingleExpense = async (expense: Expense) => {
     try {
       setDeletingId(expense.id);
-      // Reverse the balance effect on the linked cash asset before deleting
-      if (expense.linkedCashAssetId && !expense.investmentOperationId) {
+      if (expense.type === 'transfer') {
+        await reconcileTransferDelete({
+          originId: expense.linkedCashAssetId,
+          destId: expense.transferCashAssetId,
+          amount: Math.abs(expense.amount),
+        });
+      } else if (expense.linkedCashAssetId) {
         await updateCashAssetBalance(expense.linkedCashAssetId, -expense.amount);
-        if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
       }
-      if (expense.investmentOperationId) {
-        await deleteInvestmentOperation(expense.investmentOperationId);
-        if (user) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
-          queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
-          queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
-        }
-      } else if (expense.linkedInvestmentAssetId && expense.linkedInvestmentQuantityDelta) {
-        await updateInvestmentAssetQuantity(expense.linkedInvestmentAssetId, -expense.linkedInvestmentQuantityDelta);
-        if (user) queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
+      if (user && (expense.linkedCashAssetId || expense.transferCashAssetId)) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
       }
       await deleteExpense(expense.id);
       toast.success('Voce eliminata con successo');
@@ -195,19 +173,12 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
       // Reverse balance effects before bulk-deleting (only the first entry stores linkedCashAssetId)
       const seriesExpenses = await getExpensesByRecurringParentId(recurringParentId);
       for (const exp of seriesExpenses) {
-        if (exp.linkedCashAssetId && !exp.investmentOperationId) {
+        if (exp.linkedCashAssetId) {
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
-        if (exp.investmentOperationId) {
-          await deleteInvestmentOperation(exp.investmentOperationId);
-        } else if (exp.linkedInvestmentAssetId && exp.linkedInvestmentQuantityDelta) {
-          await updateInvestmentAssetQuantity(exp.linkedInvestmentAssetId, -exp.linkedInvestmentQuantityDelta);
-        }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId || e.linkedInvestmentAssetId || e.investmentOperationId)) {
+      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
       }
       await deleteRecurringExpenses(recurringParentId);
       toast.success('Tutte le voci ricorrenti sono state eliminate');
@@ -226,19 +197,12 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
       // Reverse balance effects before bulk-deleting (only the first installment stores linkedCashAssetId)
       const seriesExpenses = await getExpensesByInstallmentParentId(installmentParentId);
       for (const exp of seriesExpenses) {
-        if (exp.linkedCashAssetId && !exp.investmentOperationId) {
+        if (exp.linkedCashAssetId) {
           await updateCashAssetBalance(exp.linkedCashAssetId, -exp.amount);
         }
-        if (exp.investmentOperationId) {
-          await deleteInvestmentOperation(exp.investmentOperationId);
-        } else if (exp.linkedInvestmentAssetId && exp.linkedInvestmentQuantityDelta) {
-          await updateInvestmentAssetQuantity(exp.linkedInvestmentAssetId, -exp.linkedInvestmentQuantityDelta);
-        }
       }
-      if (user && seriesExpenses.some(e => e.linkedCashAssetId || e.linkedInvestmentAssetId || e.investmentOperationId)) {
+      if (user && seriesExpenses.some(e => e.linkedCashAssetId)) {
         queryClient.invalidateQueries({ queryKey: queryKeys.assets.all(user.uid) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.operations(user.uid) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.assets.realized(user.uid) });
       }
       await deleteInstallmentExpenses(installmentParentId);
       toast.success('Tutte le rate sono state eliminate');
@@ -255,6 +219,15 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
     return EXPENSE_TYPE_LABELS[type];
   };
 
+  // When all visible expenses share the same type, the badge adds no information.
+  // Compute the set of distinct types in the full (non-paginated) filtered list
+  // so the column stays consistent as the user pages through.
+  const uniqueExpenseTypes = useMemo(
+    () => new Set(expenses.map(e => e.type)),
+    [expenses],
+  );
+  const singleType = uniqueExpenseTypes.size === 1;
+
   // Badge colors keyed by expense type — theme-aware via CSS variable references.
   // chart-1: income (green-toned in most themes), chart-2: fixed, chart-4: variable, chart-3: debt.
   // color-mix() at 12% for background, 35% for border; text uses the raw chart var directly.
@@ -268,6 +241,8 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
         return 'bg-[color-mix(in_oklch,var(--chart-4)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-4)_35%,transparent)] text-[var(--chart-4)]';
       case 'debt':
         return 'bg-[color-mix(in_oklch,var(--chart-3)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-3)_35%,transparent)] text-[var(--chart-3)]';
+      case 'transfer':
+        return 'bg-[color-mix(in_oklch,var(--chart-5)_12%,transparent)] border-[color-mix(in_oklch,var(--chart-5)_35%,transparent)] text-[var(--chart-5)]';
       default:
         return 'bg-muted border-border text-muted-foreground';
     }
@@ -290,9 +265,9 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * - endIndex = 10 + 10 = 20
    * - slice(10, 20) returns items 10-19 (indices), showing expenses 11-20 (1-indexed)
    */
-  const totalPages = Math.ceil(expenses.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const totalPages = Math.ceil(expenses.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
 
   /**
    * Teacher Comment: Three-State Sorting Cycle
@@ -308,17 +283,19 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * A third "reset" state lets them return to the default view.
    */
   const sortedExpenses = useMemo(() => {
-    if (sortBy === null) {
-      return expenses; // No sort: keep date order from parent
-    }
-
-    const sorted = [...expenses]; // Copy to avoid mutation
-    sorted.sort((a, b) => {
-      return sortBy === 'desc' ? b.amount - a.amount : a.amount - b.amount;
+    if (sortCol === null) return expenses;
+    return [...expenses].sort((a, b) => {
+      let cmp = 0;
+      if (sortCol === 'amount') {
+        cmp = Math.abs(b.amount) - Math.abs(a.amount);
+      } else if (sortCol === 'date') {
+        cmp = getExpenseDate(b.date).getTime() - getExpenseDate(a.date).getTime();
+      } else if (sortCol === 'category') {
+        cmp = b.categoryName.localeCompare(a.categoryName, 'it');
+      }
+      return sortDir === 'desc' ? cmp : -cmp;
     });
-
-    return sorted;
-  }, [expenses, sortBy]);
+  }, [expenses, sortCol, sortDir]);
 
   // Paginate sorted expenses
   const paginatedExpenses = useMemo(() => {
@@ -335,7 +312,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    */
   useEffect(() => {
     setCurrentPage(1);
-  }, [expenses.length, sortBy]);
+  }, [expenses.length, sortCol, sortDir, pageSize]);
 
   /**
    * Why reset sort when expenses array changes?
@@ -346,8 +323,8 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
    * provides a predictable "reset" behavior when switching filters.
    */
   useEffect(() => {
-    setSortBy(null);
-  }, [expenses]);
+    setSortCol(null);
+  }, [expenses.length]);
 
   const handlePreviousPage = () => {
     setCurrentPage((prev: number) => Math.max(1, prev - 1));
@@ -360,16 +337,23 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
   // ========== Event Handlers ==========
 
   /**
-   * Handle amount column header click to cycle through sort states.
-   * Cycle: null → desc → asc → null
+   * Multi-column sort handler.
+   * Click a new column: activates it with its default direction.
+   * Click active column: flips direction. Click again: resets.
+   * Default directions: amount=desc (high→low), date=desc (newest→oldest), category=asc (A→Z).
    */
-  const handleSortByAmount = () => {
-    setSortBy(prevSort => {
-      if (prevSort === null) return 'desc'; // First click: high to low
-      if (prevSort === 'desc') return 'asc'; // Second click: low to high
-      return null; // Third click: reset to date order
-    });
+  const handleSort = (col: 'amount' | 'date' | 'category') => {
+    const defaultDir: 'asc' | 'desc' = col === 'category' ? 'asc' : 'desc';
+    if (sortCol !== col) {
+      setSortCol(col);
+      setSortDir(defaultDir);
+    } else if (sortDir === defaultDir) {
+      setSortDir(defaultDir === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortCol(null);
+    }
   };
+
 
   // ========== Render ==========
 
@@ -378,33 +362,72 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
       <div className="rounded-md border border-dashed p-8 text-center">
         <p className="text-muted-foreground">Nessuna voce trovata</p>
         <p className="text-sm text-muted-foreground mt-2">
-          Clicca su &quot;Nuova Spesa&quot; per aggiungere la prima voce
+          {hasActiveFilters
+            ? 'Nessun risultato per i filtri applicati. Prova ad azzerare i filtri.'
+            : 'Clicca su "Nuova Spesa" per aggiungere la prima voce'}
         </p>
       </div>
     );
   }
 
-  return (
+  const table = (
     <div className="space-y-4">
       <div className="rounded-md border">
         <Table>
           {/* ========== Table Header ========== */}
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">Data</TableHead>
+              <TableHead className="w-[110px]">
+                <button
+                  onClick={() => handleSort('date')}
+                  className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
+                  aria-label="Ordina per data"
+                  type="button"
+                >
+                  <span>Data</span>
+                  {sortCol === 'date' ? (
+                    sortDir === 'desc'
+                      ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      : <ArrowUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  )}
+                </button>
+              </TableHead>
               <TableHead className="w-[120px]">Tipo</TableHead>
-              <TableHead>Attribuzione</TableHead>
-              <TableHead>Categoria</TableHead>
+              <TableHead>
+                <button
+                  onClick={() => handleSort('category')}
+                  className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors"
+                  aria-label="Ordina per categoria"
+                  type="button"
+                >
+                  <span>Categoria</span>
+                  {sortCol === 'category' ? (
+                    sortDir === 'desc'
+                      ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      : <ArrowUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  )}
+                </button>
+              </TableHead>
               <TableHead>Sottocategoria</TableHead>
               <TableHead className="text-right w-[120px]">
                 <button
-                  onClick={handleSortByAmount}
+                  onClick={() => handleSort('amount')}
                   className="flex items-center justify-end gap-1 cursor-pointer hover:text-foreground transition-colors w-full"
                   aria-label="Ordina per importo"
+                  type="button"
                 >
                   <span>Importo</span>
-                  {sortBy === 'desc' && <ArrowDown className="h-4 w-4 text-muted-foreground" />}
-                  {sortBy === 'asc' && <ArrowUp className="h-4 w-4 text-muted-foreground" />}
+                  {sortCol === 'amount' ? (
+                    sortDir === 'desc'
+                      ? <ArrowDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      : <ArrowUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/50" />
+                  )}
                 </button>
               </TableHead>
               <TableHead className="max-w-[200px]">Note</TableHead>
@@ -426,25 +449,47 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                 </div>
               </TableCell>
               <TableCell>
-                <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getTypeBadgeColor(
-                    expense.type
-                  )}`}
-                >
-                  {getTypeLabel(expense.type)}
-                </span>
-              </TableCell>
-              <TableCell>
-                {expense.attributionProfileName ? (
-                  <Badge variant="outline" className="text-xs">
-                    {expense.attributionProfileName}
-                  </Badge>
+                {singleType ? (
+                  <span className="text-xs text-muted-foreground">
+                    {getTypeLabel(expense.type)}
+                  </span>
                 ) : (
-                  <span className="text-sm text-muted-foreground">-</span>
+                  <span
+                    className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getTypeBadgeColor(
+                      expense.type
+                    )}`}
+                  >
+                    {getTypeLabel(expense.type)}
+                  </span>
                 )}
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
+                  {(() => {
+                    const meta = categoryMetaMap.get(expense.categoryId);
+                    const CatIcon = meta?.icon ? getLazyIcon(meta.icon) : null;
+                    if (CatIcon) {
+                      return (
+                        <div
+                          className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: meta?.color ? `${meta.color}20` : 'var(--muted)' }}
+                        >
+                          <Suspense fallback={null}>
+                            <CatIcon className="w-3 h-3" style={{ color: meta?.color || 'var(--muted-foreground)' }} aria-hidden="true" />
+                          </Suspense>
+                        </div>
+                      );
+                    }
+                    if (meta?.color) {
+                      return (
+                        <div
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: meta.color }}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
                   {expense.categoryName}
                 </div>
               </TableCell>
@@ -455,8 +500,8 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                 <div
                   className={`flex items-center justify-end gap-1 ${
                     expense.type === 'income'
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-red-600 dark:text-red-400'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-destructive'
                   }`}
                 >
                   {expense.type === 'income' ? (
@@ -470,14 +515,6 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
               <TableCell className="text-sm text-muted-foreground max-w-[200px]">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="truncate">{expense.notes || '-'}</span>
-                  {expense.linkedInvestmentAssetName && (
-                    <Badge variant="outline" className="flex-shrink-0 text-xs">
-                      {expense.linkedInvestmentAssetName}
-                      {expense.linkedInvestmentQuantityDelta
-                        ? ` (${expense.linkedInvestmentQuantityDelta > 0 ? '+' : ''}${expense.linkedInvestmentQuantityDelta})`
-                        : ''}
-                    </Badge>
-                  )}
                   {expense.isInstallment && (
                     <Badge variant="outline" className="flex-shrink-0 text-xs">
                       Rata {expense.installmentNumber}/{expense.installmentTotal}
@@ -492,9 +529,9 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center justify-center text-primary hover:text-primary/70 transition-colors"
-                    title="Apri link"
+                    aria-label="Apri link esterno"
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="h-4 w-4" aria-hidden="true" />
                   </a>
                 )}
               </TableCell>
@@ -507,6 +544,7 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                     // Why disable during deletion: Prevents concurrent edit/delete operations
                     // that could cause data inconsistency or race conditions
                     disabled={isDemo || deletingId === expense.id || deletingId === expense.recurringParentId || deletingId === expense.installmentParentId}
+                    aria-label={isDemo ? 'Modifica — non disponibile in modalità demo' : 'Modifica voce'}
                     title={isDemo ? 'Non disponibile in modalità demo' : undefined}
                   >
                     <Edit className="h-4 w-4" />
@@ -516,9 +554,10 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
                     size="sm"
                     onClick={() => handleDelete(expense)}
                     disabled={isDemo || deletingId === expense.id || deletingId === expense.recurringParentId || deletingId === expense.installmentParentId}
+                    aria-label={isDemo ? 'Elimina — non disponibile in modalità demo' : 'Elimina voce'}
                     title={isDemo ? 'Non disponibile in modalità demo' : undefined}
                   >
-                    <Trash2 className="h-4 w-4 text-red-500" />
+                    <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
               </TableCell>
@@ -529,36 +568,135 @@ export function ExpenseTable({ expenses, onEdit, onRefresh, isDemo = false }: Ex
     </div>
 
     {/* Pagination Controls */}
-    {totalPages > 1 && (
-      <div className="flex items-center justify-between px-2">
-        <div className="text-sm text-muted-foreground">
-          Visualizzate {startIndex + 1}-{Math.min(endIndex, expenses.length)} di {expenses.length} voci
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePreviousPage}
-            disabled={currentPage === 1}
+    {expenses.length > 0 && (
+      <div className="flex flex-wrap items-center justify-between gap-3 px-2">
+        {/* Left: rows-per-page selector + count */}
+        <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+          <span className="hidden sm:inline shrink-0">Righe per pagina</span>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => setPageSize(Number(v) as PageSizeOption)}
           >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Precedente
-          </Button>
-          <div className="text-sm font-medium">
-            Pagina {currentPage} di {totalPages}
+            <SelectTrigger
+              className="h-8 w-[70px] text-sm"
+              aria-label="Righe per pagina"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map(n => (
+                <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="shrink-0 tabular-nums">
+            {startIndex + 1}-{Math.min(endIndex, expenses.length)} di {expenses.length}
+          </span>
+        </div>
+
+        {/* Right: prev / page indicator / next */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePreviousPage}
+              disabled={currentPage === 1}
+            >
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Precedente
+            </Button>
+            <div className="text-sm font-medium tabular-nums">
+              {currentPage} / {totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={currentPage === totalPages}
+            >
+              Successiva
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNextPage}
-            disabled={currentPage === totalPages}
-          >
-            Successiva
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
+        )}
       </div>
     )}
   </div>
+  );
+
+  return (
+    <>
+      {table}
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setDeleteDialog({ open: false, expense: null, mode: null });
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteDialog.mode === 'installment'
+                ? 'Elimina rata'
+                : deleteDialog.mode === 'recurring'
+                ? 'Elimina voce ricorrente'
+                : 'Elimina voce'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDialog.mode === 'installment' && deleteDialog.expense
+                ? `Questa è la rata ${deleteDialog.expense.installmentNumber}/${deleteDialog.expense.installmentTotal}. Vuoi eliminare solo questa rata o tutte le ${deleteDialog.expense.installmentTotal} rate?`
+                : deleteDialog.mode === 'recurring'
+                ? 'Questa è una voce ricorrente. Vuoi eliminare solo questa voce o tutte le occorrenze correlate?'
+                : deleteDialog.expense?.notes
+                ? `Sei sicuro di voler eliminare questa voce?\n\n“${deleteDialog.expense.notes}”`
+                : 'Sei sicuro di voler eliminare questa voce?'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            {(deleteDialog.mode === 'installment' || deleteDialog.mode === 'recurring') && (
+              <Button
+                variant="outline"
+                disabled={!!deletingId}
+                onClick={async () => {
+                  if (deleteDialog.expense) {
+                    await deleteSingleExpense(deleteDialog.expense);
+                  }
+                  setDeleteDialog({ open: false, expense: null, mode: null });
+                }}
+              >
+                Solo questa
+              </Button>
+            )}
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!!deletingId}
+              onClick={async (e) => {
+                e.preventDefault(); // Prevent AlertDialog from auto-closing
+                const exp = deleteDialog.expense;
+                if (!exp) return;
+                if (deleteDialog.mode === 'installment' && exp.installmentParentId) {
+                  await deleteAllInstallmentExpenses(exp.installmentParentId);
+                } else if (deleteDialog.mode === 'recurring' && exp.recurringParentId) {
+                  await deleteAllRecurringExpenses(exp.recurringParentId);
+                } else {
+                  await deleteSingleExpense(exp);
+                }
+                setDeleteDialog({ open: false, expense: null, mode: null });
+              }}
+            >
+              {deleteDialog.mode === 'installment'
+                ? `Tutte le ${deleteDialog.expense?.installmentTotal ?? ''} rate`
+                : deleteDialog.mode === 'recurring'
+                ? 'Tutte le ricorrenti'
+                : 'Elimina'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

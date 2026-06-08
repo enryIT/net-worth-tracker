@@ -5,6 +5,7 @@ import { PieChart as RechartsPC, Pie, Cell, ResponsiveContainer, Tooltip, Legend
 import { PieChartData } from '@/types/assets';
 import { formatCurrency } from '@/lib/services/chartService';
 import { useMediaQuery } from '@/lib/hooks/useMediaQuery';
+import { EmptyState, ChartEmptyIcon } from '@/components/ui/empty-state';
 
 interface PieChartProps {
   data: PieChartData[];
@@ -61,9 +62,12 @@ export function PieChart({
 
   if (!data || data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center text-muted-foreground">
-        Nessun dato disponibile. Aggiungi assets per visualizzare il grafico.
-      </div>
+      <EmptyState
+        icon={ChartEmptyIcon}
+        title="Nessun dato disponibile"
+        description="Aggiungi assets per visualizzare il grafico."
+        className={isMobile ? 'h-[350px]' : 'h-[500px]'}
+      />
     );
   }
 

@@ -23,11 +23,10 @@ import {
   getAvailablePercentage,
 } from '@/lib/services/goalService';
 import { vi } from 'vitest';
-import { Timestamp } from 'firebase/firestore';
 
 // ==================== Test Fixtures ====================
 
-const now = Timestamp.now();
+const now = new Date();
 
 const mockAssets = [
   {

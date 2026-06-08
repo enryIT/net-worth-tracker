@@ -173,7 +173,7 @@ export function SavingsRateTrendSection({
           .reduce((s, e) => s + e.amount, 0);
 
         const expenses = monthExpenses
-          .filter(e => e.type !== 'income')
+          .filter(e => e.type !== 'income' && e.type !== 'transfer')
           .reduce((s, e) => s + Math.abs(e.amount), 0);
 
         // No income in this month → null (gap in chart, not zero)

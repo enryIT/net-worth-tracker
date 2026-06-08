@@ -1,9 +1,9 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { invalidateDashboardOverviewSummary } from '@/lib/services/dashboardOverviewInvalidation';
 import { Asset, AssetClass, AssetAllocationTarget, AssetAllocationSettings, AllocationResult, SubCategoryTarget, SpecificAssetAllocation, AllocationData } from '@/types/assets';
 import { calculateAssetValue, calculateTotalValue } from './assetService';
-import { DEFAULT_SUB_CATEGORIES, DEFAULT_EQUITY_SUB_TARGETS } from '@/lib/constants/defaultSubCategories';
+import { DEFAULT_SUB_CATEGORIES } from '@/lib/constants/defaultSubCategories';
 
 const ALLOCATION_TARGETS_COLLECTION = 'assetAllocationTargets';
 
@@ -81,7 +81,9 @@ export async function getSettings(
       costCentersEnabled: data.costCentersEnabled,
       monthlyEmailEnabled: data.monthlyEmailEnabled,
       quarterlyEmailEnabled: data.quarterlyEmailEnabled,
+      semiAnnualEmailEnabled: data.semiAnnualEmailEnabled,
       yearlyEmailEnabled: data.yearlyEmailEnabled,
+      weeklyBudgetEmailEnabled: data.weeklyBudgetEmailEnabled,
       monthlyEmailRecipients: data.monthlyEmailRecipients,
       targets: data.targets as AssetAllocationTarget,
     };
@@ -127,7 +129,7 @@ export async function setSettings(
         ...existingData, // Keep all existing fields
         userId,
         targets: settings.targets, // COMPLETELY REPLACE targets (not merge)
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       // Override with new values for defined fields
@@ -185,11 +187,23 @@ export async function setSettings(
       if (settings.autoCalculateEquityBonds !== undefined) {
         docData.autoCalculateEquityBonds = settings.autoCalculateEquityBonds;
       }
-      if (settings.defaultDebitCashAssetId !== undefined) {
-        docData.defaultDebitCashAssetId = settings.defaultDebitCashAssetId;
+      // Default cash accounts are user-clearable: a present-but-undefined value means
+      // "Nessun default". setDoc here runs WITHOUT merge, so deleting the key from docData
+      // (built from existingData) drops the stored value. The `in` check distinguishes
+      // "clear this field" from "field not part of this update".
+      if ('defaultDebitCashAssetId' in settings) {
+        if (settings.defaultDebitCashAssetId !== undefined) {
+          docData.defaultDebitCashAssetId = settings.defaultDebitCashAssetId;
+        } else {
+          delete docData.defaultDebitCashAssetId;
+        }
       }
-      if (settings.defaultCreditCashAssetId !== undefined) {
-        docData.defaultCreditCashAssetId = settings.defaultCreditCashAssetId;
+      if ('defaultCreditCashAssetId' in settings) {
+        if (settings.defaultCreditCashAssetId !== undefined) {
+          docData.defaultCreditCashAssetId = settings.defaultCreditCashAssetId;
+        } else {
+          delete docData.defaultCreditCashAssetId;
+        }
       }
       if (settings.stampDutyEnabled !== undefined) {
         docData.stampDutyEnabled = settings.stampDutyEnabled;
@@ -224,8 +238,14 @@ export async function setSettings(
       if (settings.quarterlyEmailEnabled !== undefined) {
         docData.quarterlyEmailEnabled = settings.quarterlyEmailEnabled;
       }
+      if (settings.semiAnnualEmailEnabled !== undefined) {
+        docData.semiAnnualEmailEnabled = settings.semiAnnualEmailEnabled;
+      }
       if (settings.yearlyEmailEnabled !== undefined) {
         docData.yearlyEmailEnabled = settings.yearlyEmailEnabled;
+      }
+      if (settings.weeklyBudgetEmailEnabled !== undefined) {
+        docData.weeklyBudgetEmailEnabled = settings.weeklyBudgetEmailEnabled;
       }
       if (settings.monthlyEmailRecipients !== undefined) {
         docData.monthlyEmailRecipients = settings.monthlyEmailRecipients;
@@ -237,7 +257,7 @@ export async function setSettings(
       // No targets update, use normal merge behavior
       const docData: any = {
         userId,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       if (settings.userAge !== undefined) {
@@ -294,11 +314,20 @@ export async function setSettings(
       if (settings.autoCalculateEquityBonds !== undefined) {
         docData.autoCalculateEquityBonds = settings.autoCalculateEquityBonds;
       }
-      if (settings.defaultDebitCashAssetId !== undefined) {
-        docData.defaultDebitCashAssetId = settings.defaultDebitCashAssetId;
+      // Default cash accounts are user-clearable. This branch writes with merge: true,
+      // so omitting the key would leave the old value untouched — use deleteField() to
+      // remove it when the user selects "Nessun default" (present-but-undefined).
+      if ('defaultDebitCashAssetId' in settings) {
+        docData.defaultDebitCashAssetId =
+          settings.defaultDebitCashAssetId !== undefined
+            ? settings.defaultDebitCashAssetId
+            : deleteField();
       }
-      if (settings.defaultCreditCashAssetId !== undefined) {
-        docData.defaultCreditCashAssetId = settings.defaultCreditCashAssetId;
+      if ('defaultCreditCashAssetId' in settings) {
+        docData.defaultCreditCashAssetId =
+          settings.defaultCreditCashAssetId !== undefined
+            ? settings.defaultCreditCashAssetId
+            : deleteField();
       }
       if (settings.stampDutyEnabled !== undefined) {
         docData.stampDutyEnabled = settings.stampDutyEnabled;
@@ -333,8 +362,14 @@ export async function setSettings(
       if (settings.quarterlyEmailEnabled !== undefined) {
         docData.quarterlyEmailEnabled = settings.quarterlyEmailEnabled;
       }
+      if (settings.semiAnnualEmailEnabled !== undefined) {
+        docData.semiAnnualEmailEnabled = settings.semiAnnualEmailEnabled;
+      }
       if (settings.yearlyEmailEnabled !== undefined) {
         docData.yearlyEmailEnabled = settings.yearlyEmailEnabled;
+      }
+      if (settings.weeklyBudgetEmailEnabled !== undefined) {
+        docData.weeklyBudgetEmailEnabled = settings.weeklyBudgetEmailEnabled;
       }
       if (settings.monthlyEmailRecipients !== undefined) {
         docData.monthlyEmailRecipients = settings.monthlyEmailRecipients;
@@ -838,10 +873,9 @@ export function getDefaultTargets(): AssetAllocationTarget {
     equity: {
       targetPercentage: 60,
       subCategoryConfig: {
-        enabled: true,
-        categories: DEFAULT_SUB_CATEGORIES.equity,
+        enabled: false,
+        categories: [],
       },
-      subTargets: DEFAULT_EQUITY_SUB_TARGETS,
     },
     bonds: {
       targetPercentage: 40,

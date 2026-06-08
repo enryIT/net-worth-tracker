@@ -8,7 +8,7 @@ import { DividendDetailsDialog } from './DividendDetailsDialog';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getItalyMonth, getItalyYear, getItalyDate, getItalyMonthYear, toDate } from '@/lib/utils/dateHelpers';
-import { EmptyState, CalendarEmptyIcon } from '@/components/ui/EmptyState';
+import { EmptyState, CalendarEmptyIcon } from '@/components/ui/empty-state';
 import { formatCurrency, formatDate } from '@/lib/utils/formatters';
 import { chartShellSettle, metricSettleTransition } from '@/lib/utils/motionVariants';
 
@@ -273,7 +273,7 @@ export function DividendCalendar({ dividends, onDateClick, selectedDate }: Divid
 
       {dividendsInCurrentMonth === 0 && (
         <EmptyState
-          icon={<CalendarEmptyIcon />}
+          icon={CalendarEmptyIcon}
           title={`Nessun dividendo previsto per ${ITALIAN_MONTHS[currentMonth - 1]} ${currentYear}`}
         />
       )}

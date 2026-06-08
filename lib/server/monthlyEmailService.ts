@@ -17,19 +17,20 @@ import { Resend } from 'resend';
 import { getItalyDate, getItalyMonthYear } from '@/lib/utils/dateHelpers';
 import { MONTH_NAMES } from '@/lib/constants/months';
 import { AssetAllocationSettings } from '@/types/assets';
-import { streamAssistantResponse } from '@/lib/server/assistant/anthropicStream';
 import { getDefaultAssistantPreferences } from '@/lib/server/assistant/webSearchPolicy';
 import { getAssistantMemoryDocument } from '@/lib/server/assistant/store';
-import {
-  buildAssistantMonthContext,
-  buildAssistantQuarterContext,
-  buildAssistantYearContext,
-} from '@/lib/services/assistantMonthContextService';
-import type { AssistantMemoryItem, AssistantMode, AssistantMonthContextBundle } from '@/types/assistant';
+import { formatMemoryForPrompt, buildResponseStyleInstruction } from '@/lib/server/assistant/prompts';
+import type { AssistantMemoryItem, AssistantPreferences } from '@/types/assistant';
+import { buildPeriodComparison } from '@/lib/server/emailPeriodComparison';
+import type { PeriodComparison, MetricDelta, ComparisonSet } from '@/lib/server/emailPeriodComparison';
+import { evaluateBudgetAlerts } from '@/lib/utils/budgetUtils';
+import { DEFAULT_ALERT_THRESHOLDS } from '@/types/budget';
+import type { BudgetAlert, BudgetItem } from '@/types/budget';
+import type { Expense } from '@/types/expenses';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type EmailPeriodType = 'monthly' | 'quarterly' | 'yearly';
+export type EmailPeriodType = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
 
 export interface AssetClassEntry {
   name: string;
@@ -47,8 +48,9 @@ export interface AssetClassPerformers {
 export interface MonthlyEmailData {
   periodType: EmailPeriodType;
   year: number;
-  month: number;   // for monthly: 1-12; for quarterly: last month of quarter; for yearly: 12
+  month: number;   // for monthly: 1-12; for quarterly: last month of quarter; for semiannual: 6 or 12; for yearly: 12
   quarter?: number; // 1-4, only set for quarterly
+  semester?: number; // 1 (Jan-Jun) or 2 (Jul-Dec), only set for semiannual
   currentNetWorth: number;
   previousNetWorth: number;
   netWorthDelta: number;
@@ -62,11 +64,14 @@ export interface MonthlyEmailData {
   totalExpenses: number; // always positive (raw amounts are negative)
   topExpenseCategories: Array<{ name: string; amount: number }>; // all expense categories sorted desc
   allIncomeCategories: Array<{ name: string; amount: number }>; // all income categories sorted desc
-  topIndividualExpenses: Array<{ description: string; categoryName: string; amount: number }>; // top 5 transactions
+  topIndividualExpenses: Array<{ description: string; categoryName: string; subCategoryName?: string; amount: number }>; // top 5 transactions
   dividendTotal: number; // gross EUR
   dividendCount: number;
   // AI-generated markdown comment; undefined when generation failed or AI key is absent
   aiComment?: string;
+  // Threshold alerts for the period's expense budgets — monthly emails only,
+  // empty/undefined when the user has no budgets or alerts are disabled.
+  budgetAlerts?: BudgetAlert[];
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -172,6 +177,67 @@ export function getMostRecentCompletedYearEnd(now: Date): { year: number; month:
   return { year: italyDate.getFullYear() - 1, month: 12 };
 }
 
+/**
+ * Returns true when the Italy-local date of `now` is the last day of a calendar half-year.
+ * Half-year-end months: June (6) and December (12).
+ * Exported for testing.
+ */
+export function isLastDayOfHalfYearItaly(now: Date): boolean {
+  const italyDate = getItalyDate(now);
+  const month = italyDate.getMonth() + 1;
+  if (![6, 12].includes(month)) return false;
+  const lastDay = new Date(italyDate.getFullYear(), italyDate.getMonth() + 1, 0).getDate();
+  return italyDate.getDate() === lastDay;
+}
+
+/**
+ * Returns the semester number (1 = Jan-Jun, 2 = Jul-Dec) for a half-year-end month (6 or 12).
+ * Exported for testing.
+ */
+export function monthToSemester(endMonth: number): number {
+  return endMonth === 6 ? 1 : 2;
+}
+
+/**
+ * Returns the first month of the half-year that ends at `endMonth`.
+ * 6 → 1 (H1 starts in January), 12 → 7 (H2 starts in July).
+ * Exported for testing.
+ */
+export function getSemesterStartMonth(endMonth: number): number {
+  return endMonth === 6 ? 1 : 7;
+}
+
+/**
+ * Returns the end-of-half-year {year, month} immediately preceding the given half-year end.
+ * H1 (June) → H2 of the previous year (Dec); H2 (Dec) → H1 of the same year (June).
+ * Exported for testing.
+ */
+export function getPreviousHalfEnd(
+  year: number,
+  endMonth: number
+): { year: number; month: number } {
+  // endMonth is always a half-year-end month (6 or 12)
+  if (endMonth === 6) return { year: year - 1, month: 12 };
+  return { year, month: 6 };
+}
+
+/**
+ * Returns {year, month} of the most recently completed half-year end strictly before `now`.
+ * e.g. July 1 2026 → { year: 2026, month: 6 }
+ *      February 2 2026 → { year: 2025, month: 12 }
+ * Exported for testing.
+ */
+export function getMostRecentCompletedHalfYearEnd(now: Date): { year: number; month: number } {
+  const italyDate = getItalyDate(now);
+  const year = italyDate.getFullYear();
+  // June 30 of the current year (if already past) → H1 this year; otherwise H2 of the previous year
+  const juneEnd = new Date(year, 5, 30);
+  if (italyDate > juneEnd) {
+    return { year, month: 6 };
+  }
+  return { year: year - 1, month: 12 };
+}
+
 // ─── Formatting helpers ───────────────────────────────────────────────────────
 
 function formatEur(amount: number): string {
@@ -188,6 +254,19 @@ function signedPct(pct: number): string {
   return `${sign}${pct.toFixed(1)}%`;
 }
 
+/** EUR amount with an explicit leading "+" for non-negative values (formatEur already prefixes "-"). */
+function signedEur(amount: number): string {
+  const sign = amount >= 0 ? '+' : '';
+  return `${sign}${formatEur(amount)}`;
+}
+
+/** Renders a metric delta as "+1.234 € (+3,2%)", or "N/D" when the comparison is unavailable. */
+function formatDelta(delta: MetricDelta | null): string {
+  if (!delta) return 'N/D';
+  const pct = delta.pctChange !== null ? ` (${signedPct(delta.pctChange)})` : '';
+  return `${signedEur(delta.absChange)}${pct}`;
+}
+
 const ASSET_CLASS_LABELS: Record<string, string> = {
   equity: 'Azioni',
   bonds: 'Obbligazioni',
@@ -199,8 +278,14 @@ const ASSET_CLASS_LABELS: Record<string, string> = {
 
 // ─── Period label helpers (pure) ──────────────────────────────────────────────
 
+/** Human-readable semester label, e.g. "1° Semestre 2026". */
+function semesterTitle(data: MonthlyEmailData): string {
+  return `${data.semester}° Semestre ${data.year}`;
+}
+
 function periodTitle(data: MonthlyEmailData): string {
   if (data.periodType === 'quarterly') return `Q${data.quarter} ${data.year}`;
+  if (data.periodType === 'semiannual') return semesterTitle(data);
   if (data.periodType === 'yearly') return `Anno ${data.year}`;
   return `${MONTH_NAMES[data.month - 1]} ${data.year}`;
 }
@@ -210,30 +295,38 @@ function comparisonLabel(data: MonthlyEmailData): string {
     const prev = getPreviousQuarterEnd(data.year, data.month);
     return `Q${monthToQuarter(prev.month)} ${prev.year}`;
   }
+  if (data.periodType === 'semiannual') {
+    const prev = getPreviousHalfEnd(data.year, data.month);
+    return `${monthToSemester(prev.month)}° Semestre ${prev.year}`;
+  }
   if (data.periodType === 'yearly') return `${data.year - 1}`;
   return 'mese precedente';
 }
 
 function cashflowSectionLabel(data: MonthlyEmailData): string {
   if (data.periodType === 'quarterly') return 'Cashflow del Trimestre';
+  if (data.periodType === 'semiannual') return 'Cashflow del Semestre';
   if (data.periodType === 'yearly') return "Cashflow dell'Anno";
   return 'Cashflow del Mese';
 }
 
 function expenseCategoryLabel(data: MonthlyEmailData): string {
   if (data.periodType === 'quarterly') return 'Spese per Categoria (Trimestre)';
+  if (data.periodType === 'semiannual') return 'Spese per Categoria (Semestre)';
   if (data.periodType === 'yearly') return 'Spese per Categoria (Anno)';
   return 'Spese per Categoria';
 }
 
 function incomeCategoryLabel(data: MonthlyEmailData): string {
   if (data.periodType === 'quarterly') return 'Entrate per Categoria (Trimestre)';
+  if (data.periodType === 'semiannual') return 'Entrate per Categoria (Semestre)';
   if (data.periodType === 'yearly') return 'Entrate per Categoria (Anno)';
   return 'Entrate per Categoria';
 }
 
 function topExpenseTransactionLabel(data: MonthlyEmailData): string {
   if (data.periodType === 'quarterly') return 'Top 5 Spese del Trimestre';
+  if (data.periodType === 'semiannual') return 'Top 5 Spese del Semestre';
   if (data.periodType === 'yearly') return "Top 5 Spese dell'Anno";
   return 'Top 5 Spese del Mese';
 }
@@ -311,75 +404,178 @@ function simpleMarkdownToHtml(text: string): string {
 }
 
 /**
- * Generates an AI comment for the period by calling the same analysis pipeline
- * used by the interactive assistant (month_analysis, quarter_analysis, or year_analysis).
+ * Renders one comparison axis (NW / entrate / uscite / risparmio) as prompt lines.
+ * Used inside the email AI prompt so Claude interprets the same deterministic deltas
+ * that the email table displays.
+ */
+function formatComparisonForPrompt(title: string, set: ComparisonSet): string {
+  return [
+    `--- ${title} (${set.baselineLabel}) ---`,
+    `Patrimonio netto: ${formatDelta(set.netWorth)}`,
+    `Entrate: ${formatDelta(set.income)}`,
+    `Uscite: ${formatDelta(set.expenses)}`,
+    `Risparmio netto: ${formatDelta(set.savings)}`,
+  ].join('\n');
+}
+
+/**
+ * Builds the period-specific prompt for the email AI comment.
  *
- * The comment is injected into the email HTML when available. Any failure
- * (Anthropic API error, missing key, context build error) is caught and logged;
- * the email is always sent regardless of whether the comment was generated.
+ * Deliberately independent from the interactive assistant's mode-specific prompt builders:
+ * the email needs a comparison-driven structure (vs previous period + YoY + cause analysis)
+ * and a period label that includes the semi-annual case, neither of which the shared
+ * builders provide. All figures come from `emailData` + the deterministic `comparison`.
+ */
+function buildEmailAiPrompt(
+  emailData: MonthlyEmailData,
+  comparison: PeriodComparison,
+  preferences: AssistantPreferences,
+  memoryItems: AssistantMemoryItem[]
+): string {
+  const label = periodTitle(emailData);
+  const savedAmount = emailData.totalIncome - emailData.totalExpenses;
+  const savingsRate =
+    emailData.totalIncome > 0
+      ? ((savedAmount / emailData.totalIncome) * 100).toFixed(1)
+      : 'N/D';
+
+  // Top expense categories with their deltas vs both baselines — the raw material for cause analysis.
+  const categoryLines = comparison.categoryDeltas.length
+    ? comparison.categoryDeltas
+        .map(
+          (c) =>
+            `- ${c.name}: ${formatEur(c.current)} (vs periodo prec.: ${formatDelta(
+              c.vsPrevious
+            )}; vs anno prec.: ${formatDelta(c.vsYoy)})`
+        )
+        .join('\n')
+    : '- Nessuna spesa categorizzata nel periodo.';
+
+  // Largest individual transactions with subcategory + note — gives the AI the granular "why"
+  // behind category movements (e.g. a one-off purchase vs a structural increase).
+  const topExpenseDetailLines = emailData.topIndividualExpenses.length
+    ? emailData.topIndividualExpenses
+        .map((e) => {
+          const sub = e.subCategoryName ? ` › ${e.subCategoryName}` : '';
+          // description carries the note when it differs from the category name.
+          const note = e.description && e.description !== e.categoryName ? ` — "${e.description}"` : '';
+          return `- ${e.categoryName}${sub}${note}: ${formatEur(e.amount)}`;
+        })
+        .join('\n')
+    : '- Nessuna spesa individuale di rilievo nel periodo.';
+
+  const memoryBlock = preferences.memoryEnabled
+    ? formatMemoryForPrompt(memoryItems)
+    : 'Non fare affidamento su memoria persistente; usa solo il contesto esplicito di questo messaggio.';
+
+  // Yearly: the previous period and the same period one year earlier coincide.
+  const yoySectionInstruction = comparison.previousEqualsYoy
+    ? '3. **Confronto con l\'anno precedente** — per il periodo annuale coincide con il punto 2: unisci i due confronti in un\'unica sezione e dillo esplicitamente.'
+    : '3. **Rispetto allo stesso periodo dell\'anno precedente** — confronto anno su anno, citando i numeri del blocco di confronto con l\'anno precedente.';
+
+  const sections: string[] = [
+    "Sei l'Assistente AI di Net Worth Tracker per un investitore italiano self-directed.",
+    'Rispondi sempre in italiano.',
+    buildResponseStyleInstruction(preferences.responseStyle),
+    // Web search is scoped: only to explain market-driven net-worth moves, never to invent
+    // causes for personal income/expense changes (those come from the category data below).
+    'Hai accesso a ricerche web recenti: usale SOLO per spiegare i movimenti di mercato del patrimonio (decisioni delle banche centrali, mercati, geopolitica) con date precise. Massimo 3 ricerche. Le cause delle variazioni di entrate e spese vanno dedotte esclusivamente dai dati per categoria forniti.',
+    memoryBlock,
+    '',
+    `Stai redigendo il commento di riepilogo per: ${label}.`,
+    'Di seguito i dati del periodo, estratti in modo affidabile dal sistema. Le variazioni sono già calcolate: non ricalcolarle e non inventare numeri.',
+    '',
+    '--- DATI DEL PERIODO CORRENTE ---',
+    `Patrimonio netto: ${formatEur(emailData.currentNetWorth)}`,
+    `Entrate totali: ${formatEur(emailData.totalIncome)}`,
+    `Uscite totali: ${formatEur(emailData.totalExpenses)}`,
+    `Risparmio netto (Entrate − Uscite): ${formatEur(savedAmount)} (${savingsRate}% del reddito)`,
+    `Dividendi e cedole: ${formatEur(emailData.dividendTotal)} (${emailData.dividendCount} pagamenti)`,
+    '',
+    formatComparisonForPrompt('CONFRONTO COL PERIODO PRECEDENTE', comparison.vsPrevious),
+    '',
+    ...(comparison.previousEqualsYoy
+      ? []
+      : [formatComparisonForPrompt('CONFRONTO CON LO STESSO PERIODO DELL\'ANNO PRECEDENTE', comparison.vsYoy), '']),
+    '--- VARIAZIONE SPESE PER CATEGORIA ---',
+    categoryLines,
+    '',
+    '--- SPESE PIÙ RILEVANTI DEL PERIODO (categoria › sottocategoria — nota) ---',
+    topExpenseDetailLines,
+    '',
+    'Struttura la risposta in markdown con queste sezioni:',
+    '1. **In sintesi** — 2-3 frasi sul risultato complessivo del periodo',
+    `2. **Rispetto al ${comparison.vsPrevious.baselineLabel}** — cosa è cambiato rispetto al periodo precedente, citando i numeri forniti`,
+    yoySectionInstruction,
+    '4. **Entrate e spese: di quanto e perché** — quantifica di quanto sono aumentate o diminuite entrate e spese e ipotizza le probabili cause basandoti sui dati per categoria; per il patrimonio puoi citare il contesto macro di mercato',
+    "5. **Azioni o attenzioni** — 1-2 osservazioni pratiche per l'investitore",
+    '',
+    'Rispetta questi vincoli:',
+    '- Massimo 500 parole',
+    '- Usa solo i numeri presenti nei blocchi dati; non inventarne',
+    '- Se un dato è N/D, dillo senza speculare sul suo valore',
+    '- Markdown semplice (grassetto, elenchi puntati); niente tabelle',
+  ];
+
+  return sections.join('\n');
+}
+
+/**
+ * Generates the AI comment for the period via a dedicated, email-specific prompt and a
+ * direct Anthropic call (web search enabled for macro context).
+ *
+ * Unlike the interactive assistant, the email comment is comparison-driven: it interprets the
+ * deterministic previous-period and year-over-year deltas computed in `comparison`.
+ *
+ * The comment is injected into the email HTML when available. Any failure (Anthropic API error,
+ * missing key, prompt error) is caught and logged; the email is always sent regardless.
  *
  * @returns The AI-generated markdown text, or null on failure.
  */
 async function generateEmailAiComment(
   userId: string,
-  emailData: MonthlyEmailData
+  emailData: MonthlyEmailData,
+  comparison: PeriodComparison
 ): Promise<string | null> {
   try {
     // Load user's assistant preferences and active memory items for personalisation.
     // Falls back to defaults + empty memory on any Firestore failure.
     let preferences = getDefaultAssistantPreferences();
-    // Web search always enabled for email AI comments so the analysis can connect
-    // portfolio performance to global macro events (rates, geopolitics, markets).
-    preferences = { ...preferences, includeMacroContext: true };
     let memoryItems: AssistantMemoryItem[] = [];
 
     try {
       const memoryDoc = await getAssistantMemoryDocument(userId);
-      // Use user's actual preferences (e.g. responseStyle) but force macro context on
-      preferences = { ...memoryDoc.preferences, includeMacroContext: true };
+      preferences = memoryDoc.preferences;
       memoryItems = memoryDoc.items.filter((i) => i.status === 'active');
     } catch {
       // Memory load is non-critical — proceed with defaults
     }
 
-    // Map email periodType → AI mode + context builder
-    let mode: AssistantMode;
-    let contextBundle: AssistantMonthContextBundle;
+    const prompt = buildEmailAiPrompt(emailData, comparison, preferences, memoryItems);
 
-    if (emailData.periodType === 'monthly') {
-      mode = 'month_analysis';
-      contextBundle = await buildAssistantMonthContext(
-        userId,
-        { year: emailData.year, month: emailData.month },
-        false
-      );
-    } else if (emailData.periodType === 'quarterly') {
-      mode = 'quarter_analysis';
-      // quarter is always set for quarterly emails
-      contextBundle = await buildAssistantQuarterContext(userId, emailData.year, emailData.quarter!, false);
-    } else {
-      mode = 'year_analysis';
-      contextBundle = await buildAssistantYearContext(userId, emailData.year, false);
-    }
+    // Lazy import so a module-level `new Anthropic()` never breaks test environments
+    // where ANTHROPIC_API_KEY is absent (same pattern as memoryExtraction).
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
-    const systemPrompt =
-      emailData.periodType === 'monthly'
-        ? 'Analizza il mese e fornisci le tue osservazioni principali.'
-        : emailData.periodType === 'quarterly'
-        ? 'Analizza il trimestre e fornisci le tue osservazioni principali.'
-        : "Analizza l'anno e fornisci le tue osservazioni principali.";
-
-    const { text } = await streamAssistantResponse({
-      mode,
-      prompt: systemPrompt,
-      contextBundle,
-      preferences,
-      memoryItems,
-      enableWebSearch: true,  // always on — connects portfolio performance to global macro events
-      conversationHistory: [],
-      onStatus: () => {},     // no-op: email generation is non-interactive
-      onText: () => {},       // no-op: we use the returned aggregated text
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 5000,
+      tools: [
+        {
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 3,
+        } as any,
+      ],
+      messages: [{ role: 'user', content: prompt }],
     });
+
+    // Concatenate the text blocks of the (non-streamed) response (skips thinking/tool blocks).
+    const text = message.content
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('')
+      .trim();
 
     return text || null;
   } catch (error) {
@@ -404,7 +600,9 @@ export async function getSettingsAdmin(
   return {
     monthlyEmailEnabled: data.monthlyEmailEnabled,
     quarterlyEmailEnabled: data.quarterlyEmailEnabled,
+    semiAnnualEmailEnabled: data.semiAnnualEmailEnabled,
     yearlyEmailEnabled: data.yearlyEmailEnabled,
+    weeklyBudgetEmailEnabled: data.weeklyBudgetEmailEnabled,
     monthlyEmailRecipients: data.monthlyEmailRecipients,
     targets: data.targets,
   } as AssetAllocationSettings;
@@ -447,22 +645,27 @@ export function computeAssetClassPerformers(
 
 // ─── Expense / dividend aggregation (pure helpers) ───────────────────────────
 
-interface CashflowAggregation {
+export interface CashflowAggregation {
   totalIncome: number;
   totalExpenses: number;
   topExpenseCategories: Array<{ name: string; amount: number }>;
   allIncomeCategories: Array<{ name: string; amount: number }>;
-  topIndividualExpenses: Array<{ description: string; categoryName: string; amount: number }>;
+  topIndividualExpenses: Array<{ description: string; categoryName: string; subCategoryName?: string; amount: number }>;
 }
 
-function aggregateExpenses(
+/**
+ * Aggregates a set of expense docs into income/expense totals and per-category breakdowns.
+ * Transfers (type === 'transfer') are skipped — they are net-zero, not real income/expense.
+ * Exported for reuse by the period-comparison builder.
+ */
+export function aggregateExpenses(
   docs: FirebaseFirestore.QueryDocumentSnapshot[]
 ): CashflowAggregation {
   let totalIncome = 0;
   let totalExpenses = 0;
   const expenseCategoryTotals: Record<string, { name: string; amount: number }> = {};
   const incomeCategoryTotals: Record<string, { name: string; amount: number }> = {};
-  const individualExpenses: Array<{ description: string; categoryName: string; amount: number }> =
+  const individualExpenses: Array<{ description: string; categoryName: string; subCategoryName?: string; amount: number }> =
     [];
 
   for (const doc of docs) {
@@ -470,6 +673,7 @@ function aggregateExpenses(
       amount: number;
       categoryName?: string;
       categoryId?: string;
+      subCategoryName?: string;
       notes?: string;
     };
     const { amount } = data;
@@ -478,6 +682,8 @@ function aggregateExpenses(
     const categoryName = data.categoryName ?? 'Altro';
 
     if (amount > 0) {
+      // Skip transfers — net-zero, not real income
+      if ((data as { type?: string }).type === 'transfer') continue;
       totalIncome += amount;
       if (!incomeCategoryTotals[key]) {
         incomeCategoryTotals[key] = { name: categoryName, amount: 0 };
@@ -492,9 +698,15 @@ function aggregateExpenses(
       }
       expenseCategoryTotals[key].amount += absAmount;
 
-      // Individual transaction — use notes when available, fall back to category name
+      // Individual transaction — use notes when available, fall back to category name.
+      // subCategoryName is carried through so the AI cause analysis has finer granularity.
       const description = data.notes?.trim() || categoryName;
-      individualExpenses.push({ description, categoryName, amount: absAmount });
+      individualExpenses.push({
+        description,
+        categoryName,
+        subCategoryName: data.subCategoryName,
+        amount: absAmount,
+      });
     }
   }
 
@@ -532,6 +744,53 @@ function aggregateDividends(
   return { dividendTotal, dividendCount };
 }
 
+/**
+ * Evaluates the user's expense budget alerts for a completed month.
+ *
+ * Reads the budget config via the Admin SDK and reuses the same pure evaluator
+ * as the in-app banner (evaluateBudgetAlerts), so the email and the UI never
+ * disagree. Returns an empty array when alerts are disabled or no budgets exist.
+ *
+ * `now` is pinned to the period-end day so the forecast collapses to actuals for
+ * the completed month (daysElapsed === daysInMonth → no extrapolation).
+ */
+async function buildBudgetAlertsForMonth(
+  userId: string,
+  year: number,
+  month: number,
+  expenseDocs: FirebaseFirestore.QueryDocumentSnapshot[]
+): Promise<BudgetAlert[]> {
+  const budgetSnap = await adminDb.collection('budgets').doc(userId).get();
+  if (!budgetSnap.exists) return [];
+  const data = budgetSnap.data() ?? {};
+
+  if (data.alertsEnabled === false) return [];
+
+  // Monthly email evaluates only monthly budgets: annual budgets are year-to-date
+  // and the query window here is a single month.
+  const items = ((data.items ?? []) as Array<BudgetItem & { monthlyAmount?: number }>)
+    .map((item) => ({
+      ...item,
+      kind: item.kind ?? (item.scope === 'type' && item.expenseType === 'income' ? 'income' : 'expense'),
+      period: item.period ?? 'monthly',
+      amount: item.amount ?? item.monthlyAmount ?? 0,
+    }))
+    .filter((item) => item.kind === 'expense' && item.period === 'monthly');
+  if (items.length === 0 && !data.overallMonthlyAmount) return [];
+
+  const expenses: Expense[] = expenseDocs.map((doc) => {
+    const e = doc.data();
+    return {
+      ...(e as Expense),
+      date: e.date?.toDate ? e.date.toDate() : e.date,
+    };
+  });
+
+  const thresholds = (data.alertThresholds as number[] | undefined) ?? DEFAULT_ALERT_THRESHOLDS;
+  const periodNow = new Date(year, month - 1, new Date(year, month, 0).getDate(), 12);
+  return evaluateBudgetAlerts(items, data.overallMonthlyAmount, expenses, thresholds, periodNow);
+}
+
 // ─── Core data builder ────────────────────────────────────────────────────────
 
 /**
@@ -560,6 +819,11 @@ export async function buildPeriodEmailData(
     prevYear = prev.year;
     prevMonth = prev.month;
     windowStartMonth = getQuarterStartMonth(month);
+  } else if (periodType === 'semiannual') {
+    const prev = getPreviousHalfEnd(year, month);
+    prevYear = prev.year;
+    prevMonth = prev.month;
+    windowStartMonth = getSemesterStartMonth(month);
   } else if (periodType === 'yearly') {
     prevYear = year - 1;
     prevMonth = 12;
@@ -639,11 +903,18 @@ export async function buildPeriodEmailData(
     aggregateExpenses(expensesSnap.docs);
   const { dividendTotal, dividendCount } = aggregateDividends(dividendsSnap.docs);
 
+  // Budget alerts are month-centric — only attach them to monthly emails.
+  const budgetAlerts =
+    periodType === 'monthly'
+      ? await buildBudgetAlertsForMonth(userId, year, month, expensesSnap.docs)
+      : undefined;
+
   return {
     periodType,
     year,
     month,
     quarter: periodType === 'quarterly' ? monthToQuarter(month) : undefined,
+    semester: periodType === 'semiannual' ? monthToSemester(month) : undefined,
     currentNetWorth,
     previousNetWorth,
     netWorthDelta,
@@ -660,6 +931,7 @@ export async function buildPeriodEmailData(
     topIndividualExpenses,
     dividendTotal,
     dividendCount,
+    budgetAlerts,
   };
 }
 
@@ -674,8 +946,114 @@ export async function buildMonthlyEmailData(
 
 // ─── Email HTML generator ─────────────────────────────────────────────────────
 
+/**
+ * Renders one comparison delta as an email table cell, coloured by whether the change is
+ * favourable. For net worth / income / savings higher is better; for expenses lower is better.
+ */
+function comparisonCell(delta: MetricDelta | null, higherIsBetter: boolean): string {
+  const base = 'padding:6px 12px;border-bottom:1px solid #f3f4f6;text-align:right;';
+  if (!delta) {
+    return `<td style="${base}color:#94a3b8;">N/D</td>`;
+  }
+  const isFavourable = higherIsBetter ? delta.absChange >= 0 : delta.absChange <= 0;
+  const color = isFavourable ? '#16a34a' : '#dc2626';
+  return `<td style="${base}color:${color};font-weight:600;">${formatDelta(delta)}</td>`;
+}
+
+/**
+ * Builds the "Confronti" section: a deterministic table of how net worth, income, expenses and
+ * savings changed vs the previous period and (when distinct) vs the same period one year earlier.
+ * For yearly emails the two axes coincide, so a single comparison column is rendered.
+ */
+function buildComparisonSectionHtml(comparison: PeriodComparison): string {
+  const { vsPrevious, vsYoy, previousEqualsYoy } = comparison;
+  const showYoy = !previousEqualsYoy;
+
+  const headerCell = (label: string) =>
+    `<th style="padding:6px 12px;text-align:right;font-weight:600;color:#64748b;border-bottom:2px solid #e2e8f0;">${label}</th>`;
+
+  // Each row: [metric label, vs-previous cell, optional vs-YoY cell]. `higherIsBetter` drives colour.
+  const row = (
+    label: string,
+    prev: MetricDelta | null,
+    yoy: MetricDelta | null,
+    higherIsBetter: boolean
+  ) =>
+    `<tr>
+          <td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;">${label}</td>
+          ${comparisonCell(prev, higherIsBetter)}
+          ${showYoy ? comparisonCell(yoy, higherIsBetter) : ''}
+        </tr>`;
+
+  return `<tr>
+          <td style="padding:20px 32px;border-bottom:1px solid #f1f5f9;">
+            <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#0f172a;">Confronti</p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;color:#374151;">
+              <thead>
+                <tr style="background:#f8fafc;">
+                  <th style="padding:6px 12px;text-align:left;font-weight:600;color:#64748b;border-bottom:2px solid #e2e8f0;">Metrica</th>
+                  ${headerCell(`vs ${vsPrevious.baselineLabel}`)}
+                  ${showYoy ? headerCell(`vs ${vsYoy.baselineLabel}`) : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${row('Patrimonio netto', vsPrevious.netWorth, vsYoy.netWorth, true)}
+                ${row('Entrate', vsPrevious.income, vsYoy.income, true)}
+                ${row('Uscite', vsPrevious.expenses, vsYoy.expenses, false)}
+                ${row('Risparmio netto', vsPrevious.savings, vsYoy.savings, true)}
+              </tbody>
+            </table>
+            <p style="margin:10px 0 0;font-size:11px;color:#94a3b8;line-height:1.5;">
+              <strong style="color:#64748b;">Patrimonio netto</strong>: confronto tra gli snapshot di fine periodo.
+              <strong style="color:#64748b;">Entrate</strong>, <strong style="color:#64748b;">Uscite</strong> e <strong style="color:#64748b;">Risparmio netto</strong>: totali dell'intero periodo a confronto (Risparmio netto = Entrate − Uscite).
+            </p>
+          </td>
+        </tr>`;
+}
+
 /** Exported for unit testing only — callers should use sendMonthlyEmail. */
-export function generateEmailHtml(data: MonthlyEmailData): string {
+/**
+ * Renders the budget alerts section. Each alert is one row: label, spent/budget,
+ * a percentage, and a sign-aware colour (red = exceeded, amber = warning).
+ * Inline hex colours are intentional — email clients don't support CSS tokens.
+ * Returns '' when there are no alerts so the section disappears cleanly.
+ */
+function buildBudgetAlertsSectionHtml(alerts: BudgetAlert[] | undefined): string {
+  if (!alerts || alerts.length === 0) return '';
+
+  const rows = alerts
+    .map((alert) => {
+      const color = alert.level === 'exceeded' ? '#dc2626' : '#d97706';
+      const pct = Math.round(alert.usedRatio * 100);
+      const badge = alert.level === 'exceeded' ? 'Superato' : `${alert.threshold}%`;
+      const forecastNote = alert.forecastedOverrun && alert.level !== 'exceeded'
+        ? ' · sforamento previsto a fine mese'
+        : '';
+      return `
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
+            <span style="display:inline-block;font-size:11px;font-weight:700;color:#ffffff;background:${color};border-radius:4px;padding:2px 6px;margin-right:8px;">${badge}</span>
+            <span style="font-size:13px;color:#0f172a;">${alert.label}</span>
+            <div style="font-size:12px;color:#64748b;margin-top:2px;font-family:'Geist Mono', ui-monospace, monospace;">
+              ${formatEur(alert.spent)} / ${formatEur(alert.budgetAmount)} &nbsp;·&nbsp; <span style="color:${color};font-weight:600;">${pct}%</span>${forecastNote}
+            </div>
+          </td>
+        </tr>`;
+    })
+    .join('');
+
+  return `
+        <tr>
+          <td style="padding:20px 32px;border-bottom:1px solid #f1f5f9;">
+            <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#0f172a;">Avvisi Budget</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+              ${rows}
+            </table>
+          </td>
+        </tr>`;
+}
+
+export function generateEmailHtml(data: MonthlyEmailData, comparisonData?: PeriodComparison): string {
   const title = periodTitle(data);
   const comparison = comparisonLabel(data);
 
@@ -807,6 +1185,8 @@ export function generateEmailHtml(data: MonthlyEmailData): string {
       ? 'Mese precedente'
       : data.periodType === 'quarterly'
       ? `Trimestre precedente (${comparison})`
+      : data.periodType === 'semiannual'
+      ? `Semestre precedente (${comparison})`
       : `Anno precedente (${comparison})`;
 
   return `<!DOCTYPE html>
@@ -904,8 +1284,11 @@ export function generateEmailHtml(data: MonthlyEmailData): string {
                 <td style="padding:6px 0;text-align:right;color:#dc2626;font-weight:600;">-${formatEur(data.totalExpenses)}</td>
               </tr>
               <tr style="border-top:1px solid #e2e8f0;">
-                <td style="padding:8px 0 0;font-weight:600;">Risparmio netto</td>
-                <td style="padding:8px 0 0;text-align:right;color:${savingsColor};font-weight:700;">${formatEur(savedAmount)}${savingsRate !== null ? `<span style="font-size:11px;color:#64748b;font-weight:400;margin-left:4px;">(${savingsRate}%)</span>` : ''}</td>
+                <td style="padding:8px 0 0;font-weight:600;">
+                  Risparmio netto
+                  <span style="display:block;font-size:11px;color:#94a3b8;font-weight:400;">Entrate − Uscite</span>
+                </td>
+                <td style="padding:8px 0 0;text-align:right;vertical-align:top;color:${savingsColor};font-weight:700;">${formatEur(savedAmount)}${savingsRate !== null ? `<span style="font-size:11px;color:#64748b;font-weight:400;margin-left:4px;">(${savingsRate}% del reddito)</span>` : ''}</td>
               </tr>
             </table>
           </td>
@@ -986,6 +1369,12 @@ export function generateEmailHtml(data: MonthlyEmailData): string {
             : ''
         }
 
+        <!-- Comparisons (vs previous period + YoY) -->
+        ${comparisonData ? buildComparisonSectionHtml(comparisonData) : ''}
+
+        <!-- Budget alerts (monthly only) -->
+        ${buildBudgetAlertsSectionHtml(data.budgetAlerts)}
+
         <!-- AI Comment -->
         ${
           data.aiComment
@@ -1023,7 +1412,8 @@ export function generateEmailHtml(data: MonthlyEmailData): string {
  */
 export async function sendMonthlyEmail(
   recipients: string[],
-  data: MonthlyEmailData
+  data: MonthlyEmailData,
+  comparison?: PeriodComparison
 ): Promise<void> {
   const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -1031,6 +1421,8 @@ export async function sendMonthlyEmail(
   const subjectPrefix =
     data.periodType === 'quarterly'
       ? 'Riepilogo Trimestrale'
+      : data.periodType === 'semiannual'
+      ? 'Riepilogo Semestrale'
       : data.periodType === 'yearly'
       ? 'Riepilogo Annuale'
       : 'Riepilogo';
@@ -1041,7 +1433,7 @@ export async function sendMonthlyEmail(
     from: process.env.RESEND_FROM_EMAIL ?? 'noreply@example.com',
     to: recipients,
     subject,
-    html: generateEmailHtml(data),
+    html: generateEmailHtml(data, comparison),
   });
 
   if (error) {
@@ -1067,13 +1459,25 @@ export async function buildAndSendForPeriod(
   const emailData = await buildPeriodEmailData(userId, year, month, periodType);
   if (!emailData) return false;
 
-  // Attempt to generate the AI comment — failure is silently swallowed inside generateEmailAiComment
-  const aiComment = await generateEmailAiComment(userId, emailData);
-  if (aiComment) {
-    emailData.aiComment = aiComment;
+  // Deterministic comparison dataset (vs previous period + YoY) — feeds both the email
+  // table and the AI commentary. Failure must not block the email: fall back to no comparison.
+  let comparison: PeriodComparison | undefined;
+  try {
+    comparison = await buildPeriodComparison(userId, emailData);
+  } catch (error) {
+    console.error(`[email] Comparison build failed for user ${userId}:`, error);
   }
 
-  await sendMonthlyEmail(recipients, emailData);
+  // Attempt to generate the AI comment — failure is silently swallowed inside generateEmailAiComment.
+  // The comparison is required for the comparison-driven prompt; skip the comment if it's missing.
+  if (comparison) {
+    const aiComment = await generateEmailAiComment(userId, emailData, comparison);
+    if (aiComment) {
+      emailData.aiComment = aiComment;
+    }
+  }
+
+  await sendMonthlyEmail(recipients, emailData, comparison);
   return true;
 }
 
@@ -1095,6 +1499,17 @@ export async function buildAndSendQuarterly(
 ): Promise<boolean> {
   const lastMonth = quarter * 3;
   return buildAndSendForPeriod(userId, recipients, 'quarterly', year, lastMonth);
+}
+
+export async function buildAndSendSemiAnnual(
+  userId: string,
+  recipients: string[],
+  year: number,
+  half: number
+): Promise<boolean> {
+  // half 1 → June (end month 6); half 2 → December (end month 12)
+  const lastMonth = half === 1 ? 6 : 12;
+  return buildAndSendForPeriod(userId, recipients, 'semiannual', year, lastMonth);
 }
 
 export async function buildAndSendYearly(

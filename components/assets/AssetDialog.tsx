@@ -2140,16 +2140,18 @@ export function AssetDialog({ open, onClose, asset }: AssetDialogProps) {
           )}
 
           {/* color-mix() on --primary so the info box tracks the active theme colour. */}
+          {(selectedType === 'realestate' || selectedSubCategory === 'Private Equity' || shouldUpdatePrice(selectedType, selectedSubCategory)) && (
           <div className="rounded-lg bg-[color-mix(in_oklch,var(--primary)_8%,transparent)] border border-[color-mix(in_oklch,var(--primary)_20%,transparent)] p-3">
-            <p className="text-sm text-foreground">
-              <strong>Nota:</strong>
-              {selectedType === 'cash' && ' Per asset di tipo liquidità, il prezzo sarà impostato a 1.'}
-              {selectedType === 'realestate' && ' Per immobili, il prezzo deve essere aggiornato manualmente.'}
-              {selectedType === 'pensionfund' && ' Per fondi pensione, il prezzo deve essere aggiornato manualmente dal valore comunicato dal gestore.'}
-              {selectedSubCategory === 'Private Equity' && ' Per Private Equity, il prezzo deve essere aggiornato manualmente.'}
+              <p className="text-sm text-foreground">
+                <strong>Nota:</strong>
+               {selectedType === 'cash' && ' Per asset di tipo liquidità, il prezzo sarà impostato a 1.'}
+               {selectedType === 'realestate' && ' Per immobili, il prezzo deve essere aggiornato manualmente.'}
+               {selectedType === 'pensionfund' && ' Per fondi pensione, il prezzo deve essere aggiornato manualmente dal valore comunicato dal gestore.'}
+               {selectedSubCategory === 'Private Equity' && ' Per Private Equity, il prezzo deve essere aggiornato manualmente.'}
               {shouldUpdatePrice(selectedType, selectedSubCategory) && ` Puoi inserire un prezzo manuale nel campo apposito, oppure il prezzo verrà recuperato automaticamente da ${priceSource}. In caso di errore nel recupero automatico, potrai sempre impostare il prezzo manualmente.`}
             </p>
           </div>
+          )}
 
           </div>
           <div className="px-6 pb-6 pt-4 border-t shrink-0 flex justify-end gap-2">

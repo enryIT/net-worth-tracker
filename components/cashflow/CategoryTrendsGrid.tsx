@@ -295,7 +295,7 @@ export function CategoryTrendsGrid({
 
     // Filter to non-income expenses within the time window, respecting historyStartYear
     const windowExpenses = allExpenses.filter(e => {
-      if (e.type === 'income') return false;
+      if (e.type === 'income' || e.type === 'transfer') return false;
       const d = toDate(e.date);
       const ey = getItalyYear(d);
       const em = getItalyMonth(d);

@@ -53,11 +53,13 @@ function formatDeltaPct(delta: number | null): string {
   return `${sign}${delta.toFixed(1)}%`;
 }
 
-// Tailwind color class for a % delta value.
+// Theme-aware sign color for a % delta value.
+// --positive / --destructive tokens keep the color in sync with the active theme
+// (raw text-green/red-* would diverge from --destructive on non-default themes).
 function deltaColorClass(delta: number | null): string {
   if (delta === null) return 'text-muted-foreground';
-  if (delta > 0) return 'text-green-600 dark:text-green-400';
-  if (delta < 0) return 'text-red-600 dark:text-red-400';
+  if (delta > 0) return 'text-positive';
+  if (delta < 0) return 'text-destructive';
   return 'text-muted-foreground';
 }
 
@@ -97,12 +99,12 @@ export function AssetCard({
 
   const isPositive = gainLoss > 0;
   const isNegative = gainLoss < 0;
-  // Dark variants are required: green-600/red-600 are nearly unreadable on dark card backgrounds.
-  // The desktop table (deltaColorClass) already uses these — keep both in sync.
+  // Theme-aware sign tokens — track --positive / --destructive across all 6 themes.
+  // The desktop table (deltaColorClass) uses the same tokens — keep both in sync.
   const gainLossColor = isPositive
-    ? 'text-green-600 dark:text-green-400'
+    ? 'text-positive'
     : isNegative
-    ? 'text-red-600 dark:text-red-400'
+    ? 'text-destructive'
     : 'text-muted-foreground';
 
   const handleDeleteClick = () => {

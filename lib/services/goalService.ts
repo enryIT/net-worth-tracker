@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { Asset, AssetClass } from '@/types/assets';
 import {
@@ -70,7 +70,7 @@ export async function saveGoalData(
       goals: cleanGoals,
       assignments: data.assignments,
       userId,
-      updatedAt: Timestamp.now(),
+      updatedAt: new Date(),
     });
   } catch (error) {
     console.error('Error saving goal data:', error);

@@ -1,7 +1,7 @@
 'use client';
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   staggerContainer,
   cardItem,
@@ -9,7 +9,6 @@ import {
   springLayoutTransition,
 } from '@/lib/utils/motionVariants';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatCurrency } from '@/lib/services/chartService';
 import { updateHallOfFame } from '@/lib/services/hallOfFameService';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Camera, Receipt, TrendingDown, TrendingUp } from 'lucide-react';
+import { CashflowWidget } from '@/components/cashflow/cashflow-kpi/CashflowWidget';
 import { toast } from 'sonner';
 import { useCreateSnapshot } from '@/lib/hooks/useSnapshots';
 import { useAssets } from '@/lib/hooks/useAssets';
@@ -29,6 +29,7 @@ import { useExpenses } from '@/lib/hooks/useExpenses';
 import { useSnapshots } from '@/lib/hooks/useSnapshots';
 import { useDashboardOverview } from '@/lib/hooks/useDashboardOverview';
 import { useHouseholdScopeFilter } from '@/lib/hooks/useHouseholdScopeFilter';
+import { useExpenseCategories } from '@/lib/hooks/useExpenses';
 import { SavingsRateBadge } from '@/components/ui/SavingsRateBadge';
 import { useMediaQuery } from '@/lib/hooks/useMediaQuery';
 import { getItalyDate, getItalyMonthYear, toDate } from '@/lib/utils/dateHelpers';
@@ -172,17 +173,35 @@ function calculateSnapshotChange(currentValue: number, previousSnapshot: Monthly
 
 // Italian month names for the cashflow card header.
 const MONTH_NAMES_IT = [
-  'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-  'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+  'Gennaio',
+  'Febbraio',
+  'Marzo',
+  'Aprile',
+  'Maggio',
+  'Giugno',
+  'Luglio',
+  'Agosto',
+  'Settembre',
+  'Ottobre',
+  'Novembre',
+  'Dicembre',
 ];
 
-// Coverage ratio → Italian health label.
-function coverageHealthLabel(ratio: number): string {
-  if (ratio >= 2.0) return 'Salute ottima';
-  if (ratio >= 1.3) return 'Salute buona';
-  if (ratio >= 1.0) return 'In pareggio';
-  return 'In deficit';
-}
+/**
+ * Sign-aware theme-token classes for financial values (gain vs loss).
+ *
+ * Returns the semantic tokens `text-positive` / `text-destructive` (plus the
+ * matching `/10` tint for chips) so the sign color follows the active theme on
+ * all six themes. Raw `text-green-*` / `text-red-*` is forbidden here: those stay
+ * literal and diverge from `--destructive` on non-default themes (e.g. Cyberpunk
+ * renders destructive as orange). See DESIGN.md "The Sign-Color Token Rule".
+ * Zero is treated as positive, matching the previous chip/fiscal behaviour.
+ */
+const signTextClass = (value: number): string =>
+  value >= 0 ? 'text-positive' : 'text-destructive';
+
+const signChipClass = (value: number): string =>
+  value >= 0 ? 'bg-positive/10 text-positive' : 'bg-destructive/10 text-destructive';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -203,9 +222,8 @@ export default function DashboardPage() {
     const italyHour = getItalyDate(new Date()).getHours();
     const result = getGreeting(italyHour);
     const firstName = user?.displayName?.split(' ')[0];
-    const label = firstName && firstName.length <= 20
-      ? `${result.greeting} ${firstName}`
-      : result.greeting;
+    const label =
+      firstName && firstName.length <= 20 ? `${result.greeting} ${firstName}` : result.greeting;
     return { label, subtitle: result.subtitle };
   }, [user?.displayName]);
 
@@ -214,6 +232,7 @@ export default function DashboardPage() {
   const { data: assets = [], isLoading: loadingScopedAssets } = useAssets(user?.uid, shouldLoadScopedData);
   const { data: expenses = [], isLoading: loadingScopedExpenses } = useExpenses(user?.uid, shouldLoadScopedData);
   const { data: snapshots = [], isLoading: loadingScopedSnapshots } = useSnapshots(user?.uid, shouldLoadScopedData);
+  const { data: expenseCategories = [] } = useExpenseCategories(user?.uid);
   const createSnapshotMutation = useCreateSnapshot(user?.uid || '');
   const scopedDataReady =
     shouldLoadScopedData &&
@@ -228,7 +247,9 @@ export default function DashboardPage() {
   // ─── UI State ─────────────────────────────────────────────────────────────────
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [snapshotDialogStyle, setSnapshotDialogStyle] = useState<CSSProperties | undefined>(undefined);
+  const [snapshotDialogStyle, setSnapshotDialogStyle] = useState<CSSProperties | undefined>(
+    undefined,
+  );
 
   const snapshotButtonRef = useRef<HTMLButtonElement | null>(null);
   const snapshotDialogRef = useRef<HTMLDivElement | null>(null);
@@ -342,7 +363,6 @@ export default function DashboardPage() {
 
   // ─── Derived metrics ──────────────────────────────────────────────────────────
   const totalValue = overview?.metrics.totalValue ?? 0;
-  const liquidNetTotal = overview?.metrics.liquidNetTotal ?? 0;
 
   const savingsRate = useMemo(() => {
     if (!overview?.expenseStats) return 0;
@@ -357,45 +377,52 @@ export default function DashboardPage() {
     const { income, expenses } = overview.expenseStats.currentMonth;
     if (expenses <= 0) return null;
     return income / expenses;
-  }, [overview?.expenseStats]);
+  }, [overview]);
 
   // ─── Sparkline — last 13 points (12 months + baseline) ──────────────────────
   const sparkline12m = useMemo(() => {
     if (!overview?.sparklineData) return [];
     return overview.sparklineData.slice(-13);
-  }, [overview?.sparklineData]);
+  }, [overview]);
 
   // ─── Chart sections (stable memoized objects for memo isolation) ──────────────
   // Liquidity chart removed — now shown as the hero donut in the Patrimonio Liquido card.
-  const chartSections = useMemo(() => [
-    {
-      id: 'assetClass',
-      title: 'Distribuzione per Asset Class',
-      data: (overview?.charts.assetClassData ?? []).map((d, i) => ({
-        ...d,
-        color: chartColors[i] ?? d.color,
-      })),
-    },
-    {
-      id: 'asset',
-      title: 'Distribuzione per Asset',
-      data: (overview?.charts.assetData ?? []).map((d, i) => ({
-        ...d,
-        color: chartColors[i] ?? d.color,
-      })),
-    },
-  ] as const, [overview, chartColors]);
+  const chartSections = useMemo(
+    () =>
+      [
+        {
+          id: 'assetClass',
+          title: 'Distribuzione per Asset Class',
+          data: (overview?.charts.assetClassData ?? []).map((d, i) => ({
+            ...d,
+            color: chartColors[i] ?? d.color,
+          })),
+        },
+        {
+          id: 'asset',
+          title: 'Distribuzione per Asset',
+          data: (overview?.charts.assetData ?? []).map((d, i) => ({
+            ...d,
+            color: chartColors[i] ?? d.color,
+          })),
+        },
+      ] as const,
+    [overview, chartColors],
+  );
 
   // ─── Dialog position animation ────────────────────────────────────────────────
   useEffect(() => {
-    if (!showConfirmDialog || prefersReducedMotion) {
-      setSnapshotDialogStyle(undefined);
-      return;
-    }
+    // When closed or with reduced motion we don't compute a transform-origin.
+    // The style is cleared by the onOpenChange handler on close, so no synchronous
+    // setState is needed here (avoids react-hooks/set-state-in-effect).
+    if (!showConfirmDialog || prefersReducedMotion) return;
     const frameId = requestAnimationFrame(() => {
       const trigger = snapshotButtonRef.current;
       const dialog = snapshotDialogRef.current;
-      if (!trigger || !dialog) { setSnapshotDialogStyle(undefined); return; }
+      if (!trigger || !dialog) {
+        setSnapshotDialogStyle(undefined);
+        return;
+      }
       const triggerRect = trigger.getBoundingClientRect();
       const dialogRect = dialog.getBoundingClientRect();
       const originX = triggerRect.left + triggerRect.width / 2 - dialogRect.left;
@@ -429,7 +456,11 @@ export default function DashboardPage() {
       const result = await createSnapshotMutation.mutateAsync({});
       toast.dismiss('snapshot-creation');
       toast.success(result.message);
-      try { await updateHallOfFame(user.uid); } catch { /* non-critical */ }
+      try {
+        await updateHallOfFame(user.uid);
+      } catch {
+        /* non-critical */
+      }
     } catch (error) {
       console.error('Error creating snapshot:', error);
       toast.dismiss('snapshot-creation');
@@ -443,59 +474,63 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <PageContainer className="space-y-4">
-        <div className="pb-4 border-b border-border">
-          <div className="h-3 w-20 bg-muted rounded animate-pulse mb-2" />
-          <div className="h-8 w-56 bg-muted rounded animate-pulse mb-2" />
-          <div className="h-4 w-44 bg-muted rounded animate-pulse" />
+        <div className="border-border border-b pb-4">
+          <div className="bg-muted mb-2 h-3 w-20 animate-pulse rounded" />
+          <div className="bg-muted mb-2 h-8 w-56 animate-pulse rounded" />
+          <div className="bg-muted h-4 w-44 animate-pulse rounded" />
         </div>
         {/* Hero + Liquid skeleton — mirrors the desktop:grid-cols-[2fr_1fr] live layout */}
-        <div className="grid gap-4 desktop:grid-cols-[2fr_1fr]">
-          <div className="rounded-2xl border border-border bg-card p-[22px]">
-            <div className="h-3 w-40 bg-muted rounded animate-pulse mb-3" />
-            <div className="h-12 w-52 bg-muted rounded animate-pulse mb-4" />
-            <div className="flex gap-1.5 mb-3">
-              <div className="h-6 w-40 bg-muted rounded animate-pulse" />
-              <div className="h-6 w-28 bg-muted rounded animate-pulse" />
+        <div className="desktop:grid-cols-[2fr_1fr] grid gap-4">
+          <div className="border-border bg-card rounded-2xl border p-[22px]">
+            <div className="bg-muted mb-3 h-3 w-40 animate-pulse rounded" />
+            <div className="bg-muted mb-4 h-12 w-52 animate-pulse rounded" />
+            <div className="mb-3 flex gap-1.5">
+              <div className="bg-muted h-6 w-40 animate-pulse rounded" />
+              <div className="bg-muted h-6 w-28 animate-pulse rounded" />
             </div>
-            <div className="h-[68px] bg-muted rounded animate-pulse mb-2" />
-            <div className="h-7 bg-muted rounded animate-pulse" />
+            <div className="bg-muted mb-2 h-[68px] animate-pulse rounded" />
+            <div className="bg-muted h-7 animate-pulse rounded" />
           </div>
-          <div className="rounded-2xl border border-border bg-card p-[22px]">
-            <div className="h-3 w-32 bg-muted rounded animate-pulse mb-3" />
-            <div className="h-8 w-36 bg-muted rounded animate-pulse mb-4" />
+          <div className="border-border bg-card rounded-2xl border p-[22px]">
+            <div className="bg-muted mb-3 h-3 w-32 animate-pulse rounded" />
+            <div className="bg-muted mb-4 h-8 w-36 animate-pulse rounded" />
             <div className="space-y-2">
-              <div className="h-4 bg-muted rounded animate-pulse" />
-              <div className="h-4 bg-muted rounded animate-pulse" />
-              <div className="h-4 bg-muted rounded animate-pulse" />
-              <div className="h-4 bg-muted rounded animate-pulse" />
+              <div className="bg-muted h-4 animate-pulse rounded" />
+              <div className="bg-muted h-4 animate-pulse rounded" />
+              <div className="bg-muted h-4 animate-pulse rounded" />
+              <div className="bg-muted h-4 animate-pulse rounded" />
             </div>
           </div>
         </div>
         {/* Cashflow skeleton */}
-        <div className="rounded-2xl border border-border bg-card p-[22px]">
-          <div className="h-3 w-36 bg-muted rounded animate-pulse mb-4" />
-          <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3 mb-4">
+        <div className="border-border bg-card rounded-2xl border p-[22px]">
+          <div className="bg-muted mb-4 h-3 w-36 animate-pulse rounded" />
+          <div className="desktop:grid-cols-4 mb-4 grid grid-cols-2 gap-3">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="rounded-xl bg-muted p-3 h-16 animate-pulse" />
+              <div key={i} className="bg-muted h-16 animate-pulse rounded-xl p-3" />
             ))}
           </div>
-          <div className="h-3 bg-muted rounded animate-pulse mb-3" />
-          <div className="grid desktop:grid-cols-2 gap-4">
+          <div className="bg-muted mb-3 h-3 animate-pulse rounded" />
+          <div className="desktop:grid-cols-2 grid gap-4">
             <div className="space-y-2">
-              {[...Array(3)].map((_, i) => <div key={i} className="h-6 bg-muted rounded animate-pulse" />)}
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-muted h-6 animate-pulse rounded" />
+              ))}
             </div>
             <div className="space-y-2">
-              {[...Array(3)].map((_, i) => <div key={i} className="h-6 bg-muted rounded animate-pulse" />)}
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-muted h-6 animate-pulse rounded" />
+              ))}
             </div>
           </div>
         </div>
 
         {/* Charts skeleton — mirrors OverviewChartsSection structure */}
-        <div className="border-t border-border/40 pt-4">
-          <div className="h-3 w-24 bg-muted rounded animate-pulse mb-4" />
-          <div className="grid desktop:grid-cols-2 gap-4">
-            <div className="rounded-2xl bg-muted h-[220px] animate-pulse" />
-            <div className="rounded-2xl bg-muted h-[220px] animate-pulse" />
+        <div className="border-border/40 border-t pt-4">
+          <div className="bg-muted mb-4 h-3 w-24 animate-pulse rounded" />
+          <div className="desktop:grid-cols-2 grid gap-4">
+            <div className="bg-muted h-[220px] animate-pulse rounded-2xl" />
+            <div className="bg-muted h-[220px] animate-pulse rounded-2xl" />
           </div>
         </div>
       </PageContainer>
@@ -507,7 +542,7 @@ export default function DashboardPage() {
     <motion.div
       layout="position"
       transition={springLayoutTransition}
-      className="max-w-[1600px] mx-auto w-full space-y-4 max-desktop:portrait:pb-20"
+      className="max-desktop:portrait:pb-20 mx-auto w-full max-w-[1600px] space-y-4"
     >
       <PageHeader
         label="Panoramica"
@@ -553,13 +588,16 @@ export default function DashboardPage() {
         initial="hidden"
         animate="visible"
       >
-        <div className="grid gap-4 desktop:grid-cols-[2fr_1fr]">
-
+        <div className="desktop:grid-cols-[2fr_1fr] grid gap-4">
           {/* Hero Card */}
-          <motion.div layout="position" transition={springLayoutTransition} variants={heroMetricSettle}>
-            <Card className="rounded-2xl overflow-hidden h-full">
-              <CardContent className="p-[22px] flex flex-col h-full">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
+          <motion.div
+            layout="position"
+            transition={springLayoutTransition}
+            variants={heroMetricSettle}
+          >
+            <Card className="h-full overflow-hidden rounded-2xl">
+              <CardContent className="flex h-full flex-col p-[22px]">
+                <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
                   Patrimonio Totale Lordo
                 </p>
 
@@ -568,44 +606,46 @@ export default function DashboardPage() {
                   value={totalValue}
                   animateOnMount={true}
                   onSettled={handleHeroSettled}
-                  className="text-[44px] font-bold font-mono tracking-[-0.03em] desktop:text-[54px]"
+                  className="desktop:text-[54px] font-mono text-[44px] font-bold tracking-[-0.03em]"
                 />
 
                 {/* Variation chips */}
                 <div className="mt-2 flex flex-wrap gap-2">
                   {overview?.variations.monthly && (
-                    <span className={cn(
-                      'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
-                      'text-[15px] font-semibold font-mono tracking-[-0.01em]',
-                      overview.variations.monthly.value >= 0
-                        ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-                        : 'bg-red-500/10 text-red-500 dark:text-red-400'
-                    )}>
-                      {overview.variations.monthly.value >= 0
-                        ? <TrendingUp className="h-[13px] w-[13px]" />
-                        : <TrendingDown className="h-[13px] w-[13px]" />
-                      }
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
+                        'font-mono text-[15px] font-semibold tracking-[-0.01em]',
+                        signChipClass(overview.variations.monthly.value),
+                      )}
+                    >
+                      {overview.variations.monthly.value >= 0 ? (
+                        <TrendingUp className="h-[13px] w-[13px]" aria-hidden="true" />
+                      ) : (
+                        <TrendingDown className="h-[13px] w-[13px]" aria-hidden="true" />
+                      )}
                       {overview.variations.monthly.value >= 0 ? '+' : ''}
-                      {formatCurrency(overview.variations.monthly.value)}{' '}
-                      ({overview.variations.monthly.percentage >= 0 ? '+' : ''}
+                      {cachedFormatCurrencyEUR(overview.variations.monthly.value)} (
+                      {overview.variations.monthly.percentage >= 0 ? '+' : ''}
                       {overview.variations.monthly.percentage.toFixed(2)}%) questo mese
                     </span>
                   )}
                   {overview?.variations.yearly && (
-                    <span className={cn(
-                      'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
-                      'text-[15px] font-semibold font-mono tracking-[-0.01em]',
-                      overview.variations.yearly.value >= 0
-                        ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-                        : 'bg-red-500/10 text-red-500 dark:text-red-400'
-                    )}>
-                      {overview.variations.yearly.value >= 0
-                        ? <TrendingUp className="h-[13px] w-[13px]" />
-                        : <TrendingDown className="h-[13px] w-[13px]" />
-                      }
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
+                        'font-mono text-[15px] font-semibold tracking-[-0.01em]',
+                        signChipClass(overview.variations.yearly.value),
+                      )}
+                    >
+                      {overview.variations.yearly.value >= 0 ? (
+                        <TrendingUp className="h-[13px] w-[13px]" aria-hidden="true" />
+                      ) : (
+                        <TrendingDown className="h-[13px] w-[13px]" aria-hidden="true" />
+                      )}
                       {overview.variations.yearly.value >= 0 ? '+' : ''}
-                      {formatCurrency(overview.variations.yearly.value)}{' '}
-                      ({overview.variations.yearly.percentage >= 0 ? '+' : ''}
+                      {cachedFormatCurrencyEUR(overview.variations.yearly.value)} (
+                      {overview.variations.yearly.percentage >= 0 ? '+' : ''}
                       {overview.variations.yearly.percentage.toFixed(2)}%) YTD
                     </span>
                   )}
@@ -622,139 +662,165 @@ export default function DashboardPage() {
                         height={68}
                       />
                     </div>
-                    <div className="flex justify-between mt-1 mb-3 px-px text-[10px] text-muted-foreground font-mono">
+                    <div className="text-muted-foreground mt-1 mb-3 flex justify-between px-px font-mono text-[10px]">
                       <span>{cachedFormatCurrencyEUR(sparkline12m[0].totalNetWorth, true)}</span>
-                      <span>{cachedFormatCurrencyEUR(sparkline12m[sparkline12m.length - 1].totalNetWorth, true)}</span>
+                      <span>
+                        {cachedFormatCurrencyEUR(
+                          sparkline12m[sparkline12m.length - 1].totalNetWorth,
+                          true,
+                        )}
+                      </span>
                     </div>
                   </>
                 )}
 
-                <p className="text-[11px] text-muted-foreground mt-2.5">
+                <p className="text-muted-foreground mt-2.5 text-[11px]">
                   {(overview?.flags.assetCount ?? 0) === 0
                     ? 'Aggiungi asset per iniziare'
                     : `${overview?.flags.assetCount ?? 0} asset in portafoglio`}
                 </p>
 
                 {/* ── TER + Costo Annuale — desktop only, pinned to bottom of hero card ── */}
-                {(overview?.flags.hasTERTracking || overview?.flags.hasStampDuty) && (() => {
-                  const annualTotal = (overview.metrics.annualPortfolioCost ?? 0) + (overview.metrics.annualStampDuty ?? 0);
-                  const bothPresent = overview.flags.hasTERTracking && overview.flags.hasStampDuty;
-                  return (
-                    <div className="hidden desktop:grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-border">
-                      {overview.flags.hasTERTracking && (
-                        <div>
-                          <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
-                            TER Medio Ponderato
-                          </p>
-                          <p className="text-[28px] font-bold font-mono tabular-nums tracking-[-0.03em] text-foreground leading-none">
-                            {overview.metrics.portfolioTER.toFixed(2)}%
-                          </p>
-                        </div>
-                      )}
-                      <div className={cn(!overview.flags.hasTERTracking && 'col-span-2')}>
-                        <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
-                          Costo Annuale Stimato
-                        </p>
-                        <p className="text-[28px] font-bold font-mono tabular-nums tracking-[-0.03em] text-amber-500 dark:text-amber-400 leading-none">
-                          {formatCurrency(annualTotal)}
-                        </p>
-                        {bothPresent && (
-                          <div className="mt-2 pt-2 border-t border-border divide-y divide-border">
-                            <div className="flex justify-between py-[4px] text-[11px]">
-                              <span className="text-muted-foreground">Costi di gestione (TER)</span>
-                              <span className="font-mono tabular-nums text-foreground">
-                                {formatCurrency(overview.metrics.annualPortfolioCost)}
-                              </span>
-                            </div>
-                            <div className="flex justify-between py-[4px] text-[11px]">
-                              <span className="text-muted-foreground">Imposta di bollo</span>
-                              <span className="font-mono tabular-nums text-foreground">
-                                {formatCurrency(overview.metrics.annualStampDuty)}
-                              </span>
-                            </div>
+                {(overview?.flags.hasTERTracking || overview?.flags.hasStampDuty) &&
+                  (() => {
+                    const annualTotal =
+                      (overview.metrics.annualPortfolioCost ?? 0) +
+                      (overview.metrics.annualStampDuty ?? 0);
+                    const bothPresent =
+                      overview.flags.hasTERTracking && overview.flags.hasStampDuty;
+                    return (
+                      <div className="desktop:grid border-border mt-auto hidden grid-cols-2 gap-4 border-t pt-4">
+                        {overview.flags.hasTERTracking && (
+                          <div>
+                            <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
+                              TER Medio Ponderato
+                            </p>
+                            <p className="text-foreground font-mono text-[22px] leading-none font-bold tracking-[-0.025em] tabular-nums">
+                              {overview.metrics.portfolioTER.toFixed(2)}%
+                            </p>
                           </div>
                         )}
+                        <div className={cn(!overview.flags.hasTERTracking && 'col-span-2')}>
+                          <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
+                            Costo Annuale Stimato
+                          </p>
+                          <p className="font-mono text-[22px] leading-none font-bold tracking-[-0.025em] text-amber-600 tabular-nums dark:text-amber-400">
+                            {cachedFormatCurrencyEUR(annualTotal)}
+                          </p>
+                          {bothPresent && (
+                            <div className="border-border divide-border mt-2 divide-y border-t pt-2">
+                              <div className="flex justify-between py-[4px] text-[11px]">
+                                <span className="text-muted-foreground">
+                                  Costi di gestione (TER)
+                                </span>
+                                <span className="text-foreground font-mono tabular-nums">
+                                  {cachedFormatCurrencyEUR(overview.metrics.annualPortfolioCost)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between py-[4px] text-[11px]">
+                                <span className="text-muted-foreground">Imposta di bollo</span>
+                                <span className="text-foreground font-mono tabular-nums">
+                                  {cachedFormatCurrencyEUR(overview.metrics.annualStampDuty)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
               </CardContent>
             </Card>
           </motion.div>
 
           {/* ── LIQUID CARD — redesigned: flat 3-row breakdown ── */}
           <motion.div layout="position" transition={springLayoutTransition} variants={cardItem}>
-            <Card className="rounded-2xl h-full">
+            <Card className="h-full rounded-2xl">
               <CardContent className="p-[22px]">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
+                <p className="text-muted-foreground mb-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
                   Sintesi Patrimoniale
                 </p>
 
-                {/* 3-row breakdown + Patrimonio Totale Lordo footer */}
-                <div className="pt-3 border-t border-border divide-y divide-border">
+                {/* Breakdown by class + total footer. Only meaningful once there is value to split. */}
+                {totalValue > 0 ? (
+                <div className="border-border divide-border divide-y border-t pt-3">
                   {[
                     {
                       label: 'Liquidità',
                       value: overview?.metrics.cashNetWorth ?? 0,
-                      pct: totalValue > 0 ? ((overview?.metrics.cashNetWorth ?? 0) / totalValue) * 100 : 0,
+                      pct:
+                        totalValue > 0
+                          ? ((overview?.metrics.cashNetWorth ?? 0) / totalValue) * 100
+                          : 0,
                     },
                     {
                       label: 'Investimenti Liquidabili',
                       value: overview?.metrics.liquidInvestmentsNetWorth ?? 0,
-                      pct: totalValue > 0 ? ((overview?.metrics.liquidInvestmentsNetWorth ?? 0) / totalValue) * 100 : 0,
+                      pct:
+                        totalValue > 0
+                          ? ((overview?.metrics.liquidInvestmentsNetWorth ?? 0) / totalValue) * 100
+                          : 0,
                     },
                     {
                       label: 'Investimenti Illiquidi',
                       value: overview?.metrics.illiquidNetWorth ?? 0,
-                      pct: totalValue > 0 ? ((overview?.metrics.illiquidNetWorth ?? 0) / totalValue) * 100 : 0,
+                      pct:
+                        totalValue > 0
+                          ? ((overview?.metrics.illiquidNetWorth ?? 0) / totalValue) * 100
+                          : 0,
                     },
-                  ].map(row => (
+                  ].map((row) => (
                     <div key={row.label} className="flex items-center justify-between py-[7px]">
-                      <span className="text-[14px] text-muted-foreground">{row.label}</span>
+                      <span className="text-muted-foreground text-[14px]">{row.label}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-[14px] font-mono tabular-nums text-foreground">
+                        <span className="text-foreground font-mono text-[14px] tabular-nums">
                           {cachedFormatCurrencyEUR(row.value)}
                         </span>
-                        <span className="text-[12px] font-mono tabular-nums text-muted-foreground w-[42px] text-right">
+                        <span className="text-muted-foreground w-[42px] text-right font-mono text-[12px] tabular-nums">
                           {row.pct.toFixed(1)}%
                         </span>
                       </div>
                     </div>
                   ))}
 
-                  {/* Bottom row: Patrimonio Totale Lordo (bold) */}
+                  {/* Bottom row: total (bold). The breakdown above sums to this. */}
                   <div className="flex items-center justify-between py-[7px]">
-                    <span className="text-[14px] font-semibold text-foreground">Patrimonio Totale Lordo</span>
+                    <span className="text-foreground text-[14px] font-semibold">Totale</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[14px] font-bold font-mono tabular-nums text-foreground">
+                      <span className="text-foreground font-mono text-[14px] font-bold tabular-nums">
                         {cachedFormatCurrencyEUR(totalValue)}
                       </span>
-                      <span className="text-[12px] font-mono tabular-nums text-muted-foreground w-[42px] text-right">
+                      <span className="text-muted-foreground w-[42px] text-right font-mono text-[12px] tabular-nums">
                         100.0%
                       </span>
                     </div>
                   </div>
                 </div>
+                ) : (
+                  <div className="border-border border-t pt-3">
+                    <p className="text-muted-foreground text-[13px]">
+                      Il riepilogo per classe apparirà dopo il primo asset.
+                    </p>
+                  </div>
+                )}
 
                 {/* ── Fiscal rows — shown only when cost basis tracking is enabled ── */}
                 {overview?.flags.hasCostBasisTracking && overview.metrics && (
-                  <div className="mt-3 pt-3 border-t border-border divide-y divide-border">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground pb-2">
+                  <div className="border-border divide-border mt-3 divide-y border-t pt-3">
+                    <p className="text-muted-foreground pb-2 text-[10px] font-semibold tracking-[0.1em] uppercase">
                       Impatto Fiscale
                     </p>
                     {[
                       {
                         label: 'Plusvalenze Non Realizzate',
                         value: overview.metrics.unrealizedGains,
-                        className: overview.metrics.unrealizedGains >= 0
-                          ? 'text-green-500 dark:text-green-400'
-                          : 'text-red-500 dark:text-red-400',
+                        className: signTextClass(overview.metrics.unrealizedGains),
                         prefix: overview.metrics.unrealizedGains >= 0 ? '+' : '',
                       },
                       {
                         label: 'Tasse Stimate',
                         value: overview.metrics.estimatedTaxes,
-                        className: 'text-amber-500 dark:text-amber-400',
+                        className: 'text-amber-600 dark:text-amber-400',
                         prefix: '',
                       },
                       {
@@ -769,19 +835,29 @@ export default function DashboardPage() {
                         className: 'text-foreground',
                         prefix: '',
                       },
-                    ].map(row => (
+                    ].map((row) => (
                       <div key={row.label} className="flex items-center justify-between py-[7px]">
-                        <span className="text-[14px] text-muted-foreground">{row.label}</span>
-                        <span className={cn('text-[14px] font-bold font-mono tabular-nums', row.className)}>
-                          {row.prefix}{cachedFormatCurrencyEUR(row.value)}
+                        <span className="text-muted-foreground text-[14px]">{row.label}</span>
+                        <span
+                          className={cn(
+                            'font-mono text-[14px] font-bold tabular-nums',
+                            row.className,
+                          )}
+                        >
+                          {row.prefix}
+                          {cachedFormatCurrencyEUR(row.value)}
                         </span>
                       </div>
                     ))}
 
-                    {/* Concluding row: Pat. Netto Totale — styled prominently as the bottom-line figure */}
+                    {/* Concluding row: Pat. Netto Totale — the card's anchor figure, promoted
+                        to the 16px sub-step so the companion has one dominant value (the other
+                        bold rows are sub-section subtotals, not the bottom line). */}
                     <div className="flex items-center justify-between py-[9px]">
-                      <span className="text-[14px] font-semibold text-foreground">Pat. Netto Totale</span>
-                      <span className="text-[14px] font-bold font-mono tabular-nums text-foreground">
+                      <span className="text-foreground text-[14px] font-semibold">
+                        Pat. Netto Totale
+                      </span>
+                      <span className="text-foreground font-mono text-[16px] font-bold tracking-[-0.01em] tabular-nums">
                         {cachedFormatCurrencyEUR(overview.metrics.netTotal)}
                       </span>
                     </div>
@@ -790,254 +866,117 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </motion.div>
-
         </div>
       </motion.section>
 
       {/* ── TER + COSTO ANNUALE — 2-col row (both platforms) ── */}
-      {(overview?.flags.hasTERTracking || overview?.flags.hasStampDuty) && (() => {
-        const annualTotal = (overview.metrics.annualPortfolioCost ?? 0) + (overview.metrics.annualStampDuty ?? 0);
-        const bothPresent = overview.flags.hasTERTracking && overview.flags.hasStampDuty;
-        return (
-          <motion.div
-            layout="position"
-            transition={springLayoutTransition}
-            variants={cardItem}
-            initial="hidden"
-            animate="visible"
-            className="grid grid-cols-2 gap-4 desktop:hidden"
-          >
-            {/* TER medio */}
-            {overview.flags.hasTERTracking && (
-              <div className="bg-card border border-border rounded-2xl p-5 flex flex-col justify-between">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  TER Medio Ponderato
+      {(overview?.flags.hasTERTracking || overview?.flags.hasStampDuty) &&
+        (() => {
+          const annualTotal =
+            (overview.metrics.annualPortfolioCost ?? 0) + (overview.metrics.annualStampDuty ?? 0);
+          const bothPresent = overview.flags.hasTERTracking && overview.flags.hasStampDuty;
+          return (
+            <motion.div
+              layout="position"
+              transition={springLayoutTransition}
+              variants={cardItem}
+              initial="hidden"
+              animate="visible"
+              className="desktop:hidden grid grid-cols-2 gap-4"
+            >
+              {/* TER medio */}
+              {overview.flags.hasTERTracking && (
+                <div className="bg-card border-border flex flex-col justify-between rounded-2xl border p-5">
+                  <span className="text-muted-foreground text-[10px] font-semibold tracking-[0.1em] uppercase">
+                    TER Medio Ponderato
+                  </span>
+                  <div>
+                    <p className="text-foreground mt-3 font-mono text-[22px] leading-none font-bold tracking-[-0.025em] tabular-nums">
+                      {overview.metrics.portfolioTER.toFixed(2)}%
+                    </p>
+                    <p className="text-muted-foreground mt-2 text-[10px]">
+                      Total Expense Ratio medio ponderato
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Costo annuale */}
+              <div
+                className={cn(
+                  'bg-card border-border flex flex-col justify-between rounded-2xl border p-5',
+                  !overview.flags.hasTERTracking && 'col-span-2',
+                )}
+              >
+                <span className="text-muted-foreground text-[10px] font-semibold tracking-[0.1em] uppercase">
+                  Costo Annuale Stimato
                 </span>
                 <div>
-                  <p className="text-[32px] font-bold font-mono tabular-nums tracking-[-0.03em] text-foreground leading-none mt-3">
-                    {overview.metrics.portfolioTER.toFixed(2)}%
+                  <p className="mt-3 font-mono text-[22px] leading-none font-bold tracking-[-0.025em] text-amber-600 tabular-nums dark:text-amber-400">
+                    {cachedFormatCurrencyEUR(annualTotal)}
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-2">
-                    Total Expense Ratio medio ponderato
-                  </p>
+                  {bothPresent && (
+                    <div className="border-border divide-border mt-3 space-y-0 divide-y border-t pt-3">
+                      <div className="flex justify-between py-[5px] text-[11px]">
+                        <span className="text-muted-foreground">Costi di gestione (TER)</span>
+                        <span className="text-foreground font-mono tabular-nums">
+                          {cachedFormatCurrencyEUR(overview.metrics.annualPortfolioCost)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-[5px] text-[11px]">
+                        <span className="text-muted-foreground">Imposta di bollo</span>
+                        <span className="text-foreground font-mono tabular-nums">
+                          {cachedFormatCurrencyEUR(overview.metrics.annualStampDuty)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {!bothPresent && (
+                    <p className="text-muted-foreground mt-2 text-[10px]">
+                      {overview.flags.hasTERTracking
+                        ? 'Costi di gestione annuali stimati'
+                        : 'Imposta di bollo annuale stimata'}
+                    </p>
+                  )}
                 </div>
               </div>
-            )}
+            </motion.div>
+          );
+        })()}
 
-            {/* Costo annuale */}
-            <div className={cn(
-              'bg-card border border-border rounded-2xl p-5 flex flex-col justify-between',
-              !overview.flags.hasTERTracking && 'col-span-2'
-            )}>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                Costo Annuale Stimato
-              </span>
-              <div>
-                <p className="text-[32px] font-bold font-mono tabular-nums tracking-[-0.03em] text-amber-500 dark:text-amber-400 leading-none mt-3">
-                  {formatCurrency(annualTotal)}
-                </p>
-                {bothPresent && (
-                  <div className="mt-3 pt-3 border-t border-border space-y-0 divide-y divide-border">
-                    <div className="flex justify-between py-[5px] text-[11px]">
-                      <span className="text-muted-foreground">Costi di gestione (TER)</span>
-                      <span className="font-mono tabular-nums text-foreground">
-                        {formatCurrency(overview.metrics.annualPortfolioCost)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between py-[5px] text-[11px]">
-                      <span className="text-muted-foreground">Imposta di bollo</span>
-                      <span className="font-mono tabular-nums text-foreground">
-                        {formatCurrency(overview.metrics.annualStampDuty)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {!bothPresent && (
-                  <p className="text-[10px] text-muted-foreground mt-2">
-                    {overview.flags.hasTERTracking ? 'Costi di gestione annuali stimati' : 'Imposta di bollo annuale stimata'}
-                  </p>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        );
-      })()}
+      {/* ── CASHFLOW CARD ── */}
+      {overview?.expenseStats &&
+        (() => {
+          const { income, expenses, net } = overview.expenseStats.currentMonth;
+          const { income: incomeDelta, expenses: expensesDelta } = overview.expenseStats.delta;
+          const { month: italyMonth, year: italyYear } = getItalyMonthYear();
+          const monthLabel = `${MONTH_NAMES_IT[italyMonth - 1].toUpperCase()} ${italyYear}`;
 
-      {/* ── CASHFLOW CARD — full-width, unified for mobile + desktop ── */}
-      {overview?.expenseStats && (() => {
-        const { income, expenses, net } = overview.expenseStats.currentMonth;
-        const { income: incomeDelta, expenses: expensesDelta } = overview.expenseStats.delta;
-        const { month: italyMonth, year: italyYear } = getItalyMonthYear();
-        const monthLabel = `${MONTH_NAMES_IT[italyMonth - 1].toUpperCase()} ${italyYear}`;
-        const ratio = coverageRatio;
-
-        // Category bar color: chart-1 for expenses (blue-ish), chart-2 for income (green-ish).
-        const expenseColor = chartColors[0] || 'var(--chart-1)';
-        const incomeColor = chartColors[1] || 'var(--chart-2)';
-
-        return (
-          <motion.div
-            layout="position"
-            transition={springLayoutTransition}
-            variants={cardItem}
-            initial="hidden"
-            animate="visible"
-          >
-            <Card className="rounded-2xl">
-              <CardContent className="p-[22px]">
-                {/* Header */}
-                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-3">
-                  Cashflow · {monthLabel}
-                </p>
-
-                {/* 4 KPI chips */}
-                <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
-                  {/* ENTRATE */}
-                  <div className="bg-muted/40 rounded-xl p-3.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                      Entrate
-                    </p>
-                    <p className="text-[22px] font-bold font-mono tabular-nums text-green-500 dark:text-green-400 leading-none">
-                      {cachedFormatCurrencyEUR(income, true)}
-                    </p>
-                    {(() => {
-                      const pos = incomeDelta >= 0;
-                      return (
-                        <p className={cn('text-[12px] font-mono mt-1.5', pos ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400')}>
-                          {pos ? '+' : ''}{incomeDelta.toFixed(1)}% vs mese scorso
-                        </p>
-                      );
-                    })()}
-                  </div>
-
-                  {/* SPESE */}
-                  <div className="bg-muted/40 rounded-xl p-3.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                      Spese
-                    </p>
-                    <p className="text-[22px] font-bold font-mono tabular-nums text-red-500 dark:text-red-400 leading-none">
-                      {cachedFormatCurrencyEUR(expenses, true)}
-                    </p>
-                    {(() => {
-                      // For expenses: +% is negative (spent more) → red
-                      const pos = expensesDelta >= 0;
-                      return (
-                        <p className={cn('text-[12px] font-mono mt-1.5', pos ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400')}>
-                          {pos ? '+' : ''}{expensesDelta.toFixed(1)}% vs mese scorso
-                        </p>
-                      );
-                    })()}
-                  </div>
-
-                  {/* RISPARMIO */}
-                  <div className="bg-muted/40 rounded-xl p-3.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                      Risparmio
-                    </p>
-                    <p className={cn(
-                      'text-[22px] font-bold font-mono tabular-nums leading-none',
-                      net >= 0 ? 'text-foreground' : 'text-red-500 dark:text-red-400'
-                    )}>
-                      {cachedFormatCurrencyEUR(net, true)}
-                    </p>
-                    {income > 0 && (
-                      <p className="text-[12px] text-muted-foreground mt-1.5">
-                        {savingsRate}% del reddito
-                      </p>
-                    )}
-                  </div>
-
-                  {/* RAPPORTO */}
-                  <div className="bg-muted/40 rounded-xl p-3.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-1.5">
-                      Rapporto
-                    </p>
-                    <p className="text-[22px] font-bold font-mono tabular-nums text-foreground leading-none">
-                      {ratio !== null ? `${ratio.toFixed(2)}×` : '—'}
-                    </p>
-                    {ratio !== null && (
-                      <p className="text-[12px] text-muted-foreground mt-1.5">
-                        {coverageHealthLabel(ratio)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Category breakdowns — only shown when there is data */}
-                {(overview.expenseStats.topExpenseCategories.length > 0 || overview.expenseStats.topIncomeCategories.length > 0) && (
-                  <>
-                    <div className="mt-4 border-t border-border" />
-                    <div className="grid desktop:grid-cols-2 gap-x-8 gap-y-4 mt-4">
-
-                      {/* SPESE PER CATEGORIA */}
-                      {overview.expenseStats.topExpenseCategories.length > 0 && (
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-3">
-                            Spese per Categoria
-                          </p>
-                          <div className="space-y-3">
-                            {overview.expenseStats.topExpenseCategories.map(cat => (
-                              <div key={cat.category} className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: expenseColor }} />
-                                    <span className="text-[13px] text-foreground truncate">{cat.category}</span>
-                                  </div>
-                                  <span className="text-[13px] font-mono tabular-nums text-foreground ml-3 flex-shrink-0">
-                                    {cachedFormatCurrencyEUR(cat.amount, true)}
-                                  </span>
-                                </div>
-                                <div className="h-[3px] bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{ width: `${cat.percentage}%`, background: expenseColor }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* ENTRATE PER CATEGORIA */}
-                      {overview.expenseStats.topIncomeCategories.length > 0 && (
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground mb-3">
-                            Entrate per Categoria
-                          </p>
-                          <div className="space-y-3">
-                            {overview.expenseStats.topIncomeCategories.map(cat => (
-                              <div key={cat.category} className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: incomeColor }} />
-                                    <span className="text-[13px] text-foreground truncate">{cat.category}</span>
-                                  </div>
-                                  <span className="text-[13px] font-mono tabular-nums text-foreground ml-3 flex-shrink-0">
-                                    {cachedFormatCurrencyEUR(cat.amount, true)}
-                                  </span>
-                                </div>
-                                <div className="h-[3px] bg-muted rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{ width: `${cat.percentage}%`, background: incomeColor }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        );
-      })()}
-
+          return (
+            <motion.div
+              layout="position"
+              transition={springLayoutTransition}
+              variants={cardItem}
+              initial="hidden"
+              animate="visible"
+            >
+              <CashflowWidget
+                monthLabel={monthLabel}
+                income={income}
+                expenses={expenses}
+                net={net}
+                ratio={coverageRatio}
+                incomeDelta={incomeDelta}
+                expensesDelta={expensesDelta}
+                savingsRate={savingsRate}
+                expenseCategories={overview.expenseStats.topExpenseCategories}
+                incomeCategories={overview.expenseStats.topIncomeCategories}
+                categories={expenseCategories}
+                className="rounded-2xl"
+              />
+            </motion.div>
+          );
+        })()}
       {/* No cashflow data fallback */}
       {!overview?.expenseStats && (
         <motion.div
@@ -1049,11 +988,11 @@ export default function DashboardPage() {
         >
           <Card className="rounded-2xl">
             <CardContent className="p-[22px]">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-3">
+              <p className="text-muted-foreground mb-3 text-[10px] font-semibold tracking-[0.1em] uppercase">
                 Cashflow
               </p>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Receipt className="h-4 w-4" />
+              <div className="text-muted-foreground flex items-center gap-2 text-sm">
+                <Receipt className="h-4 w-4" aria-hidden="true" />
                 <span>Nessun dato questo mese</span>
               </div>
             </CardContent>
@@ -1080,11 +1019,11 @@ export default function DashboardPage() {
         <DialogContent
           ref={snapshotDialogRef}
           style={snapshotDialogStyle}
-          className="duration-300 data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-100 data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 sm:max-w-md"
+          className="data-[state=open]:zoom-in-90 data-[state=closed]:zoom-out-100 data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 duration-300 sm:max-w-md"
           showCloseButton={false}
         >
           <DialogHeader>
-            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+            <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
               Snapshot mensile
             </p>
             <DialogTitle>Snapshot già esistente</DialogTitle>

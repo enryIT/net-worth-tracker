@@ -10,14 +10,15 @@
  * These assets are excluded from the Gestione Asset table.
  *
  * PERFORMANCE METRICS:
- * Each asset row/card shows Δ Mese, Δ YTD, Δ Inizio inline — computed from monthly snapshots.
- * Desktop: toggle button swaps the table to a dedicated 8-column performance view.
- * Mobile: 3 chip badges below the asset value.
+ * Each asset row/card shows Δ Mese, Δ YTD, Δ Inizio — computed from monthly snapshots.
+ * Desktop: the three Δ columns are hidden by default and revealed via the "Andamento"
+ * toggle in the table action bar (keeps the default table narrow enough to avoid
+ * horizontal scroll). Mobile: the AssetCard renders them as a divide-y row block.
  */
 
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useRef, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAssets, useDeleteAsset } from '@/lib/hooks/useAssets';
@@ -27,6 +28,7 @@ import { useHouseholdScopeFilter } from '@/lib/hooks/useHouseholdScopeFilter';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { Card, CardContent } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Dialog,
   DialogContent,
@@ -37,7 +39,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Wallet, TrendingUp, TrendingDown, Pencil, Trash2 } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import { AssetManagementTab } from '@/components/assets/AssetManagementTab';
 import { AssetDialog } from '@/components/assets/AssetDialog';
 import { OverviewAnimatedCurrency } from '@/components/dashboard/OverviewAnimatedCurrency';
@@ -83,40 +85,52 @@ function formatAssetDate(ts: Date | Timestamp | null | undefined): string {
 function CashAccountsSection({
   assets,
   onSelect,
+  onAdd,
 }: {
   assets: Asset[];
   onSelect: (asset: Asset) => void;
+  onAdd: () => void;
 }) {
-  if (assets.length === 0) return null;
   return (
     <div className="space-y-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
         Conti Correnti
       </p>
-      <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
-        {assets.map((asset) => (
-          <button
-            key={asset.id}
-            type="button"
-            onClick={() => onSelect(asset)}
-            // bg-muted/40 (no border) keeps these as lighter KPI chips, not full cards.
-            // bg-card + border would give them equal visual weight to the hero cards above.
-            className={cn(
-              'cursor-pointer rounded-xl bg-muted/40 p-5 text-left',
-              'hover:bg-muted/60 active:bg-muted/70 transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1'
-            )}
-          >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted mb-3">
-              <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-            </div>
-            <p className="text-xs text-muted-foreground truncate mb-0.5">{asset.name}</p>
-            <p className="text-lg font-bold font-mono tabular-nums tracking-tight text-foreground">
-              {formatCurrency(calculateAssetValue(asset), asset.currency)}
-            </p>
-          </button>
-        ))}
-      </div>
+      {assets.length === 0 ? (
+        <EmptyState
+          icon={Wallet}
+          title="Nessun conto corrente"
+          description="Aggiungi il tuo primo conto corrente per tracciare la liquidità."
+          action={
+            <Button size="sm" onClick={onAdd}>
+              Aggiungi conto
+            </Button>
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-2 desktop:grid-cols-4 gap-3">
+          {assets.map((asset) => (
+            <button
+              key={asset.id}
+              type="button"
+              onClick={() => onSelect(asset)}
+              className={cn(
+                'cursor-pointer rounded-xl bg-muted/40 p-5 text-left',
+                'hover:bg-muted/60 active:bg-muted/70 transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1'
+              )}
+            >
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted mb-3">
+                <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <p className="text-xs text-muted-foreground truncate mb-0.5">{asset.name}</p>
+              <p className="text-lg font-bold font-mono tabular-nums tracking-tight text-foreground">
+                {formatCurrency(calculateAssetValue(asset), asset.currency)}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -232,6 +246,9 @@ export default function AssetsPage() {
     () => filterAssetsByOwnershipScope(assets, householdConfig, scope),
     [assets, householdConfig, scope]
   );
+  // Fiscal-impact block is collapsed by default — secondary detail that shouldn't
+  // weigh down the 1fr companion card at a glance.
+  const [fiscalOpen, setFiscalOpen] = useState(false);
 
   // ─── Derived metrics for hero cards ──────────────────────────────────────────
   const scopedPortfolioMetrics = useMemo(() => {
@@ -291,7 +308,6 @@ export default function AssetsPage() {
     () => scopedAssets.filter((a) => a.type === 'cash' && a.assetClass === 'cash' && a.quantity > 0),
     [scopedAssets]
   );
-
   // ─── Cash asset handlers ──────────────────────────────────────────────────────
   const handleCashDelete = async (assetId: string) => {
     try {
@@ -418,15 +434,15 @@ export default function AssetsPage() {
                       'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
                       'text-[15px] font-semibold font-mono tracking-[-0.01em]',
                       overview.variations.monthly.value >= 0
-                        ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-                        : 'bg-red-500/10 text-red-500 dark:text-red-400'
+                        ? 'bg-positive/10 text-positive'
+                        : 'bg-destructive/10 text-destructive'
                     )}>
                       {overview.variations.monthly.value >= 0
                         ? <TrendingUp className="h-[13px] w-[13px]" />
                         : <TrendingDown className="h-[13px] w-[13px]" />
                       }
                       {overview.variations.monthly.value >= 0 ? '+' : ''}
-                      {formatCurrency(overview.variations.monthly.value)}{' '}
+                      {cachedFormatCurrencyEUR(overview.variations.monthly.value)}{' '}
                       ({overview.variations.monthly.percentage >= 0 ? '+' : ''}
                       {overview.variations.monthly.percentage.toFixed(2)}%) questo mese
                     </span>
@@ -436,15 +452,15 @@ export default function AssetsPage() {
                       'inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px]',
                       'text-[15px] font-semibold font-mono tracking-[-0.01em]',
                       overview.variations.yearly.value >= 0
-                        ? 'bg-green-500/10 text-green-500 dark:text-green-400'
-                        : 'bg-red-500/10 text-red-500 dark:text-red-400'
+                        ? 'bg-positive/10 text-positive'
+                        : 'bg-destructive/10 text-destructive'
                     )}>
                       {overview.variations.yearly.value >= 0
                         ? <TrendingUp className="h-[13px] w-[13px]" />
                         : <TrendingDown className="h-[13px] w-[13px]" />
                       }
                       {overview.variations.yearly.value >= 0 ? '+' : ''}
-                      {formatCurrency(overview.variations.yearly.value)}{' '}
+                      {cachedFormatCurrencyEUR(overview.variations.yearly.value)}{' '}
                       ({overview.variations.yearly.percentage >= 0 ? '+' : ''}
                       {overview.variations.yearly.percentage.toFixed(2)}%) YTD
                     </span>
@@ -457,9 +473,9 @@ export default function AssetsPage() {
                     <span className="text-[11px] text-muted-foreground">G/P non realizzato</span>
                     <span className={cn(
                       'text-[13px] font-semibold font-mono tabular-nums',
-                      totalGainLoss > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      totalGainLoss > 0 ? 'text-positive' : 'text-destructive'
                     )}>
-                      {totalGainLoss > 0 ? '+' : ''}{formatCurrency(totalGainLoss)}
+                      {totalGainLoss > 0 ? '+' : ''}{cachedFormatCurrencyEUR(totalGainLoss)}
                       <span className="ml-1.5 text-[11px] opacity-80">
                         ({totalGainLoss > 0 ? '+' : ''}{formatNumber(totalGainPct, 2)}%)
                       </span>
@@ -498,8 +514,8 @@ export default function AssetsPage() {
           <motion.div layout="position" transition={springLayoutTransition} variants={cardItem}>
             <Card className="rounded-2xl h-full">
               <CardContent className="p-[22px]">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
-                  Sintesi Patrimoniale
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground mb-2">
+                  Patrimonio Liquidabile Netto
                 </p>
 
                 <OverviewAnimatedCurrency
@@ -556,53 +572,82 @@ export default function AssetsPage() {
                   </div>
                 </div>
 
-                {/* ── Fiscal rows — shown only when cost basis tracking is enabled ── */}
+                {/* ── Fiscal rows — collapsed by default (secondary detail) ── */}
                 {scopedPortfolioMetrics.hasCostBasisTracking && (
-                  <div className="mt-3 pt-3 border-t border-border divide-y divide-border">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground pb-2">
-                      Impatto Fiscale
-                    </p>
-                    {[
-                      {
-                        label: 'Plusvalenze Non Realizzate',
-                        value: scopedPortfolioMetrics.unrealizedGains,
-                        className: scopedPortfolioMetrics.unrealizedGains >= 0
-                          ? 'text-green-500 dark:text-green-400'
-                          : 'text-red-500 dark:text-red-400',
-                        prefix: scopedPortfolioMetrics.unrealizedGains >= 0 ? '+' : '',
-                      },
-                      {
-                        label: 'Tasse Stimate',
-                        value: scopedPortfolioMetrics.estimatedTaxes,
-                        className: 'text-amber-500 dark:text-amber-400',
-                        prefix: '',
-                      },
-                      {
-                        label: 'Patrimonio Liquidabile Netto',
-                        value: scopedPortfolioMetrics.liquidNetTotal,
-                        className: 'text-foreground',
-                        prefix: '',
-                      },
-                      {
-                        label: 'Patrimonio Illiquido Netto',
-                        value: scopedPortfolioMetrics.netTotal - scopedPortfolioMetrics.liquidNetTotal,
-                        className: 'text-foreground',
-                        prefix: '',
-                      },
-                      {
-                        label: 'Pat. Netto Totale',
-                        value: scopedPortfolioMetrics.netTotal,
-                        className: 'text-foreground',
-                        prefix: '',
-                      },
-                    ].map((row) => (
-                      <div key={row.label} className="flex items-center justify-between py-[7px]">
-                        <span className="text-[14px] text-muted-foreground">{row.label}</span>
-                        <span className={cn('text-[14px] font-bold font-mono tabular-nums', row.className)}>
-                          {row.prefix}{cachedFormatCurrencyEUR(row.value)}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="mt-3 border-t border-border pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setFiscalOpen((v) => !v)}
+                      aria-expanded={fiscalOpen}
+                      className="flex w-full items-center justify-between text-left"
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                        Impatto Fiscale
+                      </span>
+                      <ChevronDown
+                        className={cn(
+                          'h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none',
+                          fiscalOpen && 'rotate-180'
+                        )}
+                      />
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {fiscalOpen && (
+                        <motion.div
+                          key="fiscal"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                          style={{ overflow: 'hidden' }}
+                        >
+                          <div className="mt-2 divide-y divide-border">
+                            {[
+                              {
+                                label: 'Plusvalenze Non Realizzate',
+                                value: scopedPortfolioMetrics.unrealizedGains,
+                                className: scopedPortfolioMetrics.unrealizedGains >= 0
+                                  ? 'text-positive'
+                                  : 'text-destructive',
+                                prefix: scopedPortfolioMetrics.unrealizedGains >= 0 ? '+' : '',
+                              },
+                              {
+                                label: 'Tasse Stimate',
+                                value: scopedPortfolioMetrics.estimatedTaxes,
+                                className: 'text-[var(--chart-3)]',
+                                prefix: '',
+                              },
+                              {
+                                label: 'Patrimonio Liquidabile Netto',
+                                value: scopedPortfolioMetrics.liquidNetTotal,
+                                className: 'text-foreground',
+                                prefix: '',
+                              },
+                              {
+                                label: 'Patrimonio Illiquido Netto',
+                                value: scopedPortfolioMetrics.netTotal - scopedPortfolioMetrics.liquidNetTotal,
+                                className: 'text-foreground',
+                                prefix: '',
+                              },
+                              {
+                                label: 'Pat. Netto Totale',
+                                value: scopedPortfolioMetrics.netTotal,
+                                className: 'text-foreground',
+                                prefix: '',
+                              },
+                            ].map((row) => (
+                              <div key={row.label} className="flex items-center justify-between py-[7px]">
+                                <span className="text-[14px] text-muted-foreground">{row.label}</span>
+                                <span className={cn('text-[14px] font-bold font-mono tabular-nums', row.className)}>
+                                  {row.prefix}
+                                  {cachedFormatCurrencyEUR(row.value)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
               </CardContent>
@@ -618,6 +663,10 @@ export default function AssetsPage() {
         onSelect={(asset) => {
           setSelectedCashAsset(asset);
           setCashDetailOpen(true);
+        }}
+        onAdd={() => {
+          setSelectedCashAsset(null);
+          setCashEditOpen(true);
         }}
       />
 

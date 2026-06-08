@@ -52,7 +52,7 @@ import {
   compareAllocations,
   getSettings,
 } from './assetAllocationService';
-import { calculateTotalExpenses, calculateTotalIncome, getAllExpenses } from './expenseService';
+import { getAllExpenses, calculateTotalExpenses, calculateTotalIncome } from './expenseService';
 import { getAnnualExpenses, getAnnualIncome, calculateFIREMetrics } from './fireService';
 import { formatCurrency, formatPercentage } from './chartService';
 import { filterExpensesByTime } from '@/lib/utils/pdfTimeFilters';
@@ -431,6 +431,7 @@ export function prepareCashflowData(expenses: any[]): CashflowData {
     const monthKey = `${year}-${month}`;
     monthsSet.add(monthKey);
 
+    if (expense.type === 'transfer') return;
     if (expense.type === 'income') {
       totalIncome += amount;
     } else {
@@ -488,12 +489,8 @@ export async function prepareFireData(
   expenses: any[],
   currentNetWorth: number
 ): Promise<FireData> {
-  const annualExpenses = expenses.length > 0
-    ? calculateTotalExpenses(expenses)
-    : await getAnnualExpenses(userId);
-  const annualIncome = expenses.length > 0
-    ? calculateTotalIncome(expenses)
-    : await getAnnualIncome(userId);
+  const annualExpenses = expenses ? calculateTotalExpenses(expenses) : await getAnnualExpenses(userId);
+  const annualIncome = expenses ? calculateTotalIncome(expenses) : await getAnnualIncome(userId);
 
   // Get user settings for safe withdrawal rate
   const settings = await getSettings(userId);

@@ -1,5 +1,3 @@
-import { Timestamp } from 'firebase/firestore';
-
 // A cost center groups expenses under a named object or project (e.g. "Automobile Dacia").
 // Expenses opt-in by setting costCenterId + costCenterName (denormalized).
 // The feature is gated behind userPreferences.costCentersEnabled.
@@ -10,8 +8,8 @@ export interface CostCenter {
   description?: string;
   // Hex color for visual distinction in list and charts.
   color?: string;
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface CostCenterFormData {

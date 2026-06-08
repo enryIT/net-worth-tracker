@@ -18,6 +18,10 @@ vi.mock('resend', () => {
 // Per-collection query chains — filled per-test
 const collectionMocks: Record<string, any> = {};
 
+// Snapshot returned by adminDb.collection('budgets').doc(uid).get() — mock-prefixed
+// so it can be referenced inside the hoisted vi.mock factory. Default: no budget doc.
+let mockBudgetDoc: { exists: boolean; data?: () => any } = { exists: false };
+
 // Build a reusable chainable query builder for the adminDb mock.
 // The real service uses: .where().where().where().limit().get() (3 conditions)
 // and:                   .where().where().get() (2 conditions for expenses/dividends).
@@ -42,7 +46,7 @@ function buildQueryMock(name: string) {
 vi.mock('@/lib/firebase/admin', () => ({
   adminDb: {
     collection: (name: string) => ({
-      doc: () => ({ get: vi.fn() }),
+      doc: () => ({ get: () => Promise.resolve(mockBudgetDoc) }),
       where: () => buildQueryMock(name),
     }),
   },
@@ -59,11 +63,16 @@ vi.mock('@/lib/utils/dateHelpers', async () => {
 import {
   isLastDayOfMonthItaly,
   isLastDayOfQuarterItaly,
+  isLastDayOfHalfYearItaly,
   isLastDayOfYearItaly,
   monthToQuarter,
+  monthToSemester,
   getQuarterStartMonth,
+  getSemesterStartMonth,
   getPreviousQuarterEnd,
+  getPreviousHalfEnd,
   getMostRecentCompletedQuarterEnd,
+  getMostRecentCompletedHalfYearEnd,
   getMostRecentCompletedYearEnd,
   computeAssetClassPerformers,
   buildMonthlyEmailData,
@@ -72,6 +81,7 @@ import {
   sendMonthlyEmail,
   type MonthlyEmailData,
 } from '@/lib/server/monthlyEmailService';
+import type { PeriodComparison } from '@/lib/server/emailPeriodComparison';
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
@@ -271,6 +281,91 @@ describe('getMostRecentCompletedYearEnd', () => {
   });
 });
 
+// ─── Semi-annual period helpers ──────────────────────────────────────────────
+
+describe('isLastDayOfHalfYearItaly', () => {
+  it('returns true on June 30 (end of H1)', () => {
+    expect(isLastDayOfHalfYearItaly(new Date('2026-06-30T10:00:00Z'))).toBe(true);
+  });
+
+  it('returns true on December 31 (end of H2)', () => {
+    expect(isLastDayOfHalfYearItaly(new Date('2026-12-31T10:00:00Z'))).toBe(true);
+  });
+
+  it('returns false on June 29', () => {
+    expect(isLastDayOfHalfYearItaly(new Date('2026-06-29T10:00:00Z'))).toBe(false);
+  });
+
+  it('returns false on March 31 (quarter end, not half-year end)', () => {
+    expect(isLastDayOfHalfYearItaly(new Date('2026-03-31T10:00:00Z'))).toBe(false);
+  });
+
+  it('returns false on September 30 (quarter end, not half-year end)', () => {
+    expect(isLastDayOfHalfYearItaly(new Date('2026-09-30T10:00:00Z'))).toBe(false);
+  });
+
+  it('returns false on July 31 (last day of month but not half-year)', () => {
+    expect(isLastDayOfHalfYearItaly(new Date('2026-07-31T10:00:00Z'))).toBe(false);
+  });
+});
+
+describe('monthToSemester', () => {
+  it('maps June (6) to H1', () => {
+    expect(monthToSemester(6)).toBe(1);
+  });
+  it('maps December (12) to H2', () => {
+    expect(monthToSemester(12)).toBe(2);
+  });
+});
+
+describe('getSemesterStartMonth', () => {
+  it('H1 (end month 6) starts in January (1)', () => {
+    expect(getSemesterStartMonth(6)).toBe(1);
+  });
+  it('H2 (end month 12) starts in July (7)', () => {
+    expect(getSemesterStartMonth(12)).toBe(7);
+  });
+});
+
+describe('getPreviousHalfEnd', () => {
+  it('H1 (June) → H2 of the previous year (December)', () => {
+    expect(getPreviousHalfEnd(2026, 6)).toEqual({ year: 2025, month: 12 });
+  });
+  it('H2 (December) → H1 of the same year (June)', () => {
+    expect(getPreviousHalfEnd(2026, 12)).toEqual({ year: 2026, month: 6 });
+  });
+});
+
+describe('getMostRecentCompletedHalfYearEnd', () => {
+  it('July 1 2026 → June 2026 (H1 completed)', () => {
+    expect(getMostRecentCompletedHalfYearEnd(new Date('2026-07-01T10:00:00Z'))).toEqual({
+      year: 2026,
+      month: 6,
+    });
+  });
+  it('February 2 2026 → December 2025 (H2 previous year)', () => {
+    expect(getMostRecentCompletedHalfYearEnd(new Date('2026-02-02T10:00:00Z'))).toEqual({
+      year: 2025,
+      month: 12,
+    });
+  });
+  // Consistent with getMostRecentCompletedQuarterEnd: a period counts as completed once the
+  // current Italy time is past midnight of its last day (so on June 30 daytime, H1 is complete).
+  it('June 30 2026 daytime → June 2026 (H1 just completed)', () => {
+    expect(getMostRecentCompletedHalfYearEnd(new Date('2026-06-30T10:00:00Z'))).toEqual({
+      year: 2026,
+      month: 6,
+    });
+  });
+
+  it('June 15 2026 → December 2025 (H1 still in progress)', () => {
+    expect(getMostRecentCompletedHalfYearEnd(new Date('2026-06-15T10:00:00Z'))).toEqual({
+      year: 2025,
+      month: 12,
+    });
+  });
+});
+
 // ─── computeAssetClassPerformers ──────────────────────────────────────────────
 
 describe('computeAssetClassPerformers', () => {
@@ -462,6 +557,82 @@ describe('generateEmailHtml', () => {
     expect(html).toContain('Anno 2025');
     expect(html).toContain("Cashflow dell'Anno");
   });
+
+  it('uses semi-annual label for semiannual period type', () => {
+    const html = generateEmailHtml(
+      makeMonthlyData({ periodType: 'semiannual', semester: 1, month: 6, year: 2026 })
+    );
+    expect(html).toContain('1° Semestre 2026');
+    expect(html).toContain('Cashflow del Semestre');
+  });
+
+  it('renders the comparison table with both axes when a comparison is provided', () => {
+    const comparison: PeriodComparison = {
+      previousEqualsYoy: false,
+      vsPrevious: {
+        baselineLabel: 'mese precedente',
+        netWorth: { absChange: 5000, pctChange: 3.4 },
+        income: { absChange: 500, pctChange: 16.7 },
+        expenses: { absChange: 800, pctChange: 66.7 },
+        savings: { absChange: -300, pctChange: -16.7 },
+      },
+      vsYoy: {
+        baselineLabel: 'Marzo 2025',
+        netWorth: { absChange: 20000, pctChange: 15.4 },
+        income: null,
+        expenses: { absChange: -200, pctChange: -9.1 },
+        savings: null,
+      },
+      categoryDeltas: [],
+    };
+    const html = generateEmailHtml(makeMonthlyData(), comparison);
+    expect(html).toContain('Confronti');
+    expect(html).toContain('vs mese precedente');
+    expect(html).toContain('vs Marzo 2025');
+    // Null metrics render as N/D
+    expect(html).toContain('N/D');
+    // Explanatory note clarifies the baselines (snapshot vs period totals) for all email types
+    expect(html).toContain('confronto tra gli snapshot di fine periodo');
+    expect(html).toContain('Risparmio netto = Entrate − Uscite');
+  });
+
+  it('renders a single comparison column for yearly (previous equals YoY)', () => {
+    const comparison: PeriodComparison = {
+      previousEqualsYoy: true,
+      vsPrevious: {
+        baselineLabel: '2024',
+        netWorth: { absChange: 12000, pctChange: 9.1 },
+        income: { absChange: 1000, pctChange: 2.5 },
+        expenses: { absChange: 500, pctChange: 1.8 },
+        savings: { absChange: 500, pctChange: 5.0 },
+      },
+      vsYoy: {
+        baselineLabel: '2024',
+        netWorth: { absChange: 12000, pctChange: 9.1 },
+        income: { absChange: 1000, pctChange: 2.5 },
+        expenses: { absChange: 500, pctChange: 1.8 },
+        savings: { absChange: 500, pctChange: 5.0 },
+      },
+      categoryDeltas: [],
+    };
+    const html = generateEmailHtml(
+      makeMonthlyData({ periodType: 'yearly', month: 12, year: 2025 }),
+      comparison
+    );
+    expect(html).toContain('Confronti');
+    expect(html).toContain('vs 2024');
+  });
+
+  it('omits the comparison table when no comparison is provided', () => {
+    const html = generateEmailHtml(makeMonthlyData());
+    expect(html).not.toContain('>Confronti<');
+  });
+
+  it('makes the net savings calculation explicit in the cashflow section', () => {
+    const html = generateEmailHtml(makeMonthlyData());
+    expect(html).toContain('Entrate − Uscite');
+    expect(html).toContain('del reddito');
+  });
 });
 
 // ─── buildMonthlyEmailData ────────────────────────────────────────────────────
@@ -469,6 +640,30 @@ describe('generateEmailHtml', () => {
 describe('buildMonthlyEmailData', () => {
   beforeEach(() => {
     Object.keys(collectionMocks).forEach((k) => delete collectionMocks[k]);
+    mockBudgetDoc = { exists: false };
+  });
+
+  it('attaches budget alerts for an exceeded expense budget', async () => {
+    collectionMocks['monthly-snapshots'] = {
+      empty: false,
+      docs: [{ data: () => ({ totalNetWorth: 100, liquidNetWorth: 50, byAssetClass: {} }) }],
+    };
+    // March 2025 has 31 days; the period-end forecast collapses to actuals.
+    collectionMocks['expenses'] = {
+      docs: [{ data: () => ({ amount: -600, categoryId: 'c1', categoryName: 'Spesa', date: new Date(2025, 2, 10) }) }],
+    };
+    collectionMocks['dividends'] = { docs: [] };
+    mockBudgetDoc = {
+      exists: true,
+      data: () => ({
+        items: [{ id: 'g', kind: 'expense', scope: 'category', categoryId: 'c1', categoryName: 'Spesa', monthlyAmount: 400, order: 0 }],
+        alertsEnabled: true,
+      }),
+    };
+
+    const result = await buildMonthlyEmailData('user-1', 2025, 3);
+    expect(result!.budgetAlerts).toBeDefined();
+    expect(result!.budgetAlerts!.some((a) => a.label === 'Spesa' && a.level === 'exceeded')).toBe(true);
   });
 
   it('returns null when no current snapshot exists', async () => {

@@ -59,7 +59,7 @@ export function getPeriodLabel(selector: { year: number; month: number; quarter?
  * Only active items are included — archived ones are excluded.
  * Returns an empty string when there are no items to inject.
  */
-function formatMemoryForPrompt(items: AssistantMemoryItem[]): string {
+export function formatMemoryForPrompt(items: AssistantMemoryItem[]): string {
   const active = items.filter((item) => item.status === 'active');
   if (active.length === 0) return '';
 
@@ -231,7 +231,7 @@ function formatBundleForPrompt(bundle: AssistantMonthContextBundle): string {
 
 // ─── Common instruction builders ─────────────────────────────────────────────
 
-function buildResponseStyleInstruction(style: AssistantPreferences['responseStyle']): string {
+export function buildResponseStyleInstruction(style: AssistantPreferences['responseStyle']): string {
   if (style === 'concise') return 'Rispondi in modo sintetico, con punti chiari e pochi fronzoli.';
   if (style === 'deep') return 'Rispondi con maggiore profondità, esplicitando ipotesi e limiti dei dati.';
   return 'Rispondi in modo equilibrato: chiaro, concreto e leggibile.';

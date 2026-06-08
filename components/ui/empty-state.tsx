@@ -8,19 +8,26 @@
  * `motion-safe:` prefix ensures the animation stops for users who prefer reduced motion.
  */
 
+import React from 'react';
 import { cn } from '@/lib/utils';
 
 interface EmptyStateProps {
-  icon: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
   title: string;
   description?: string;
   action?: React.ReactNode;
   className?: string;
 }
 
-export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+  className,
+}: Readonly<EmptyStateProps>) {
   return (
-    <div className={cn('flex flex-col items-center justify-center py-8 px-4 text-center', className)}>
+    <div className={cn('flex flex-col items-center justify-center p-8 text-center', className)}>
       {/* Float keyframes defined inline — avoids globals.css coupling */}
       <style>{`
         @keyframes float {
@@ -29,14 +36,14 @@ export function EmptyState({ icon, title, description, action, className }: Empt
         }
       `}</style>
 
-      <div className="mb-3 text-muted-foreground/50 motion-safe:animate-[float_3s_ease-in-out_infinite]">
-        {icon}
+      <div className="text-muted-foreground/50 mb-3 motion-safe:animate-[float_3s_ease-in-out_infinite]">
+        <Icon className="desktop:w-26 desktop:h-26 h-16 w-16 sm:h-20 sm:w-20" />
       </div>
 
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
+      <p className="text-muted-foreground text-sm font-medium">{title}</p>
 
       {description && (
-        <p className="mt-1 text-xs text-muted-foreground/70 max-w-xs">{description}</p>
+        <p className="text-muted-foreground/70 mt-1 max-w-xs text-xs">{description}</p>
       )}
 
       {action && <div className="mt-4">{action}</div>}
@@ -50,27 +57,35 @@ export function EmptyState({ icon, title, description, action, className }: Empt
 // ---------------------------------------------------------------------------
 
 /** Seedling growing from soil — use for "no milestones yet" contexts. */
-export function SeedlingIcon({ className }: { className?: string }) {
+export function SeedlingIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
       viewBox="0 0 24 24"
+      className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
     >
       {/* Stem */}
       <line x1="12" y1="20" x2="12" y2="10" />
       {/* Left leaf */}
-      <path d="M12 14 C9 14 7 12 7 9 C9 9 11 11 12 14Z" fill="currentColor" stroke="none" opacity="0.4" />
+      <path
+        d="M12 14 C9 14 7 12 7 9 C9 9 11 11 12 14Z"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.4"
+      />
       <path d="M12 14 C9 14 7 12 7 9" />
       {/* Right leaf */}
-      <path d="M12 11 C15 11 17 9 17 6 C15 6 13 8 12 11Z" fill="currentColor" stroke="none" opacity="0.4" />
+      <path
+        d="M12 11 C15 11 17 9 17 6 C15 6 13 8 12 11Z"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.4"
+      />
       <path d="M12 11 C15 11 17 9 17 6" />
       {/* Ground line */}
       <path d="M8 20 Q12 18 16 20" />
@@ -79,19 +94,17 @@ export function SeedlingIcon({ className }: { className?: string }) {
 }
 
 /** Calendar with no events — use for "no dividends" contexts. */
-export function CalendarEmptyIcon({ className }: { className?: string }) {
+export function CalendarEmptyIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
       viewBox="0 0 24 24"
+      className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
     >
       {/* Calendar body */}
       <rect x="3" y="4" width="18" height="17" rx="2" />
@@ -111,19 +124,17 @@ export function CalendarEmptyIcon({ className }: { className?: string }) {
 }
 
 /** Funnel with an X — use for "no results match filter" contexts. */
-export function FilterEmptyIcon({ className }: { className?: string }) {
+export function FilterEmptyIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
       viewBox="0 0 24 24"
+      className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
     >
       {/* Funnel shape */}
       <path d="M4 4h16l-6 7v6l-4-2V11Z" />
@@ -135,19 +146,17 @@ export function FilterEmptyIcon({ className }: { className?: string }) {
 }
 
 /** Trophy / medal outline — use for "no rankings yet" contexts. */
-export function TrophyEmptyIcon({ className }: { className?: string }) {
+export function TrophyEmptyIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
       viewBox="0 0 24 24"
+      className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
     >
       {/* Cup body */}
       <path d="M6 3h12v8a6 6 0 0 1-12 0V3Z" />
@@ -164,19 +173,17 @@ export function TrophyEmptyIcon({ className }: { className?: string }) {
 }
 
 /** Bar chart with no bars — use for "no historical data" contexts. */
-export function ChartEmptyIcon({ className }: { className?: string }) {
+export function ChartEmptyIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
       viewBox="0 0 24 24"
+      className={className}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
     >
       {/* Axes */}
       <line x1="3" y1="19" x2="21" y2="19" />

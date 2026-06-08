@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/table';
 import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { EmptyState, ChartEmptyIcon } from '@/components/ui/EmptyState';
+import { EmptyState, ChartEmptyIcon } from '@/components/ui/empty-state';
 import { sectionRefreshPulse, tableShellSettle } from '@/lib/utils/motionVariants';
 
 interface AssetClassHistoryTableProps {
@@ -182,7 +182,7 @@ export function AssetClassHistoryTable({
       >
         {rows.length === 0 ? (
           <EmptyState
-            icon={<ChartEmptyIcon />}
+            icon={ChartEmptyIcon}
             title="Nessun dato storico disponibile"
             description="Crea uno snapshot mensile per iniziare a tracciare le asset class."
           />

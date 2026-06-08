@@ -1,25 +1,27 @@
 import { Timestamp } from 'firebase/firestore';
 import type { OwnershipSplit } from './household';
-
 // Expense categories for cashflow tracking.
 // These are mutually exclusive and determine UI filtering/display logic.
 // - fixed: Regular fixed expenses (rent, subscriptions)
 // - variable: Variable expenses (groceries, entertainment)
 // - debt: Debt payments (loan installments, mortgages)
 // - income: Income entries (salary, bonuses, gifts)
-export type ExpenseType = 'fixed' | 'variable' | 'debt' | 'income';
+// - transfer: Inter-account transfers (net-zero for portfolio, excluded from all metrics)
+export type ExpenseType = 'fixed' | 'variable' | 'debt' | 'income' | 'transfer';
 export type LinkedInvestmentOperationType = 'buy' | 'sell';
 
 export const EXPENSE_TYPE_LABELS: Record<ExpenseType, string> = {
   fixed: 'Spese Fisse',
-  variable: 'Variabili',
+  variable: 'Spese Variabili',
   debt: 'Debiti',
   income: 'Entrate',
+  transfer: 'Trasferimento',
 };
 
 export interface ExpenseSubCategory {
   id: string;
   name: string;
+  icon?: string;
 }
 
 export interface ExpenseCategory {
@@ -30,8 +32,8 @@ export interface ExpenseCategory {
   color?: string;
   icon?: string;
   subCategories: ExpenseSubCategory[];
-  createdAt: Date | Timestamp;
-  updatedAt: Date | Timestamp;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ExpenseCategoryFormData {
@@ -54,9 +56,9 @@ export interface Expense {
   categoryName: string; // Denormalized for faster queries
   subCategoryId?: string;
   subCategoryName?: string; // Denormalized for faster queries
-  amount: number; // Sign convention: POSITIVE for income, NEGATIVE for expenses/debts
+  amount: number; // Sign convention: POSITIVE for income, NEGATIVE for expenses/debts, POSITIVE for transfers (direction encoded by origin/destination asset IDs)
   currency: string;
-  date: Date | Timestamp;
+  date: Date;
   notes?: string;
   link?: string; // Optional link (e.g., Amazon order, receipt, etc.)
   // Recurring payment configuration
@@ -88,6 +90,7 @@ export interface Expense {
   investmentOperationPricePerUnit?: number;
   investmentOperationFees?: number;
   investmentOperationTaxes?: number;
+  transferCashAssetId?: string;
   // Optional cost center assignment for grouping expenses by object/project (e.g. "Automobile Dacia").
   // costCenterName is denormalized for query performance — same pattern as categoryName.
   // WARNING: If a cost center is renamed, bulk-update all linked expenses via costCenterService.renameCostCenter.
@@ -127,6 +130,7 @@ export interface ExpenseFormData {
   investmentOperationPricePerUnit?: number;
   investmentOperationFees?: number;
   investmentOperationTaxes?: number;
+  transferCashAssetId?: string; // Destination cash asset for transfers (origin = linkedCashAssetId)
   costCenterId?: string;    // Optional cost center assignment
   costCenterName?: string;  // Denormalized name, must be kept in sync via costCenterService
   attributionProfileId?: string;

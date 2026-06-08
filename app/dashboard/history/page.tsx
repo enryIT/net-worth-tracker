@@ -51,6 +51,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Asset, MonthlySnapshot, AssetAllocationTarget, DoublingMode, AssetAllocationSettings } from '@/types/assets';
 import { DoublingTimeSummaryCards } from '@/components/history/DoublingTimeSummaryCards';
 import { DoublingMilestoneTimeline } from '@/components/history/DoublingMilestoneTimeline';
+import { MonthlyAssetBreakdownSection } from '@/components/history/MonthlyAssetBreakdownSection';
 import { Expense } from '@/types/expenses';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -132,16 +133,18 @@ const SECTION_PILLS = [
   { label: 'Evoluzione', href: '#section-evolution' },
   { label: 'Raddoppi', href: '#section-milestones' },
   { label: 'Composizione', href: '#section-composition' },
+  { label: 'Strumenti', href: '#section-breakdown' },
   { label: 'Driver', href: '#section-drivers' },
 ] as const;
 
-type HistoryChapterId = 'hero' | 'evolution' | 'milestones' | 'composition' | 'drivers';
+type HistoryChapterId = 'hero' | 'evolution' | 'milestones' | 'composition' | 'breakdown' | 'drivers';
 
 const HISTORY_CHAPTER_SEQUENCE: HistoryChapterId[] = [
   'hero',
   'evolution',
   'milestones',
   'composition',
+  'breakdown',
   'drivers',
 ];
 
@@ -1090,6 +1093,28 @@ export default function HistoryPage() {
             </Card>
           </motion.div>
         </div>
+      </motion.section>
+
+      {/* ── DETTAGLIO MENSILE PER STRUMENTO ───────────────────────────── */}
+      <motion.section
+        id="section-breakdown"
+        variants={chapterReveal}
+        initial="hidden"
+        animate={visibleChapterSet.has('breakdown') ? 'visible' : 'hidden'}
+        className="space-y-4 pt-6 border-t border-border/40"
+      >
+        <div>
+          <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Dettaglio mensile</p>
+          <h2 className="mt-1 text-lg font-semibold text-foreground">Valore per strumento</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Scegli un mese per vedere quanto valeva ogni singolo strumento e seleziona quelli che ti
+            interessano per sommarne il valore e seguirne l&apos;andamento nel tempo.
+          </p>
+        </div>
+
+        <motion.div variants={cardItem} initial="hidden" animate="visible">
+          <MonthlyAssetBreakdownSection snapshots={snapshots} />
+        </motion.div>
       </motion.section>
 
       {/* ── DRIVER DELLA CRESCITA ─────────────────────────────────────── */}

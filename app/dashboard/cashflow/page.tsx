@@ -21,17 +21,22 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
-import { Receipt, Coins, BarChart3, Target, Layers, TrendingUp, Scale } from 'lucide-react';
+import { Receipt, Coins, BarChart3, Target, Layers, TrendingUp, Scale, Plus, Settings } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { useDemoMode } from '@/lib/hooks/useDemoMode';
+import dynamic from 'next/dynamic';
 import { TabsContent } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dividend } from '@/types/dividend';
 import { Asset } from '@/types/assets';
 import { useExpenses, useExpenseCategories } from '@/lib/hooks/useExpenses';
 import { useHouseholdConfig } from '@/lib/hooks/useHousehold';
+import { useAssets } from '@/lib/hooks/useAssets';
 import { queryKeys } from '@/lib/query/queryKeys';
 import { getAllAssets } from '@/lib/services/assetService';
 import { getSettings } from '@/lib/services/assetAllocationService';
@@ -82,20 +87,39 @@ function getErrorMessage(error: unknown): string {
 
 // Module-level constant: stable reference for React Compiler
 // Analisi tab removed — it now lives at /dashboard/analisi as a standalone page.
-const CASHFLOW_TABS_BASE: Array<{ value: string; label: string; mobileLabel: string; icon: React.ElementType }> = [
-  { value: 'tracking',      label: 'Tracciamento',       mobileLabel: 'Movim.',     icon: Receipt          },
-  { value: 'dividends',     label: 'Dividendi',          mobileLabel: 'Divid.',     icon: Coins            },
-  { value: 'current-year',  label: 'Anno Corrente',      mobileLabel: 'Anno',       icon: TrendingUp       },
-  { value: 'total-history', label: 'Storico Totale',     mobileLabel: 'Storico',    icon: BarChart3        },
-  { value: 'budget',        label: 'Budget',             mobileLabel: 'Budget',     icon: Target           },
+const CASHFLOW_TABS_BASE: TabDef[] = [
+  { value: 'tracking', label: 'Tracciamento', icon: Receipt },
+  { value: 'dividends', label: 'Dividendi', icon: Coins },
+  { value: 'current-year', label: 'Anno Corrente', icon: TrendingUp },
+  { value: 'total-history', label: 'Storico Totale', icon: BarChart3 },
+  { value: 'budget', label: 'Budget', icon: Target },
 ];
+
+const VALID_CASHFLOW_TABS = [
+  'tracking',
+  'dividends',
+  'current-year',
+  'total-history',
+  'budget',
+  'compensations',
+  'cost-centers',
+] as const;
+type CashflowTabId = (typeof VALID_CASHFLOW_TABS)[number];
+
+function getInitialTab(param: string | null): CashflowTabId {
+  return (VALID_CASHFLOW_TABS as readonly string[]).includes(param ?? '') ? (param as CashflowTabId) : 'tracking';
+}
 
 export default function CashflowPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
 
-  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set(['tracking']));
-  const [activeTab, setActiveTab] = useState<string>('tracking');
+  const initialTab = getInitialTab(searchParams.get('tab'));
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set([initialTab]));
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
   // null = settings not yet loaded (avoids the tab appearing late after an async flip from false → true)
   const [costCentersEnabled, setCostCentersEnabled] = useState<boolean | null>(null);
 
@@ -104,6 +128,13 @@ export default function CashflowPage() {
   const { data: categories = [], isLoading: categoriesLoading } = useExpenseCategories(user?.uid);
   const { data: householdConfig, isLoading: householdLoading } = useHouseholdConfig(user?.uid);
   const householdEnabled = householdConfig?.enabled === true;
+  const { data: allAssets = [] } = useAssets(user?.uid);
+
+  const assetNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of allAssets) map.set(a.id, a.name);
+    return map;
+  }, [allAssets]);
 
   const [cashflowHistoryStartYear, setCashflowHistoryStartYear] = useState<number>(new Date().getFullYear() - 1);
 
@@ -114,6 +145,7 @@ export default function CashflowPage() {
   const [otherDataLoaded, setOtherDataLoaded] = useState(false);
 
   const loading = expensesLoading || categoriesLoading || otherDataLoading;
+  const isDemo = useDemoMode();
 
   // Load dividends and assets only when their tabs are mounted
   const loadOtherData = async (force = false) => {
@@ -202,14 +234,38 @@ export default function CashflowPage() {
 
   const handleTabChange = (value: string) => {
     if (value === 'compensations' && !householdEnabled) return;
+    if (value === 'cost-centers' && costCentersEnabled === false) return;
     setActiveTab(value);
     setMountedTabs(prev => new Set(prev).add(value));
+    router.replace(`${pathname}?tab=${value}`, { scroll: false });
   };
+
+  // Canonicalize the URL on mount only when the tab param is absent or invalid
+  useEffect(() => {
+    const currentTab = searchParams.get('tab');
+    if (currentTab !== initialTab) {
+      router.replace(`${pathname}?tab=${initialTab}`, { scroll: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!householdLoading && !householdEnabled && activeTab === 'compensations') {
+      setActiveTab('tracking');
+      setMountedTabs((prev) => new Set(prev).add('tracking'));
+      router.replace(`${pathname}?tab=tracking`, { scroll: false });
+    }
+    if (costCentersEnabled === false && activeTab === 'cost-centers') {
+      setActiveTab('tracking');
+      setMountedTabs((prev) => new Set(prev).add('tracking'));
+      router.replace(`${pathname}?tab=tracking`, { scroll: false });
+    }
+  }, [activeTab, householdEnabled, householdLoading, costCentersEnabled, pathname, router]);
 
   const allTabs: TabDef[] = [
     ...CASHFLOW_TABS_BASE,
-    ...(householdEnabled ? [{ value: 'compensations', label: 'Compensazioni', shortLabel: 'Comp.', icon: Scale }] : []),
-    ...(costCentersEnabled ? [{ value: 'cost-centers', label: 'Centri di Costo', shortLabel: 'C.Costo', icon: Layers }] : []),
+    ...(householdEnabled ? [{ value: 'compensations', label: 'Compensazioni', icon: Scale }] : []),
+    ...(costCentersEnabled ? [{ value: 'cost-centers', label: 'Centri di Costo', icon: Layers }] : []),
   ];
 
   return (
@@ -219,6 +275,33 @@ export default function CashflowPage() {
         title="Cashflow"
         description="Traccia e analizza le tue entrate e uscite nel tempo"
         separator={false}
+        actions={
+          <div className="flex items-center gap-2">
+            {activeTab === 'tracking' && (
+              <Button
+                size="sm"
+                disabled={isDemo}
+                aria-label={isDemo ? 'Nuova Spesa — non disponibile in modalità demo' : 'Nuova Spesa'}
+                title={isDemo ? 'Non disponibile in modalità demo' : undefined}
+                onClick={() => window.dispatchEvent(new CustomEvent('cashflow:add-expense'))}
+                className="hidden desktop:flex"
+              >
+                <Plus className="h-4 w-4" />
+                Nuova Spesa
+              </Button>
+            )}
+            <Button
+              size="icon"
+              variant="ghost"
+              asChild
+              aria-label="Impostazioni Spese"
+            >
+              <Link href="/dashboard/settings?tab=spese">
+                <Settings className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        }
       />
 
       <PageTabs
@@ -240,6 +323,7 @@ export default function CashflowPage() {
               categories={categories}
               loading={loading}
               onRefresh={handleRefresh}
+              assetNameMap={assetNameMap}
             />
           </motion.div>
         </TabsContent>

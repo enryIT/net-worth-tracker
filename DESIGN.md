@@ -118,31 +118,37 @@ components:
 
 ## 1. Overview
 
-**Creative North Star: "The Precision Instrument"**
+**Creative North Star: "Effortless Precision"**
 
-This system is built for one purpose: total clarity about your financial position. Every element earns its place by communicating a number, a trend, or a relationship. The aesthetic draws from two co-primary references: Linear/Vercel clarity and Trade Republic hierarchy. Neither is secondary.
+This system is built for one purpose: total clarity about your financial position. The design ambition is to be the Apple of personal finance trackers — not the most feature-rich instrument, but the one that makes you immediately understand your financial situation, beautifully and effortlessly. Every element earns its place by communicating a number, a trend, or a relationship. The aesthetic draws from three co-primary references: Linear/Vercel clarity, Trade Republic data hierarchy, and Apple's effortless premium.
 
 **Linear / Vercel** provides the structural foundation: tight geometry, achromatic palette, strong typography, physics-native motion, zero decorative chrome.
 
 **Trade Republic** provides the data hierarchy: the primary number dominates physically and visually. Layout flows vertically — dominant value → inline variation chip → small label metadata. Flat `divide-y` lists instead of card-within-card nesting. No decorative progress bars. No box-within-box. Visual chrome is reduced to its structural minimum: only what separates, never what decorates.
 
-The two references are compatible. Both share dark mode as a premium experience, typography as structure, and zero tolerance for decoration that doesn't carry information.
+**Apple (Stocks, Wallet, Health)** provides the quality benchmark: complex data made effortlessly readable. Generous whitespace as a design material — not wasted space, but earned breathing room. Light mode equally premium to dark. Surfaces that feel considered and valuable. Progressive disclosure: the essential at a glance, depth on interaction. The interface recedes so the numbers speak.
 
-Dark mode is the primary experience. An Italian investor reviewing portfolio performance at their desk, evening light off, monitor close, expects precision: sharp contrasts, monospaced figures, no visual noise competing with numbers that represent years of work. Light mode is fully supported and equally refined, but the design intent was formed in darkness.
+The three references are compatible. All share zero tolerance for decoration that doesn't carry information, strong typography as structure, and the conviction that simplicity is harder to achieve than complexity.
+
+**The Unifying Law — Form Follows Function.** Beneath all three references sits a single conviction, the one Jony Ive carries forward from the modernist tradition: form follows function. Every visual property of every element — its size, weight, color, position, motion, even its corner radius — is a *consequence* of what that element does, never a costume applied to it afterward. A number is large because it is the most important fact on the screen, not because "large" looks impressive. A border is 1px at 10% opacity because that is precisely the contrast required to separate — no more. Motion exists to reveal a relationship the eye would otherwise miss. When form and decoration disagree, function wins, every time. Three corollaries follow Ive's reading of the principle: **honesty** — a surface never fakes a depth, material, or state it doesn't have (no false glass, no invented shadow hierarchy); **deference** — the interface is a quiet instrument that recedes so the data can speak; **inevitability** — a well-resolved element looks like the only possible answer, as if it could not have been otherwise. This law is the *why* behind every rule that follows: zero-chroma, the Mono Mandate, ambient elevation, chrome reduction — each is form bending to function, not the reverse.
+
+Both dark and light modes are primary, equally refined experiences. An Italian investor reviewing portfolio performance deserves precision and premium quality regardless of their environment or preference.
 
 The five named color themes (Solar Dusk, Elegant Luxury, Midnight Bloom, Cyberpunk, Retro Arcade) are personality layers on top of a structural foundation. They change accent and surface palette without touching the underlying type scale, radius, or component API. The default theme is the instrument in its raw state. The themes are its finishes.
 
-This system explicitly rejects three aesthetic modes: Bloomberg terminal coldness (too dense and impersonal for a personal wealth journal), consumer fintech brightness (Revolut-style gradients and playful fills trivialize serious data), and Material Design genericism (component conventions that serve any app therefore serve this one poorly).
+This system explicitly rejects four aesthetic modes: Bloomberg terminal coldness (too dense and impersonal for a personal wealth journal), consumer fintech brightness (Revolut-style gradients and playful fills trivialize serious data), Material Design genericism (component conventions that serve any app therefore serve this one poorly), and **ostentated complexity** (UI that demonstrates how hard the domain is rather than hiding that complexity behind a calm surface).
 
 **Key Characteristics:**
+- Form follows function: every visual property is derived from what an element does — honesty over illusion, deference over decoration, inevitability over ornament
 - Achromatic structural palette; data colors carry all chromatic meaning in the default theme
 - Geist Sans for interface text, Geist Mono for every number that matters
-- Radius is tight: 8px (inputs, buttons), 14px (cards) — never pill-shaped for containers
+- Radius is refined: 10px (inputs, buttons), 16px (cards) — premium curve without losing authority
 - Elevation is ambient: surfaces layer through background steps, shadows are atmospheric whispers
 - Motion is physics-native: spring dialogs, ease-out-quart state transitions, circle-reveal theme toggle
 - Hierarchy is Trade Republic-style: one dominant value per section, everything else is context
 - Chrome reduction is deliberate: flat lists over nested cards, divide-y over borders-on-boxes
 - Mobile-first: layouts are designed at 390px first; desktop adds columns, never simplifies
+- Light and dark modes are equally premium — different materials, same quality standard
 
 ## 2. Colors: The Zero-Chroma Foundation
 
@@ -183,6 +189,8 @@ Five chart colors cover the semantic range of portfolio data. These are the syst
 
 **The Data Owns Color Rule.** Chart palettes, performance indicators, and the five named themes are the only sanctioned sources of chromatic energy. Interface chrome in the default theme is always achromatic.
 
+**The Sign-Color Token Rule.** Positive/negative *value* coloring (gain vs loss, income vs expense, up vs down deltas, variation chips, fiscal gains) always uses the theme-aware semantic tokens: `text-positive` for positive, `text-destructive` for negative, with `bg-positive/10` / `bg-destructive/10` for chip tints. Raw Tailwind `text-green-*` / `text-red-*` is forbidden here — those classes stay literal regardless of the active theme and diverge from `--destructive` on non-default themes (e.g. Cyberpunk renders destructive as orange), which would put two different "negative" colors on the same screen. `getMetricValueColor()` in `lib/utils/metricColors.ts` is the single source of truth for resolving the sign color. (Buy/sell *signal* chips — COMPRA/VENDI/OK — are a separate case, theme-mapped to the chart palette via `useActionColors`; see the ActionChip component.)
+
 ## 3. Typography
 
 **UI Font:** Geist Sans (with `system-ui, sans-serif` fallback)
@@ -200,7 +208,7 @@ Five chart colors cover the semantic range of portfolio data. These are the syst
 - **Body** (400 weight, 0.875rem, lh 1.6): All prose, descriptions, note content. Max line length 65ch.
 - **Label** (500 weight, 0.75rem, lh 1.4, ls +0.01em): Input labels, tags, stat captions, tab text. Slightly tracked for legibility at small sizes.
 - **Eyebrow Label** (600 weight, `10px`, uppercase, ls `0.1em`, muted): Section eyebrow — the small all-caps label placed above a dominant number. In Tailwind: `text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground`. Never competes with the number it names. Use 9px / `tracking-[0.08em]` for sub-eyebrows inside compact cells. Context can be appended with a centered-dot separator: `Cashflow · MAGGIO 2026` — the `·` joins without adding another label.
-- **Delta Annotation** (Geist Mono, 400 weight, `12px`, ls 0): The small trend line that appears directly below a sub-hero value inside a KPI chip — e.g. `+5.2% vs mese scorso`. Always `font-mono`. Color follows sign semantics: `text-green-500 dark:text-green-400` for positive, `text-red-500 dark:text-red-400` for negative. **Inverted semantics for expense metrics**: a positive delta on Spese is bad; parameter the color via `positiveGood: boolean`. In Tailwind: `text-[12px] font-mono mt-1.5 text-green-500 dark:text-green-400`. A neutral subline (non-trend) uses `text-[12px] text-muted-foreground mt-1.5`.
+- **Delta Annotation** (Geist Mono, 400 weight, `12px`, ls 0): The small trend line that appears directly below a sub-hero value inside a KPI chip — e.g. `+5.2% vs mese scorso`. Always `font-mono`. Color follows sign semantics via the theme tokens (see **The Sign-Color Token Rule**): `text-positive` for positive, `text-destructive` for negative — never raw `text-green-*`/`text-red-*`. **Inverted semantics for expense metrics**: a positive delta on Spese is bad; parameter the color via `positiveGood: boolean`. In Tailwind: `text-[12px] font-mono mt-1.5 text-positive` (or `text-destructive`); prefer `getMetricValueColor()`. A neutral subline (non-trend) uses `text-[12px] text-muted-foreground mt-1.5`.
 - **Numeric** (Geist Mono, 400 weight, 0.875rem, lh 1.4, `font-feature-settings: "tnum" 1`): All monetary values, percentages, dates, quantities in financial contexts. Tabular figures always enabled.
 
 ### Named Rules
@@ -294,15 +302,17 @@ Periodic changes (monthly, YTD) are displayed as compact inline chips directly b
 
 **Structure:** `inline-flex items-center gap-2 rounded-[9px] px-[13px] py-[6px] text-[15px] font-semibold font-mono tracking-[-0.01em]`
 
-**Colors:**
-- Positive: `bg-green-500/10 text-green-500 dark:text-green-400`
-- Negative: `bg-red-500/10 text-red-500 dark:text-red-400`
+**Colors:** (theme-aware tokens — see **The Sign-Color Token Rule**)
+- Positive: `bg-positive/10 text-positive`
+- Negative: `bg-destructive/10 text-destructive`
+
+Never use raw `bg-green-500/10 text-green-500` / `bg-red-500/10 text-red-500` here: those stay literal red/green regardless of theme and clash with `--destructive` on non-default themes (e.g. Cyberpunk = orange). Resolve the text color via `getMetricValueColor()` (`lib/utils/metricColors.ts`) where practical.
 
 **Content:** `{icon} {+/-}{formattedValue} ({+/-}{pct}%) {period label}` — e.g. `↗ +€1.240,00 (+2.34%) questo mese`
 
 **Rules:** Only render when snapshot data exists (at least one prior period). Never show a placeholder chip — absence communicates "no prior data" cleanly. Icon is `TrendingUp` or `TrendingDown` at `h-[13px] w-[13px]`. Multiple chips wrap naturally via `flex-wrap gap-2`. Use `font-mono` for the value — the chip contains a financial number and must satisfy the Mono Mandate.
 
-**Note (delta semantics):** For expense metrics, the sign convention is inverted: a positive delta on Spese is bad (spending went up), a negative delta is good. The color logic must be parameterized, not hard-coded: `positiveGood: boolean` governs green/red assignment.
+**Note (delta semantics):** For expense metrics, the sign convention is inverted: a positive delta on Spese is bad (spending went up), a negative delta is good. The color logic must be parameterized, not hard-coded: `positiveGood: boolean` governs the `text-positive` / `text-destructive` assignment.
 
 ### Dominant Value Block (Trade Republic Pattern)
 
@@ -354,18 +364,34 @@ A compact, text-only chip for contextual financial actions (buy / sell / hold si
 
 ### Segmented Pill Control
 
-A tab switcher for 2–4 mutually exclusive views within a section. Replaces `<Select>` dropdowns where options are few, short, and always visible. The active pill animates via Framer Motion `layoutId` spring.
+A tab switcher for mutually exclusive views within a section. Replaces `<Select>` dropdowns where options are few and always visible. The active pill animates via Framer Motion `layoutId` spring.
 
-**Structure:** `role="tablist"` container with `bg-muted rounded-lg p-1`, each option is a `role="tab"` button. Active pill is a `motion.div` with `layoutId` that slides between options.
+**Structure:** `role="tablist"` container with `bg-muted rounded-lg p-1 w-fit mx-auto`, each option is a `role="tab"` `motion.button` with `layout="size"`. Active pill is a `motion.div` with `layoutId` and `bg-background shadow-sm` that slides between options.
 
-**Spring:** `stiffness: 400, damping: 35` — snappy without overshooting.
+**Spring:** `stiffness: 400, damping: 35` — snappy without overshooting. Same constant on both `motion.button` `transition` and `motion.div` `transition`.
 
-**Rules:**
-- 2–4 options maximum. Beyond 4, use a Select or vertical nav.
-- Labels are abbreviated for mobile (≤10 chars preferred). Full labels on `desktop:`.
+#### Variant A — Icon tabs (section navigation)
+
+Used in `PageTabBar` for pages with multiple named sections (Cashflow, Settings, FIRE). Each tab has a meaningful icon.
+
+- **Active tab:** icon + full label. `motion.button layout="size"` expands smoothly.
+- **Inactive tabs:** icon only — label hidden. Tabs shrink to icon width.
+- **Fallback:** if a tab has no icon, always show the label regardless of active state.
+- **Centering:** `w-fit mx-auto` on the container — the pill sizes to content and centers in the page.
+- **Implementation:** `components/layout/PageTabBar.tsx`
+
+#### Variant B — Text tabs (period / filter selection)
+
+Used for compact period selectors (e.g. YTD / 1A / 3A / 5A / MAX on Rendimenti) where labels ARE the identifier and no icons exist.
+
+- All options always show their label (already ≤3–4 chars — no overflow risk).
+- Uses underline `motion.div` indicator instead of background pill — appropriate for horizontal period strips.
+- Do not force icons onto period selectors. "1 year" has no meaningful icon.
+
+**Shared rules:**
 - Full ARIA: `role="tablist"` on container, `role="tab"` + `aria-selected` per button.
 - Only use for view-switching within a page section. Global navigation uses the bottom pill or sidebar.
-- Desktop may use shadcn `TabsList` when the design calls for a more open tab style. The segmented pill is the mobile-first default.
+- Desktop (`≥ 1440px`): `PageTabBar` renders the animated underline tab bar instead. The segmented pill is mobile-only (`desktop:hidden`).
 
 ### Bento Asymmetric Hero Layout
 
@@ -657,6 +683,7 @@ useEffect(() => {
 
 ### Do:
 
+- **Do** derive every visual choice from function — form follows function. Before adding any property (a color, a shadow, a radius, a motion, an extra pixel of size), name the job it does. If the only answer is "it looks nice," remove it. Form is the consequence of function, never its costume.
 - **Do** use Geist Mono with `font-feature-settings: "tnum" 1` for every monetary value, percentage, and structured date. Column alignment is a trust signal.
 - **Do** reference `--sidebar-primary` for active navigation states. In the default theme this is the only sanctioned non-achromatic color in the interface chrome.
 - **Do** use the Float shadow exclusively for elements that leave document flow (modals, the mobile nav pill, dropdown menus). Never apply it to in-flow cards.
@@ -675,10 +702,11 @@ useEffect(() => {
 - **Do** use `mt-auto` inside `flex flex-col h-full` CardContent to pin optional secondary content to the card bottom. The pattern requires `h-full` on both Card and CardContent; without both, `mt-auto` has no space to push against.
 - **Do** use `rounded-[2px]` for chart legend color swatches (color keys). Use `rounded-full` for inline dot indicators (row bullets, status dots). The distinction is semantic: square = color key, circle = inline marker.
 - **Do** duplicate responsive blocks with `desktop:hidden` / `hidden desktop:grid` when the same data must be positioned differently across breakpoints (e.g. TER + cost metrics in the hero card footer on desktop, as standalone cards below the hero on mobile). Redundant DOM is preferable to a convoluted single implementation that degrades at both sizes.
-- **Do** use inverted sign semantics (parameterized `positiveGood: boolean`) for expense delta annotations. A positive Spese delta means spending increased — the color should be red, opposite to the income logic. Never hardcode green-for-positive in components that handle both income and expense metrics.
+- **Do** use inverted sign semantics (parameterized `positiveGood: boolean`) for expense delta annotations. A positive Spese delta means spending increased — the color should be `text-destructive`, opposite to the income logic. Never hardcode positive-as-green (raw `text-green-*`) in components that handle both income and expense metrics; use the `text-positive` / `text-destructive` tokens so the sign colors follow the theme.
 
 ### Don't:
 
+- **Don't** shape an element for appearance alone. A larger number, a heavier shadow, a brighter accent, or an extra animation that exists "to look good" violates form-follows-function. If a property carries no function, it is decoration — cut it. And never fake what isn't there: no false depth, no invented material, no shadow hierarchy a surface hasn't earned (the honesty corollary).
 - **Don't** add brand color to the default theme's surface chrome (backgrounds, cards, buttons). Zero-chroma is the rule: color belongs to data, not decoration.
 - **Don't** model density after a Bloomberg terminal. Dense presentation serves the user; illegibility or emotional coldness does not.
 - **Don't** use consumer fintech color patterns — colorful fills, playful gradients, bright accents on every interactive element. This tool handles serious long-term wealth management.

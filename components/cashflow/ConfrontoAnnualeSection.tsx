@@ -305,7 +305,7 @@ export function ConfrontoAnnualeSection({
       const currentValue = allExpenses
         .filter(
           (e) =>
-            e.type !== 'income' &&
+            e.type !== 'income' && e.type !== 'transfer' &&
             getItalyYear(toDate(e.date)) === currentYearLabel &&
             getItalyMonth(toDate(e.date)) === month,
         )
@@ -314,7 +314,7 @@ export function ConfrontoAnnualeSection({
       const prevValue = allExpenses
         .filter(
           (e) =>
-            e.type !== 'income' &&
+            e.type !== 'income' && e.type !== 'transfer' &&
             getItalyYear(toDate(e.date)) === prevYearLabel &&
             getItalyMonth(toDate(e.date)) === month,
         )
@@ -334,7 +334,7 @@ export function ConfrontoAnnualeSection({
     const filterByYear = (year: number) =>
       allExpenses.filter((e) => {
         const d = toDate(e.date);
-        if (e.type === 'income') return false;
+        if (e.type === 'income' || e.type === 'transfer') return false;
         if (getItalyYear(d) !== year) return false;
         if (periodMode === 'current') return getItalyMonth(d) <= getItalyMonth();
         if (selectedMonth !== null) return getItalyMonth(d) === selectedMonth;
@@ -389,7 +389,7 @@ export function ConfrontoAnnualeSection({
       .map((year) => ({
         year: year.toString(),
         spese: allExpenses
-          .filter((e) => e.type !== 'income' && getItalyYear(toDate(e.date)) === year)
+          .filter((e) => e.type !== 'income' && e.type !== 'transfer' && getItalyYear(toDate(e.date)) === year)
           .reduce((s, e) => s + Math.abs(e.amount), 0),
       }));
   }, [allExpenses, periodMode, historyStartYear]);

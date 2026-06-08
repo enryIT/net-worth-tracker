@@ -13,6 +13,7 @@
  * Amount sign convention:
  * - Expenses (fixed, variable, debt): stored as negative values
  * - Income: stored as positive values
+ * - Transfers: stored as positive values (direction encoded by origin/destination asset IDs)
  * This allows simple summing for net cashflow calculations.
  */
 
@@ -214,7 +215,7 @@ export async function createExpense(
   subCategoryName?: string
 ): Promise<string | string[]> {
   try {
-    const now = Timestamp.now();
+    const now = new Date();
 
     // Priority 1: Check installment first (BNPL payments with varying amounts)
     // Installments have priority over recurring since they're more specific
@@ -230,10 +231,10 @@ export async function createExpense(
     // Priority 3: Create single expense
     const expensesRef = collection(db, EXPENSES_COLLECTION);
 
-    // Apply amount sign convention: expenses negative, income positive
+    // Apply amount sign convention: expenses negative, income/transfers positive
     // This allows simple sum() for net cashflow without conditional logic
     let amount = Math.abs(expenseData.amount);
-    if (expenseData.type !== 'income') {
+    if (expenseData.type !== 'income' && expenseData.type !== 'transfer') {
       amount = -amount;
     }
 
@@ -259,6 +260,7 @@ export async function createExpense(
       investmentOperationPricePerUnit: expenseData.investmentOperationPricePerUnit,
       investmentOperationFees: expenseData.investmentOperationFees,
       investmentOperationTaxes: expenseData.investmentOperationTaxes,
+      transferCashAssetId: expenseData.transferCashAssetId,
       costCenterId: expenseData.costCenterId,
       costCenterName: expenseData.costCenterName,
       attributionProfileId: expenseData.attributionProfileId,
@@ -303,7 +305,7 @@ async function createRecurringExpenses(
     const batch = writeBatch(db);
     const expensesRef = collection(db, EXPENSES_COLLECTION);
     const createdIds: string[] = [];
-    const now = Timestamp.now();
+    const now = new Date();
 
     // Create parent expense ID for reference
     const parentId = `recurring-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -417,7 +419,7 @@ async function createInstallmentExpenses(
     const batch = writeBatch(db);
     const expensesRef = collection(db, EXPENSES_COLLECTION);
     const createdIds: string[] = [];
-    const now = Timestamp.now();
+    const now = new Date();
 
     // Generate unique parent ID for linking all installments together
     // This allows bulk operations like "delete all installments in this series"
@@ -579,7 +581,7 @@ export async function updateExpense(
     let updatedAmount = updates.amount;
     if (updatedAmount !== undefined && updates.type) {
       updatedAmount = Math.abs(updatedAmount);
-      if (updates.type !== 'income') {
+      if (updates.type !== 'income' && updates.type !== 'transfer') {
         updatedAmount = -updatedAmount;
       }
     }
@@ -604,6 +606,7 @@ export async function updateExpense(
       attributionProfileId: updates.attributionProfileId,
       attributionProfileName: updates.attributionProfileName,
       attributionSplits: updates.attributionSplits,
+      transferCashAssetId: updates.transferCashAssetId,
       updatedAt: Timestamp.now(),
     });
 
@@ -714,14 +717,15 @@ export async function getMonthlyExpenseSummary(
         variable: { total: 0, count: 0 },
         debt: { total: 0, count: 0 },
         income: { total: 0, count: 0 },
+        transfer: { total: 0, count: 0 },
       },
     };
 
     expenses.forEach(expense => {
-      // Update totals
+      // Update totals — transfers are internal movements, not real income/expenses
       if (expense.type === 'income') {
         summary.totalIncome += expense.amount;
-      } else {
+      } else if (expense.type !== 'transfer') {
         summary.totalExpenses += Math.abs(expense.amount);
       }
 
@@ -815,12 +819,21 @@ export function calculateTotalIncome(expenses: Expense[]): number {
     .reduce((total, expense) => total + expense.amount, 0);
 }
 
+/** Expense types that count as real spending (excludes income and transfers). */
+export const COUNTABLE_EXPENSE_TYPES: ExpenseType[] = ['fixed', 'variable', 'debt'];
+
+/** Returns true if the expense is a real spending entry (not income or transfer). */
+export function isCountableExpense(e: Expense): boolean {
+  return COUNTABLE_EXPENSE_TYPES.includes(e.type);
+}
+
 /**
- * Calculate total expenses for a period
+ * Calculate total expenses for a period.
+ * Only counts real spending types (fixed, variable, debt) — excludes income and transfers.
  */
 export function calculateTotalExpenses(expenses: Expense[]): number {
   return expenses
-    .filter(expense => expense.type !== 'income')
+    .filter(isCountableExpense)
     .reduce((total, expense) => total + Math.abs(expense.amount), 0);
 }
 
@@ -922,7 +935,7 @@ export async function updateExpensesCategoryName(
     querySnapshot.docs.forEach(docSnapshot => {
       batch.update(docSnapshot.ref, {
         categoryName: newCategoryName,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       });
     });
 
@@ -962,7 +975,7 @@ export async function updateExpensesSubCategoryName(
     querySnapshot.docs.forEach(docSnapshot => {
       batch.update(docSnapshot.ref, {
         subCategoryName: newSubCategoryName,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       });
     });
 
@@ -1005,7 +1018,7 @@ export async function reassignExpensesCategory(
       const updates: any = {
         categoryId: newCategoryId,
         categoryName: newCategoryName,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       // If new subcategory is provided, update it; otherwise clear it
@@ -1059,7 +1072,7 @@ export async function clearExpensesCategoryAssignment(
         categoryName: 'Uncategorized',
         subCategoryId: null,
         subCategoryName: null,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       batch.update(docSnapshot.ref, removeUndefinedFields(updates));
@@ -1104,7 +1117,7 @@ export async function reassignExpensesSubCategory(
 
     querySnapshot.docs.forEach(docSnapshot => {
       const updates: any = {
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       // If new subcategory is provided, update it; otherwise clear it
@@ -1181,7 +1194,7 @@ export async function moveExpensesToCategory(
         categoryId: newCategoryId,
         categoryName: newCategoryName,
         type: newType,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       // Flip amount sign when crossing income ↔ expense boundary
@@ -1251,7 +1264,7 @@ export async function moveExpensesFromSubCategory(
         categoryId: newCategoryId,
         categoryName: newCategoryName,
         type: newType,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       // Flip amount sign when crossing income ↔ expense boundary
@@ -1319,7 +1332,7 @@ export async function updateExpensesType(
     querySnapshot.docs.forEach(docSnapshot => {
       const updates: Record<string, unknown> = {
         type: newType,
-        updatedAt: Timestamp.now(),
+        updatedAt: new Date(),
       };
 
       if (flipSign) {
