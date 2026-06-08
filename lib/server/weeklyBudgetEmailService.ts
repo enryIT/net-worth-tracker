@@ -4,6 +4,9 @@
  * Server-only: imports firebase-admin and the Resend SDK. Reuses the same pure
  * budget layer as the in-app tab (lib/utils/budgetUtils) so the email and the UI
  * never disagree. Deterministic table + a single optional AI sentence.
+ *
+ * Category budgets that actually exceeded their limit (ratio > 1) carry a per-expense
+ * breakdown (with the note when present) so the reader sees *what* drove the overrun.
  */
 
 import { adminDb } from '@/lib/firebase/admin';
@@ -13,6 +16,7 @@ import { getItalyDate, getItalyYear, getItalyMonth } from '@/lib/utils/dateHelpe
 import {
   getPeriodActual,
   getActualForItem,
+  getPeriodExpensesForItem,
   buildSpendingForecast,
   getMonthlyTotalExpenses,
   getOverallMonthlyBaseline,
@@ -24,6 +28,14 @@ const WARNING_RATIO = 0.8;
 
 export type BudgetRowStatus = 'ok' | 'warning' | 'over';
 
+/** A single expense contributing to an over-budget category, for the email breakdown. */
+export interface OverspendExpense {
+  description: string; // the note when present, otherwise the budget label
+  subCategory?: string; // the expense's subcategory; omitted for subcategory-scoped budgets (redundant)
+  date: Date;
+  amount: number; // absolute EUR
+}
+
 export interface WeeklyBudgetRow {
   label: string;
   period: BudgetPeriod;
@@ -33,6 +45,9 @@ export interface WeeklyBudgetRow {
   ratio: number;
   projected: number | null; // end-of-month projection (monthly expense budgets only)
   status: BudgetRowStatus;
+  // Individual expenses behind the overrun — populated only for category budgets that
+  // actually exceeded their limit (ratio > 1). Never set for the overall budget.
+  overspendExpenses?: OverspendExpense[];
 }
 
 export interface WeeklyBudgetData {
@@ -126,8 +141,24 @@ export async function buildWeeklyBudgetData(userId: string, now: Date): Promise<
         projected = buildSpendingForecast(spent, item.amount, now, reference).projectedTotal;
       }
       const projectedRatio = projected != null && item.amount > 0 ? projected / item.amount : null;
+      const label = itemLabel(item);
+
+      // List the contributing expenses only when an expense budget actually exceeded
+      // its limit (ratio > 1) — "sforato" means real spending past the limit, not a
+      // forecast-only overrun. Income targets and on-track rows carry no breakdown.
+      let overspendExpenses: OverspendExpense[] | undefined;
+      if (item.kind !== 'income' && ratio > 1) {
+        overspendExpenses = getPeriodExpensesForItem(item, expenses, now).map((expense) => ({
+          description: expense.notes?.trim() || label,
+          // A subcategory-scoped budget already names the subcategory in its title — don't repeat it.
+          subCategory: item.scope === 'subcategory' ? undefined : expense.subCategoryName,
+          date: expense.date,
+          amount: Math.abs(expense.amount),
+        }));
+      }
+
       return {
-        label: itemLabel(item),
+        label,
         period: item.period,
         isIncome: item.kind === 'income',
         spent,
@@ -135,6 +166,7 @@ export async function buildWeeklyBudgetData(userId: string, now: Date): Promise<
         ratio,
         projected,
         status: rowStatus(ratio, projectedRatio, item.kind === 'income'),
+        overspendExpenses,
       };
     })
     .sort((a, b) => b.ratio - a.ratio);
@@ -229,18 +261,46 @@ function statusColor(status: BudgetRowStatus): string {
   return '#16a34a';
 }
 
+const dayMonthFormatter = new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: '2-digit' });
+
+/** Escapes the few characters that would break HTML when interpolating a user-entered note. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** Indented mono breakdown of the expenses behind an over-budget category. */
+function overspendHtml(expenses: OverspendExpense[]): string {
+  const items = expenses
+    .map((expense) => {
+      // Column order: Data · Sottocategoria · Nota · Importo.
+      const subCategorySegment = expense.subCategory
+        ? `<span style="color:#94a3b8;">${escapeHtml(expense.subCategory)}</span> &nbsp;·&nbsp; `
+        : '';
+      return `
+      <div style="font-size:11px;color:#64748b;font-family:'Geist Mono', ui-monospace, monospace;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        ${dayMonthFormatter.format(expense.date)} &nbsp;·&nbsp; ${subCategorySegment}<span style="color:#475569;">${escapeHtml(expense.description)}</span> &nbsp;·&nbsp; ${formatEur(expense.amount)}
+      </div>`;
+    })
+    .join('');
+  return `<div style="margin-top:6px;padding-left:10px;border-left:2px solid #fecaca;">${items}</div>`;
+}
+
 function rowHtml(row: WeeklyBudgetRow): string {
   const color = statusColor(row.status);
   const pct = Math.round(row.ratio * 100);
   const projectedNote =
     row.projected != null && !row.isIncome ? ` · proiezione ${formatEur(row.projected)}` : '';
+  const breakdown = row.overspendExpenses?.length ? overspendHtml(row.overspendExpenses) : '';
   return `
     <tr>
       <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
         <span style="font-size:13px;color:#0f172a;">${row.label}</span>
         <div style="font-size:12px;color:#64748b;margin-top:2px;font-family:'Geist Mono', ui-monospace, monospace;">
           ${formatEur(row.spent)} / ${formatEur(row.limit)} &nbsp;·&nbsp; <span style="color:${color};font-weight:600;">${pct}%</span>${projectedNote}
-        </div>
+        </div>${breakdown}
       </td>
     </tr>`;
 }
