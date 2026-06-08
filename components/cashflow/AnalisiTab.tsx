@@ -48,6 +48,7 @@ import { CashflowSankeyChart } from '@/components/cashflow/CashflowSankeyChart';
 import { ConfrontoAnnualeSection } from '@/components/cashflow/ConfrontoAnnualeSection';
 import { SavingsRateTrendSection } from '@/components/cashflow/SavingsRateTrendSection';
 import { CategoryTrendsGrid } from '@/components/cashflow/CategoryTrendsGrid';
+import { AndamentoStoricoSection } from '@/components/cashflow/AndamentoStoricoSection';
 import { AnomalieBlock, AnomaliaItem } from '@/components/cashflow/AnomalieBlock';
 import { chartShellSettle, fadeVariants } from '@/lib/utils/motionVariants';
 import { cn } from '@/lib/utils';
@@ -705,12 +706,16 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
   return (
     <div className="space-y-6">
       {/* ── Period selector ────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Three-state pill */}
+      {/* Stacked + centered on mobile/tablet (pill over picker) to avoid the
+          unbalanced pill-left / picker-far-right gap; switches to the row layout
+          (pill left, picker right) only from desktop (1440px) up. */}
+      <div className="flex flex-col gap-3 desktop:flex-row desktop:items-center desktop:justify-between">
+        {/* Three-state pill — self-center centers it on the stacked column without
+            stretching the picker; desktop:self-auto restores row placement. */}
         <div
           role="tablist"
           aria-label="Periodo di analisi"
-          className="inline-flex items-center gap-1 rounded-full bg-muted p-1"
+          className="inline-flex items-center gap-1 rounded-full bg-muted p-1 self-center desktop:self-auto"
         >
           {([
             ['current', 'Anno Corrente'],
@@ -751,7 +756,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:self-center desktop:self-auto"
           >
             <Select
               value={selectedMonth?.toString() || '__all__'}
@@ -788,7 +793,7 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:self-center desktop:self-auto"
           >
             <Select
               value={selectedYear?.toString() || pastYears[0]?.toString()}
@@ -1119,6 +1124,17 @@ export function AnalisiTab({ allExpenses, loading, historyStartYear = 2024 }: An
         periodMode={periodMode}
         historyStartYear={historyStartYear}
       />
+
+      {/* ── Andamento nel Tempo (solo Storico) ───────────────────────────── */}
+      {/* Income/expense/net flow + per-category multi-line trends over the full
+          history. History-only: in Anno Corrente/Anno the YoY section above already
+          covers the period, and the Mese/Anno axis would degenerate to one bucket. */}
+      {periodMode === 'history' && (
+        <AndamentoStoricoSection
+          allExpenses={allExpenses}
+          historyStartYear={historyStartYear}
+        />
+      )}
 
       {/* ── Andamento Risparmio + Trend per Categoria ────────────────── */}
       {/* Hidden in "Anno" mode — the rolling windows (24m / 12m from today)

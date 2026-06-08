@@ -284,14 +284,20 @@ Componenti: components/cashflow/AnalisiTab.tsx,
             components/cashflow/AnomalieBlock.tsx,
             components/cashflow/ConfrontoAnnualeSection.tsx,
             components/cashflow/SavingsRateTrendSection.tsx,
-            components/cashflow/CategoryTrendsGrid.tsx
+            components/cashflow/CategoryTrendsGrid.tsx,
+            components/cashflow/AndamentoStoricoSection.tsx
+Pure layer: lib/utils/cashflowTimeSeries.ts
 
 Pagina standalone (estratta dal tab "Analisi" di Cashflow). Unifica anno corrente +
 storico in un'unica vista con 3-state period pill (Anno Corrente / Anno / Storico).
 Include: Sankey chart con drill-down breadcrumb, TopExpensesBlock (top 5 spese
 espandibile), AnomalieBlock (anomalie di spesa), ConfrontoAnnualeSection (confronto
 anno corrente vs anno precedente), SavingsRateTrendSection (trend savings rate),
-CategoryTrendsGrid (9 trend charts collassabili). Data fetching autonomo via
+CategoryTrendsGrid (sparkline per categoria, ultimi 12 mesi). Solo in modalità Storico:
+AndamentoStoricoSection — Chart A ComposedChart (Entrate/Uscite barre + Risparmio netto
+linea) + Chart B LineChart a linee multiple per categoria (sub-toggle Entrate/Uscite),
+con toggle Mese/Anno condiviso; aggregazione pura in cashflowTimeSeries.ts (asse temporale
+con floor `cashflowHistoryStartYear`). Data fetching autonomo via
 useExpenses / useExpenseCategories — non condivide route lifecycle con Cashflow.
 Confronta con: Cashflow/Tracciamento (dati condivisi via RQ cache),
 Rendimenti (period selector), Storico (narrative order + collapsible appendice).

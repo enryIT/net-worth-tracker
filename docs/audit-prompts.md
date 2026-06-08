@@ -400,17 +400,26 @@ Componenti: components/cashflow/AnalisiTab.tsx,
             components/cashflow/AnomalieBlock.tsx,
             components/cashflow/ConfrontoAnnualeSection.tsx,
             components/cashflow/SavingsRateTrendSection.tsx,
-            components/cashflow/CategoryTrendsGrid.tsx
+            components/cashflow/CategoryTrendsGrid.tsx,
+            components/cashflow/AndamentoStoricoSection.tsx
+Pure layer (logica, non visivo): lib/utils/cashflowTimeSeries.ts
 
 Assi da verificare (minimum — segnala anche eventuali altri problemi):
 - Token: nessun hardcoded nel Sankey (nodi, link, tooltip), nei KPI hero blocks,
   nel TopExpensesBlock (importi rossi — usa `text-destructive`?)
-- Chart colors: Sankey node colors via `useChartColors()` o CSS vars; 9 trend charts via
-  `useChartColors()` — nessun hex diretto
-- Breakpoint: pill 3-state (Anno Corrente/Anno/Storico) corretto su 375px; TopExpensesBlock
-  non overflow su mobile
-- Motion: `key={periodLabel}` su TopExpensesBlock per reset `showAll`; pill animation (400/35)
-- ARIA: pill selector `role="tablist"`, Sankey drill-down breadcrumb accessibile
+- Chart colors: Sankey node colors via `useChartColors()` o CSS vars; tutti i trend charts
+  (incl. AndamentoStoricoSection: ComposedChart Entrate/Uscite/Risparmio + LineChart per
+  categoria) via `useChartColors()`; tooltip via CSS vars — nessun hex diretto
+- AndamentoStoricoSection (solo `periodMode === 'history'`): YAxis del ComposedChart usa
+  `domain={[(min)=>Math.min(0,min),'auto']}` (la linea Risparmio negativo non viene tagliata);
+  asse temporale parte da `cashflowHistoryStartYear` (floor) e non degenera a 1 bucket
+- Breakpoint: pill 3-state (Anno Corrente/Anno/Storico) centrata su mobile/tablet, riga su
+  `desktop:`; selettore non overflow su 375px; TopExpensesBlock non overflow su mobile
+- Motion: `key={periodLabel}` su TopExpensesBlock per reset `showAll`; pill animation (400/35);
+  layoutId unici per pagina (`analisi-period-pill`, `andamento-granularity-pill`,
+  `andamento-category-pill`, `confronto-view-pill`) — nessuna collisione
+- ARIA: pill selector `role="tablist"`, Sankey drill-down breadcrumb accessibile;
+  toggle Mese/Anno ed Entrate/Uscite con `role="tablist"`/`role="tab"`
 - Altro: pattern anomali o violazioni non elencate sopra
 
 Contesto:

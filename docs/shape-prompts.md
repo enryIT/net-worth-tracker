@@ -224,7 +224,9 @@ Componenti: components/cashflow/AnalisiTab.tsx,
             components/cashflow/AnomalieBlock.tsx,
             components/cashflow/ConfrontoAnnualeSection.tsx,
             components/cashflow/SavingsRateTrendSection.tsx,
-            components/cashflow/CategoryTrendsGrid.tsx
+            components/cashflow/CategoryTrendsGrid.tsx,
+            components/cashflow/AndamentoStoricoSection.tsx
+Pure layer: lib/utils/cashflowTimeSeries.ts
 
 Confronta con: Cashflow/Tracciamento (dati condivisi via RQ cache),
 Rendimenti (period selector), Storico (narrative order + collapsible).

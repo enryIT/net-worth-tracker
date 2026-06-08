@@ -159,7 +159,9 @@ Componenti: components/cashflow/AnalisiTab.tsx,
             components/cashflow/AnomalieBlock.tsx,
             components/cashflow/ConfrontoAnnualeSection.tsx,
             components/cashflow/SavingsRateTrendSection.tsx,
-            components/cashflow/CategoryTrendsGrid.tsx
+            components/cashflow/CategoryTrendsGrid.tsx,
+            components/cashflow/AndamentoStoricoSection.tsx
+Pure layer: lib/utils/cashflowTimeSeries.ts
 
 Contesto:
 - Leggi DESIGN.md (fonte canonica del design system — North Star, Form Follows Function, scala tipografica, Mono Mandate, Zero-Chroma) e APPLICALA mentre scrivi codice
